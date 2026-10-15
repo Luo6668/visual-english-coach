@@ -1,0 +1,912 @@
+import { fetch as expoFetch } from 'expo/fetch';
+import {
+  AudioQuality,
+  IOSOutputFormat,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioRecorder,
+} from 'expo-audio';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import {
+  ArrowRight,
+  Camera,
+  Check,
+  ChevronRight,
+  Flame,
+  Headphones,
+  Image as ImageIcon,
+  Map,
+  Mic,
+  Pencil,
+  Send,
+  Sparkles,
+  Square,
+  Volume2,
+} from 'lucide-react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import Animated, {
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { addXp, fetchLearningRecords, fetchXpData, invokeEdgeFunction } from '@/lib/api';
+import { arrayBufferToBase64, audioBlobTo16kWav, startWebAudioRecording } from '@/lib/audioCapture';
+import { setPendingUri } from '@/lib/imageStore';
+import { speakWithTTS, stopLocalSpeech } from '@/lib/speech';
+
+const BLUE = '#2F6FED';
+const BLUE_DARK = '#174EA6';
+const BLUE_SOFT = '#EEF4FF';
+const GREEN = '#1E9E67';
+const ORANGE = '#F97316';
+const INK = '#14213D';
+const MUTED = '#667085';
+const BORDER = '#E6EAF0';
+const BG = '#F7F9FC';
+const WHITE = '#FFFFFF';
+const DAILY_GOAL = 3;
+const COACH_EXPRESSION = "I'd like a latte, please.";
+
+const RECORDING_OPTIONS = {
+  extension: '.m4a',
+  sampleRate: 16000,
+  numberOfChannels: 1,
+  bitRate: 64000,
+  android: { outputFormat: 'mpeg4' as const, audioEncoder: 'aac' as const },
+  ios: {
+    outputFormat: IOSOutputFormat.MPEG4AAC,
+    audioQuality: AudioQuality.HIGH,
+    linearPCMBitDepth: 16 as const,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  web: { mimeType: 'audio/webm', bitsPerSecond: 64000 },
+};
+
+type InputMode = 'text' | 'voice';
+
+interface LearningRecord {
+  id: string;
+  scene_name: string;
+  scene_image?: string;
+  i_see?: string;
+  created_at: string;
+  input_type?: string;
+}
+
+function parseRecordDate(value: string): Date {
+  const parsed = new Date(value.includes('T') ? value : value.replace(' ', 'T'));
+  return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
+}
+
+function dateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function relativeRecordTime(value: string): string {
+  const date = parseRecordDate(value);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (dateKey(date) === dateKey(today)) return '今天练习';
+  if (dateKey(date) === dateKey(yesterday)) return '昨天练习';
+  return `${date.getMonth() + 1}月${date.getDate()}日练习`;
+}
+
+function getSceneIcon(name: string): string {
+  const icons: Record<string, string> = {
+    咖啡: '☕',
+    餐厅: '🍽️',
+    办公室: '💼',
+    公园: '🌳',
+    超市: '🛒',
+    图书馆: '📚',
+    健身房: '🏋️',
+    机场: '✈️',
+    地铁: '🚇',
+    医院: '🏥',
+    证件: '📷',
+  };
+  for (const [keyword, icon] of Object.entries(icons)) {
+    if (name.includes(keyword)) return icon;
+  }
+  return '📍';
+}
+
+const BAR_HEIGHTS = [12, 20, 29, 38, 42, 38, 29, 20, 12];
+const BAR_MIN = 6;
+
+function WaveBar({ baseHeight, delay, active }: { baseHeight: number; delay: number; active: boolean }) {
+  const height = useSharedValue(BAR_MIN);
+
+  useEffect(() => {
+    if (active) {
+      height.value = withDelay(
+        delay,
+        withRepeat(
+          withSequence(
+            withTiming(baseHeight * 0.85, { duration: 230 }),
+            withTiming(BAR_MIN + 4, { duration: 210 }),
+            withTiming(baseHeight * 0.55, { duration: 190 }),
+          ),
+          -1,
+          true,
+        ),
+      );
+    } else {
+      cancelAnimation(height);
+      height.value = withTiming(BAR_MIN, { duration: 220 });
+    }
+  }, [active, baseHeight, delay, height]);
+
+  const animatedStyle = useAnimatedStyle(() => ({ height: height.value }));
+  return <Animated.View style={[styles.waveBar, active && styles.waveBarActive, animatedStyle]} />;
+}
+
+function AudioWave({ active }: { active: boolean }) {
+  return (
+    <View style={styles.waveform}>
+      {BAR_HEIGHTS.map((height, index) => (
+        <WaveBar key={`${height}-${index}`} baseHeight={height} delay={index * 38} active={active} />
+      ))}
+    </View>
+  );
+}
+
+export default function HomeScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const player = useAudioPlayer();
+  const recorder = useAudioRecorder(RECORDING_OPTIONS);
+
+  const [sceneInputMode, setSceneInputMode] = useState<InputMode | null>(null);
+  const [sceneInputText, setSceneInputText] = useState('');
+  const [coachInput, setCoachInput] = useState('');
+  const [records, setRecords] = useState<LearningRecord[]>([]);
+  const [streakDays, setStreakDays] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [failedRecordImageId, setFailedRecordImageId] = useState<string | null>(null);
+  const [previewSpeaking, setPreviewSpeaking] = useState(false);
+  const [recState, setRecState] = useState<'idle' | 'requesting' | 'recording' | 'transcribing'>('idle');
+  const [recError, setRecError] = useState('');
+  const [recSeconds, setRecSeconds] = useState(0);
+
+  const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const webRecorderRef = useRef<MediaRecorder | null>(null);
+  const contentWidth = Math.min(width, 760);
+  const compactHeader = width < 480;
+  const heroHeight = Math.min(360, Math.max(300, Math.round((contentWidth - 32) * 0.78)));
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      void (async () => {
+        setLoading(true);
+        await addXp('daily_checkin').catch(() => {});
+        const [recordsResult, xpResult] = await Promise.allSettled([
+          fetchLearningRecords(),
+          fetchXpData(),
+        ]);
+        if (!active) return;
+        if (recordsResult.status === 'fulfilled') {
+          const sorted = [...recordsResult.value].sort(
+            (a, b) => parseRecordDate(b.created_at).getTime() - parseRecordDate(a.created_at).getTime(),
+          );
+          setRecords(sorted);
+          setFailedRecordImageId(null);
+        }
+        if (xpResult.status === 'fulfilled') {
+          setStreakDays(Number(xpResult.value.stats?.streak_days ?? 0));
+        }
+        setLoading(false);
+      })();
+
+      return () => {
+        active = false;
+        stopLocalSpeech();
+        setPreviewSpeaking(false);
+      };
+    }, []),
+  );
+
+  useEffect(() => () => {
+    if (recTimerRef.current) clearInterval(recTimerRef.current);
+  }, []);
+
+  const handleCamera = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (permission.status !== 'granted') return;
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: 'images' as any, quality: 0.8 });
+    if (!result.canceled) {
+      setPendingUri(result.assets[0].uri);
+      router.push('/(app)/thinking-mode?inputType=photo' as any);
+    }
+  };
+
+  const handleGallery = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission.status !== 'granted') return;
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images' as any, quality: 0.8 });
+    if (!result.canceled) {
+      setPendingUri(result.assets[0].uri);
+      router.push('/(app)/thinking-mode?inputType=photo' as any);
+    }
+  };
+
+  const submitSceneText = () => {
+    const text = sceneInputText.trim();
+    if (!text) return;
+    const inputType = sceneInputMode ?? 'text';
+    router.push(`/(app)/thinking-mode?inputType=${inputType}&text=${encodeURIComponent(text)}` as any);
+  };
+
+  const transcribeAudio = async (speech: string, length: number, format: 'wav' | 'm4a') => {
+    const data = await invokeEdgeFunction('short-speech-recognition', {
+      speech,
+      len: length,
+      format,
+      rate: 16000,
+      language: 'en',
+      cuid: 'home',
+    });
+    const recognized = String(data?.result?.[0] || '').trim();
+    if (!recognized) throw new Error('未识别到内容，请靠近麦克风后重试');
+    setSceneInputText(recognized);
+  };
+
+  const startRecording = async () => {
+    setRecError('');
+    setRecState('requesting');
+    if (process.env.EXPO_OS === 'web') {
+      try {
+        webRecorderRef.current = await startWebAudioRecording(
+          async (blob) => {
+            webRecorderRef.current = null;
+            if (blob.size < 200) throw new Error('录音时间太短，请重新录制');
+            setRecState('transcribing');
+            try {
+              const wav = await audioBlobTo16kWav(blob);
+              await transcribeAudio(arrayBufferToBase64(wav), wav.byteLength, 'wav');
+            } catch (error) {
+              setRecError(error instanceof Error ? error.message : '识别失败，请重试');
+            } finally {
+              setRecState('idle');
+            }
+          },
+          (error) => {
+            webRecorderRef.current = null;
+            setRecError(error instanceof Error ? error.message : '录音失败，请重试');
+            setRecState('idle');
+          },
+        );
+        setRecState('recording');
+        setRecSeconds(0);
+        recTimerRef.current = setInterval(() => setRecSeconds((seconds) => seconds + 1), 1000);
+        return;
+      } catch (error) {
+        setRecError(error instanceof Error ? error.message : '无法使用麦克风，请检查浏览器权限');
+        setRecState('idle');
+        return;
+      }
+    }
+
+    const permission = await requestRecordingPermissionsAsync();
+    if (!permission.granted) {
+      setRecError('需要麦克风权限才能录音');
+      setRecState('idle');
+      return;
+    }
+    try {
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setRecState('recording');
+      setRecSeconds(0);
+      recTimerRef.current = setInterval(() => setRecSeconds((seconds) => seconds + 1), 1000);
+    } catch {
+      setRecError('录音启动失败，请重试');
+      setRecState('idle');
+    }
+  };
+
+  const stopRecording = async () => {
+    if (recTimerRef.current) {
+      clearInterval(recTimerRef.current);
+      recTimerRef.current = null;
+    }
+    if (process.env.EXPO_OS === 'web' && webRecorderRef.current) {
+      const activeRecorder = webRecorderRef.current;
+      if (activeRecorder.state !== 'inactive') activeRecorder.stop();
+      setRecState('transcribing');
+      return;
+    }
+
+    setRecState('transcribing');
+    try {
+      await recorder.stop();
+      const uri = recorder.uri;
+      if (!uri) throw new Error('录音文件为空');
+      const response = await expoFetch(uri);
+      const buffer = await response.arrayBuffer();
+      await transcribeAudio(arrayBufferToBase64(buffer), buffer.byteLength, 'm4a');
+    } catch (error) {
+      setRecError(error instanceof Error ? error.message : '识别失败，请重试');
+    } finally {
+      setRecState('idle');
+    }
+  };
+
+  useEffect(() => {
+    if (recState === 'recording' && recSeconds >= 60) void stopRecording();
+  }, [recSeconds, recState]);
+
+  const openCoach = (prompt?: string) => {
+    const trimmed = prompt?.trim();
+    if (trimmed) {
+      setCoachInput('');
+      router.push({
+        pathname: '/(app)/(tabs)/ai-coach',
+        params: { prompt: trimmed },
+      } as any);
+      return;
+    }
+    router.push('/(app)/(tabs)/ai-coach' as any);
+  };
+
+  const togglePreviewSpeech = () => {
+    if (previewSpeaking) {
+      stopLocalSpeech();
+      setPreviewSpeaking(false);
+      return;
+    }
+    setPreviewSpeaking(true);
+    void speakWithTTS(COACH_EXPRESSION, player, invokeEdgeFunction, () => setPreviewSpeaking(false));
+  };
+
+  const today = useMemo(() => new Date(), [records]);
+  const latestRecord = records[0];
+  const todayCount = records.filter((record) => dateKey(parseRecordDate(record.created_at)) === dateKey(today)).length;
+  const dailyProgress = Math.min(todayCount / DAILY_GOAL, 1);
+  const weekDays = useMemo(() => {
+    const start = new Date(today);
+    const offset = (today.getDay() + 6) % 7;
+    start.setDate(today.getDate() - offset);
+    start.setHours(0, 0, 0, 0);
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      return date;
+    });
+  }, [today]);
+  const practicedDays = useMemo(
+    () => new Set(records.map((record) => dateKey(parseRecordDate(record.created_at)))),
+    [records],
+  );
+  const weekCompleted = weekDays.filter((date) => practicedDays.has(dateKey(date))).length;
+
+  const selectInputMode = (mode: 'camera' | 'gallery' | InputMode) => {
+    setRecError('');
+    if (mode === 'camera') {
+      void handleCamera();
+      return;
+    }
+    if (mode === 'gallery') {
+      void handleGallery();
+      return;
+    }
+    setSceneInputMode((current) => (current === mode ? null : mode));
+  };
+
+  const inputModes = [
+    { key: 'camera' as const, label: '拍照', icon: Camera, color: BLUE, background: '#EDF4FF' },
+    { key: 'gallery' as const, label: '相册', icon: ImageIcon, color: GREEN, background: '#ECF9F2' },
+    { key: 'text' as const, label: '文字', icon: Pencil, color: ORANGE, background: '#FFF3EA' },
+    { key: 'voice' as const, label: '语音', icon: Mic, color: '#8B5CF6', background: '#F4EFFF' },
+  ];
+  const coachSuggestions = ['咖啡馆怎么自然点单？', '帮我纠正一句英语', '练习机场英语对话'];
+
+  return (
+    <View style={styles.screen}>
+      <StatusBar style="dark" backgroundColor={WHITE} />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={[styles.page, { paddingTop: Math.max(insets.top + 12, 24) }]}>
+          <View style={[styles.brandRow, compactHeader && styles.brandRowCompact]}>
+            <View style={styles.brandBlock}>
+              <Text style={styles.brandTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.86}>
+                Visual English <Text style={styles.brandAccent}>Coach</Text>
+              </Text>
+              <Text style={[styles.brandSubtitle, compactHeader && styles.brandSubtitleCompact]}>
+                用真实场景，看见更地道的英语
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => router.push('/(app)/(tabs)/growth' as any)}
+              accessibilityRole="button"
+              accessibilityLabel={`连续学习 ${streakDays} 天，查看成长进度`}
+              style={[styles.streakPill, compactHeader && styles.streakPillCompact]}
+            >
+              <Flame size={17} color={ORANGE} fill={ORANGE} />
+              {!compactHeader ? <Text style={styles.streakText}>连续学习</Text> : null}
+              <Text style={styles.streakNumber}>{streakDays}</Text>
+              <Text style={styles.streakText}>天</Text>
+              <ChevronRight size={15} color="#98A2B3" />
+            </Pressable>
+          </View>
+
+          <View style={[styles.hero, { height: heroHeight }]}>
+            <Image
+              source={require('../../../../assets/home-cafe-hero.png')}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="cover"
+              contentPosition="center"
+              transition={250}
+            />
+            <LinearGradient
+              colors={['rgba(10,20,38,0.02)', 'rgba(10,20,38,0.12)', 'rgba(8,17,34,0.82)']}
+              locations={[0, 0.45, 1]}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <View style={styles.heroContent}>
+              <Text style={styles.heroTitle}>今天从哪个{`\n`}场景开始？</Text>
+              <Text style={styles.heroDescription}>拍下你眼前的场景，让 AI 帮你看图学英语。</Text>
+              <Pressable
+                onPress={handleCamera}
+                accessibilityRole="button"
+                accessibilityLabel="拍下眼前场景"
+                style={({ pressed }) => [styles.heroButtonWrap, pressed && styles.pressed]}
+              >
+                <LinearGradient colors={['#2F7AF8', '#245EDB']} style={styles.heroButton}>
+                  <Camera size={21} color={WHITE} />
+                  <Text style={styles.heroButtonText}>拍下眼前场景</Text>
+                  <ChevronRight size={19} color={WHITE} />
+                </LinearGradient>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.modeRow}>
+            {inputModes.map(({ key, label, icon: Icon, color, background }) => {
+              const selected = sceneInputMode === key;
+              return (
+                <Pressable
+                  key={key}
+                  onPress={() => selectInputMode(key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${label}输入`}
+                  style={({ pressed }) => [
+                    styles.modeButton,
+                    { backgroundColor: background, borderColor: selected ? color : 'transparent' },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <View style={[styles.modeIcon, { backgroundColor: color }]}>
+                    <Icon size={20} color={WHITE} />
+                  </View>
+                  <Text style={styles.modeLabel}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {sceneInputMode ? (
+            <View style={styles.sceneInputPanel}>
+              {sceneInputMode === 'text' ? (
+                <View style={styles.textInputRow}>
+                  <TextInput
+                    value={sceneInputText}
+                    onChangeText={setSceneInputText}
+                    placeholder="描述场景，例如：我正在咖啡馆工作"
+                    placeholderTextColor="#98A2B3"
+                    returnKeyType="send"
+                    onSubmitEditing={submitSceneText}
+                    style={styles.sceneTextInput}
+                  />
+                  <Pressable
+                    onPress={submitSceneText}
+                    disabled={!sceneInputText.trim()}
+                    accessibilityRole="button"
+                    accessibilityLabel="分析文字场景"
+                    style={[styles.roundAction, !sceneInputText.trim() && styles.roundActionDisabled]}
+                  >
+                    <ArrowRight size={20} color={sceneInputText.trim() ? WHITE : '#98A2B3'} />
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.voicePanel}>
+                  <AudioWave active={recState === 'recording'} />
+                  <Pressable
+                    onPress={recState === 'idle' ? startRecording : recState === 'recording' ? stopRecording : undefined}
+                    disabled={recState === 'requesting' || recState === 'transcribing'}
+                    accessibilityRole="button"
+                    accessibilityLabel={recState === 'recording'
+                      ? '停止录音'
+                      : recState === 'requesting'
+                        ? '正在请求麦克风权限'
+                        : recState === 'transcribing'
+                          ? '正在识别语音'
+                          : '开始语音输入'}
+                    style={[
+                      styles.recordButton,
+                      recState === 'recording' && styles.recordButtonActive,
+                      (recState === 'requesting' || recState === 'transcribing') && styles.recordButtonDisabled,
+                    ]}
+                  >
+                    {recState === 'requesting' || recState === 'transcribing' ? (
+                      <ActivityIndicator size="small" color={BLUE} />
+                    ) : recState === 'recording' ? (
+                      <Square size={19} color={WHITE} fill={WHITE} />
+                    ) : (
+                      <Mic size={23} color={WHITE} />
+                    )}
+                  </Pressable>
+                  <View style={styles.voiceCopy}>
+                    <Text style={[styles.voiceTitle, recState === 'recording' && styles.voiceTitleActive]}>
+                      {recState === 'recording'
+                        ? `录音中 ${recSeconds}s`
+                        : recState === 'requesting'
+                          ? '正在请求麦克风权限'
+                          : recState === 'transcribing'
+                            ? '正在识别语音'
+                            : '点击麦克风开始描述'}
+                    </Text>
+                    <Text style={styles.voiceHint}>
+                      {recState === 'recording'
+                        ? '再次点击即可停止'
+                        : recState === 'requesting'
+                          ? '请在浏览器提示中选择允许'
+                          : '可用英文描述你看到的场景'}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {sceneInputMode === 'voice' && sceneInputText.trim() && recState === 'idle' ? (
+                <View style={styles.transcriptBox}>
+                  <Text style={styles.transcriptLabel}>识别结果</Text>
+                  <Text style={styles.transcriptText}>{sceneInputText}</Text>
+                  <View style={styles.transcriptActions}>
+                    <Pressable onPress={submitSceneText} style={styles.primarySmallButton}>
+                      <Text style={styles.primarySmallButtonText}>开始分析</Text>
+                    </Pressable>
+                    <Pressable onPress={() => setSceneInputText('')} style={styles.secondarySmallButton}>
+                      <Text style={styles.secondarySmallButtonText}>重新录音</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
+              {recError ? <Text style={styles.errorText}>{recError}</Text> : null}
+            </View>
+          ) : null}
+
+          <View style={styles.sectionGap} />
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>继续学习</Text>
+            <Pressable onPress={() => router.push('/(app)/(tabs)/learning' as any)} style={styles.textLink}>
+              <Text style={styles.textLinkLabel}>全部记录</Text>
+              <ChevronRight size={15} color={BLUE} />
+            </Pressable>
+          </View>
+
+          <Pressable
+            onPress={() => latestRecord
+              ? router.push(`/(app)/record/${latestRecord.id}` as any)
+              : handleCamera()}
+            disabled={loading}
+            style={({ pressed }) => [styles.continueRow, pressed && styles.pressed]}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color={BLUE} style={styles.continueLoader} />
+            ) : latestRecord?.scene_image
+              && !latestRecord.scene_image.startsWith('blob:')
+              && failedRecordImageId !== latestRecord.id ? (
+              <Image
+                source={{ uri: latestRecord.scene_image }}
+                style={styles.continueImage}
+                contentFit="cover"
+                onError={() => setFailedRecordImageId(latestRecord.id)}
+              />
+            ) : (
+              <View style={styles.continueFallback}>
+                <Text style={styles.continueEmoji}>{getSceneIcon(latestRecord?.scene_name ?? '')}</Text>
+              </View>
+            )}
+            <View style={styles.continueCopy}>
+              <Text style={styles.continueTitle} numberOfLines={1}>
+                {latestRecord?.scene_name || '开始第一个场景'}
+              </Text>
+              <Text style={styles.continueMeta} numberOfLines={1}>
+                {latestRecord ? relativeRecordTime(latestRecord.created_at) : '拍一张照片，建立你的第一条学习记录'}
+              </Text>
+            </View>
+            <View style={styles.continueAction}>
+              <Text style={styles.continueActionText}>{latestRecord ? '继续' : '开始'}</Text>
+              <ChevronRight size={16} color={BLUE} />
+            </View>
+          </Pressable>
+
+          <View style={styles.progressPanel}>
+            <View style={styles.progressHeader}>
+              <View>
+                <Text style={styles.sectionTitle}>学习进度</Text>
+                <Text style={styles.progressSubtitle}>今天完成 {todayCount} 个场景</Text>
+              </View>
+              <Text style={styles.progressCount}>{todayCount}/{DAILY_GOAL}</Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${dailyProgress * 100}%` }]} />
+            </View>
+            <View style={styles.weekHeader}>
+              <Text style={styles.weekTitle}>本周学习</Text>
+              <Text style={styles.weekCount}>{weekCompleted}/7 天</Text>
+            </View>
+            <View style={styles.weekRow}>
+              {weekDays.map((date, index) => {
+                const completed = practicedDays.has(dateKey(date));
+                const isToday = dateKey(date) === dateKey(today);
+                return (
+                  <View key={dateKey(date)} style={styles.weekDay}>
+                    <Text style={[styles.weekDayLabel, isToday && styles.weekDayLabelToday]}>
+                      {['一', '二', '三', '四', '五', '六', '日'][index]}
+                    </Text>
+                    <View style={[
+                      styles.weekDot,
+                      completed && styles.weekDotCompleted,
+                      isToday && !completed && styles.weekDotToday,
+                    ]}>
+                      {completed ? <Check size={13} color={WHITE} strokeWidth={3} /> : null}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={styles.coachSection}>
+            <View style={styles.coachHeading}>
+              <View style={styles.coachMark}>
+                <Sparkles size={18} color={BLUE} />
+              </View>
+              <View style={styles.coachHeadingCopy}>
+                <Text style={styles.sectionTitle}>AI 英语教练</Text>
+                <Text style={styles.coachSubtitle}>问表达、练对话、纠正英语</Text>
+              </View>
+              <View style={styles.onlineStatus}>
+                <View style={styles.onlineDot} />
+                <Text style={styles.onlineText}>在线</Text>
+              </View>
+            </View>
+
+            <View style={styles.coachComposer}>
+              <TextInput
+                value={coachInput}
+                onChangeText={setCoachInput}
+                placeholder="问问 AI 教练…"
+                placeholderTextColor="#98A2B3"
+                returnKeyType="send"
+                onSubmitEditing={() => openCoach(coachInput)}
+                style={styles.coachInput}
+              />
+              <Pressable
+                onPress={() => openCoach()}
+                accessibilityRole="button"
+                accessibilityLabel="打开 AI 教练语音输入"
+                style={styles.coachMicButton}
+              >
+                <Mic size={19} color={BLUE} />
+              </Pressable>
+              <Pressable
+                onPress={() => openCoach(coachInput)}
+                disabled={!coachInput.trim()}
+                accessibilityRole="button"
+                accessibilityLabel="发送给 AI 教练"
+                style={[styles.coachSendButton, !coachInput.trim() && styles.coachSendDisabled]}
+              >
+                <Send size={18} color={coachInput.trim() ? WHITE : '#98A2B3'} />
+              </Pressable>
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionRow}>
+              {coachSuggestions.map((suggestion) => (
+                <Pressable key={suggestion} onPress={() => openCoach(suggestion)} style={styles.suggestionChip}>
+                  <Text style={styles.suggestionText}>{suggestion}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            <View style={styles.coachReply}>
+              <View style={styles.replyTopRow}>
+                <Text style={styles.replyLabel}>AI 教练推荐</Text>
+                <Pressable onPress={togglePreviewSpeech} style={styles.readButton}>
+                  {previewSpeaking ? <Square size={12} color={BLUE} fill={BLUE} /> : <Volume2 size={15} color={BLUE} />}
+                  <Text style={styles.readButtonText}>{previewSpeaking ? '停止' : '朗读'}</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.replyEnglish}>{COACH_EXPRESSION}</Text>
+              <Text style={styles.replyChinese}>我想要一杯拿铁，谢谢。</Text>
+              <Pressable onPress={() => openCoach('请和我练习在咖啡馆用英语点单。')} style={styles.continueChatButton}>
+                <Text style={styles.continueChatText}>继续这个对话</Text>
+                <ArrowRight size={15} color={BLUE} />
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.shortcutRow}>
+            <Pressable
+              onPress={() => router.push(`/(app)/shadowing?sentence=${encodeURIComponent(COACH_EXPRESSION)}` as any)}
+              style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}
+            >
+              <View style={[styles.shortcutIcon, styles.shortcutIconOrange]}>
+                <Headphones size={21} color={ORANGE} />
+              </View>
+              <View style={styles.shortcutCopy}>
+                <Text style={styles.shortcutTitle}>影子跟读</Text>
+                <Text style={styles.shortcutSubtitle}>练语音节奏</Text>
+              </View>
+              <ChevronRight size={17} color="#98A2B3" />
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/(app)/scene-map' as any)}
+              style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}
+            >
+              <View style={[styles.shortcutIcon, styles.shortcutIconGreen]}>
+                <Map size={21} color={GREEN} />
+              </View>
+              <View style={styles.shortcutCopy}>
+                <Text style={styles.shortcutTitle}>场景地图</Text>
+                <Text style={styles.shortcutSubtitle}>探索更多场景</Text>
+              </View>
+              <ChevronRight size={17} color="#98A2B3" />
+            </Pressable>
+          </View>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: BG },
+  scrollContent: { alignItems: 'center', paddingBottom: 34 },
+  page: { width: '100%', maxWidth: 760, paddingHorizontal: 16 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingBottom: 16 },
+  brandRowCompact: { position: 'relative', flexDirection: 'column', alignItems: 'stretch' },
+  brandBlock: { flex: 1, minWidth: 0 },
+  brandTitle: { color: INK, fontSize: 24, lineHeight: 30, fontWeight: '900', letterSpacing: 0 },
+  brandAccent: { color: BLUE },
+  brandSubtitle: { color: MUTED, fontSize: 13, lineHeight: 19, marginTop: 1 },
+  brandSubtitleCompact: { paddingRight: 78 },
+  streakPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 38, borderRadius: 8, backgroundColor: WHITE, borderWidth: 1, borderColor: BORDER, flexShrink: 0 },
+  streakPillCompact: { position: 'absolute', right: 0, bottom: 3, height: 34, paddingHorizontal: 8 },
+  streakText: { color: MUTED, fontSize: 12, fontWeight: '700' },
+  streakNumber: { color: ORANGE, fontSize: 16, fontWeight: '900' },
+  hero: { borderRadius: 8, overflow: 'hidden', backgroundColor: '#D8E0E8' },
+  heroContent: { position: 'absolute', left: 22, right: 22, bottom: 22, alignItems: 'flex-start' },
+  heroTitle: { color: WHITE, fontSize: 32, lineHeight: 39, fontWeight: '900', letterSpacing: 0 },
+  heroDescription: { color: 'rgba(255,255,255,0.88)', fontSize: 14, lineHeight: 21, marginTop: 8, maxWidth: 330 },
+  heroButtonWrap: { marginTop: 16, borderRadius: 8, overflow: 'hidden' },
+  heroButton: { minWidth: 198, height: 50, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  heroButtonText: { color: WHITE, fontSize: 15, fontWeight: '800' },
+  pressed: { opacity: 0.76 },
+  modeRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  modeButton: { flex: 1, height: 82, borderRadius: 8, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  modeIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  modeLabel: { color: INK, fontSize: 13, fontWeight: '800' },
+  sceneInputPanel: { marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, padding: 12 },
+  textInputRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sceneTextInput: { flex: 1, height: 46, borderRadius: 8, borderWidth: 1, borderColor: '#D8E2F0', backgroundColor: '#FAFBFD', paddingHorizontal: 13, color: INK, fontSize: 14 },
+  roundAction: { width: 46, height: 46, borderRadius: 8, backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center' },
+  roundActionDisabled: { backgroundColor: '#EEF0F3' },
+  voicePanel: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  waveform: { width: 78, height: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  waveBar: { width: 3, height: BAR_MIN, borderRadius: 2, backgroundColor: '#CDD5DF' },
+  waveBarActive: { backgroundColor: BLUE },
+  recordButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center' },
+  recordButtonActive: { backgroundColor: '#E04444' },
+  recordButtonDisabled: { backgroundColor: '#EDF1F5' },
+  voiceCopy: { flex: 1, minWidth: 0 },
+  voiceTitle: { color: INK, fontSize: 14, fontWeight: '800' },
+  voiceTitleActive: { color: '#D92D20' },
+  voiceHint: { color: MUTED, fontSize: 12, lineHeight: 17, marginTop: 3 },
+  transcriptBox: { marginTop: 10, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 11 },
+  transcriptLabel: { color: GREEN, fontSize: 12, fontWeight: '800' },
+  transcriptText: { color: INK, fontSize: 14, lineHeight: 20, marginTop: 5 },
+  transcriptActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  primarySmallButton: { flex: 1, height: 38, borderRadius: 8, backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center' },
+  primarySmallButtonText: { color: WHITE, fontSize: 13, fontWeight: '800' },
+  secondarySmallButton: { flex: 1, height: 38, borderRadius: 8, backgroundColor: '#F1F3F6', alignItems: 'center', justifyContent: 'center' },
+  secondarySmallButtonText: { color: MUTED, fontSize: 13, fontWeight: '800' },
+  errorText: { color: '#D92D20', fontSize: 12, lineHeight: 18, marginTop: 8 },
+  sectionGap: { height: 26 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  sectionTitle: { color: INK, fontSize: 18, lineHeight: 24, fontWeight: '900', letterSpacing: 0 },
+  textLink: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 4 },
+  textLinkLabel: { color: BLUE, fontSize: 12, fontWeight: '800' },
+  continueRow: { minHeight: 78, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  continueLoader: { width: 56 },
+  continueImage: { width: 56, height: 56, borderRadius: 8, backgroundColor: '#EDF1F5' },
+  continueFallback: { width: 56, height: 56, borderRadius: 8, backgroundColor: '#FFF3E8', alignItems: 'center', justifyContent: 'center' },
+  continueEmoji: { fontSize: 27 },
+  continueCopy: { flex: 1, minWidth: 0 },
+  continueTitle: { color: INK, fontSize: 15, fontWeight: '900' },
+  continueMeta: { color: MUTED, fontSize: 12, lineHeight: 17, marginTop: 4 },
+  continueAction: { height: 34, paddingHorizontal: 9, borderRadius: 8, backgroundColor: BLUE_SOFT, flexDirection: 'row', alignItems: 'center', gap: 2 },
+  continueActionText: { color: BLUE, fontSize: 12, fontWeight: '800' },
+  progressPanel: { marginTop: 14, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, padding: 16 },
+  progressHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  progressSubtitle: { color: MUTED, fontSize: 12, marginTop: 3 },
+  progressCount: { color: BLUE, fontSize: 18, fontWeight: '900' },
+  progressTrack: { height: 8, borderRadius: 4, backgroundColor: '#EAF0F7', marginTop: 13, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 4, backgroundColor: GREEN },
+  weekHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, paddingTop: 14, borderTopWidth: 1, borderTopColor: BORDER },
+  weekTitle: { color: INK, fontSize: 13, fontWeight: '800' },
+  weekCount: { color: GREEN, fontSize: 12, fontWeight: '800' },
+  weekRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 11 },
+  weekDay: { width: 30, alignItems: 'center', gap: 7 },
+  weekDayLabel: { color: '#98A2B3', fontSize: 11, fontWeight: '700' },
+  weekDayLabelToday: { color: BLUE },
+  weekDot: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#F0F2F5', alignItems: 'center', justifyContent: 'center' },
+  weekDotCompleted: { backgroundColor: GREEN },
+  weekDotToday: { backgroundColor: WHITE, borderWidth: 2, borderColor: BLUE },
+  coachSection: { marginTop: 22, borderRadius: 8, borderWidth: 1, borderColor: '#D7E4FC', backgroundColor: WHITE, padding: 16 },
+  coachHeading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  coachMark: { width: 40, height: 40, borderRadius: 8, backgroundColor: BLUE_SOFT, alignItems: 'center', justifyContent: 'center' },
+  coachHeadingCopy: { flex: 1, minWidth: 0 },
+  coachSubtitle: { color: MUTED, fontSize: 12, marginTop: 1 },
+  onlineStatus: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  onlineDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: GREEN },
+  onlineText: { color: MUTED, fontSize: 11, fontWeight: '700' },
+  coachComposer: { height: 52, marginTop: 15, borderRadius: 8, borderWidth: 1, borderColor: '#D7E0EB', backgroundColor: '#FAFBFD', flexDirection: 'row', alignItems: 'center', paddingLeft: 13, paddingRight: 5, gap: 5 },
+  coachInput: { flex: 1, minWidth: 0, color: INK, fontSize: 14, paddingVertical: 0 },
+  coachMicButton: { width: 38, height: 38, borderRadius: 8, backgroundColor: BLUE_SOFT, alignItems: 'center', justifyContent: 'center' },
+  coachSendButton: { width: 38, height: 38, borderRadius: 8, backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center' },
+  coachSendDisabled: { backgroundColor: '#E9EDF2' },
+  suggestionRow: { gap: 8, paddingTop: 11, paddingRight: 2 },
+  suggestionChip: { height: 32, paddingHorizontal: 11, borderRadius: 8, borderWidth: 1, borderColor: '#DCE4EF', backgroundColor: WHITE, justifyContent: 'center' },
+  suggestionText: { color: '#475467', fontSize: 12, fontWeight: '700' },
+  coachReply: { marginTop: 13, borderRadius: 8, backgroundColor: '#F5F8FF', padding: 13, borderLeftWidth: 3, borderLeftColor: BLUE },
+  replyTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  replyLabel: { color: BLUE_DARK, fontSize: 11, fontWeight: '900' },
+  readButton: { height: 30, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, borderRadius: 8, backgroundColor: WHITE, borderWidth: 1, borderColor: '#D9E4F8' },
+  readButtonText: { color: BLUE, fontSize: 11, fontWeight: '800' },
+  replyEnglish: { color: INK, fontSize: 17, lineHeight: 24, fontWeight: '900', marginTop: 8 },
+  replyChinese: { color: MUTED, fontSize: 12, marginTop: 3 },
+  continueChatButton: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, paddingVertical: 3 },
+  continueChatText: { color: BLUE, fontSize: 12, fontWeight: '800' },
+  shortcutRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  shortcut: { flex: 1, minHeight: 76, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, padding: 11, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  shortcutIcon: { width: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  shortcutIconOrange: { backgroundColor: '#FFF3EA' },
+  shortcutIconGreen: { backgroundColor: '#EAF8F1' },
+  shortcutCopy: { flex: 1, minWidth: 0 },
+  shortcutTitle: { color: INK, fontSize: 13, fontWeight: '900' },
+  shortcutSubtitle: { color: MUTED, fontSize: 10, marginTop: 2 },
+});
