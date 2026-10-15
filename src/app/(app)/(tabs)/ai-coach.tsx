@@ -4,16 +4,16 @@ import {
   useAudioPlayer, useAudioRecorder,
 } from 'expo-audio';
 import { Image } from 'expo-image';
-import { Tabs, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
-  Check, ChevronLeft, Mic, Pause, Play, RotateCcw,
-  Settings, Volume2, X,
+  Check, ChevronDown, ChevronLeft, Mic, Pause, Play, Plus,
+  RotateCcw, Send, Settings, Volume2, X,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  FlatList,
-  Pressable, Text, View,
+  ActivityIndicator, FlatList, KeyboardAvoidingView, Pressable,
+  Text, TextInput, View,
 } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -34,7 +34,6 @@ import {
 const BLUE       = '#2563EB';
 const WHITE      = '#FFFFFF';
 const GRAY_TEXT  = '#64748B';
-const PRACTICE_SENTENCE = 'The dog is cute.';
 
 /** 直接 fetch 调 Edge Function */
 async function callEdgeFn(name: string, body: unknown, token?: string): Promise<any> {
@@ -94,6 +93,13 @@ interface Message {
   streaming?: boolean;
 }
 
+const STARTERS = [
+  { emoji: '☕', text: '咖啡馆点单怎么说？' },
+  { emoji: '💼', text: '帮我练习英语自我介绍' },
+  { emoji: '✈️', text: '机场登机英语对话' },
+  { emoji: '🗣️', text: '纠正我的英语表达' },
+];
+
 function cleanMessageMarkup(content: string) {
   return content
     .replace(/\*\*/g, '')
@@ -131,11 +137,13 @@ function TypingDots() {
 
 // ── 消息气泡（含朗读按钮）────────────────────────────────
 function MessageBubble({
-  msg, pausedId, speakingId, onSpeak,
+  msg, pausedId, speakingId, speakingRate, showControls, onSpeak,
 }: {
   msg: Message;
   pausedId: string | null;
   speakingId: string | null;
+  speakingRate: number;
+  showControls: boolean;
   onSpeak: (id: string, text: string, rate?: number, restart?: boolean) => void;
 }) {
   const isUser = msg.role === 'user';
@@ -172,28 +180,29 @@ function MessageBubble({
                 {msg.streaming && <Text style={{ color: BLUE }}>▌</Text>}
               </Text>
             )}
-            {!msg.streaming && msg.content !== '' && (
-              <Pressable
-                onPress={() => onSpeak(msg.id, msg.content)}
-                className="active:opacity-60"
-                style={{
-                  marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 5,
-                  alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6,
-                  borderRadius: 16, backgroundColor: isSpeaking ? '#D4E5FF' : '#FFFFFF',
-                }}
-              >
-                {isSpeaking
-                  ? isPaused
-                    ? <Play size={13} color={BLUE} />
-                    : <Pause size={13} color={BLUE} />
-                  : <Volume2 size={13} color={GRAY_TEXT} />}
-                <Text style={{ fontSize: 11, color: isSpeaking ? BLUE : GRAY_TEXT, fontWeight: '600' }}>
-                  {isPaused ? '继续' : isSpeaking ? '暂停' : '朗读'}
-                </Text>
-              </Pressable>
-            )}
           </View>
         )}
+        {!isUser && showControls && !msg.streaming && msg.content !== '' ? (
+          <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
+            <CoachAction
+              label={isSpeaking && speakingRate === 1 ? (isPaused ? '继续' : '暂停') : '朗读'}
+              active={isSpeaking && speakingRate === 1}
+              icon={isSpeaking && speakingRate === 1 ? (isPaused ? Play : Pause) : Volume2}
+              onPress={() => onSpeak(msg.id, msg.content)}
+            />
+            <CoachAction
+              label="慢速"
+              active={isSpeaking && speakingRate === 0.8}
+              icon={Play}
+              onPress={() => onSpeak(msg.id, msg.content, 0.8, true)}
+            />
+            <CoachAction
+              label="再说一次"
+              icon={RotateCcw}
+              onPress={() => onSpeak(msg.id, msg.content, 1, true)}
+            />
+          </View>
+        ) : null}
       </View>
       {isUser && (
         <View style={{
@@ -221,87 +230,20 @@ function CoachAction({ label, active = false, icon: Icon, onPress }: {
       onPress={onPress}
       style={({ pressed }) => ({
         flex: 1,
-        minHeight: 46,
-        borderRadius: 23,
-        paddingHorizontal: 8,
+        minHeight: 40,
+        borderRadius: 20,
+        paddingHorizontal: 6,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 7,
+        gap: 5,
         backgroundColor: active ? '#D4E5FF' : '#E7F0FF',
         opacity: pressed ? 0.65 : 1,
       })}
     >
-      <Icon size={18} color="#0868F2" fill={Icon === Play ? '#0868F2' : 'transparent'} />
-      <Text style={{ fontSize: 13, fontWeight: '800', color: '#0868F2' }}>{label}</Text>
+      <Icon size={15} color="#0868F2" fill={Icon === Play ? '#0868F2' : 'transparent'} />
+      <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '800', color: '#0868F2' }}>{label}</Text>
     </Pressable>
-  );
-}
-
-function GuidedPractice({
-  speakingId,
-  pausedId,
-  speakingRate,
-  onSpeak,
-}: {
-  speakingId: string | null;
-  pausedId: string | null;
-  speakingRate: number;
-  onSpeak: (id: string, text: string, rate?: number, restart?: boolean) => void;
-}) {
-  const speaking = speakingId === 'guided';
-  const paused = pausedId === 'guided';
-  return (
-    <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-        <Image
-          source={require('../../../../assets/coach-avatar.png')}
-          style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: '#DDEBFF' }}
-          contentFit="cover"
-        />
-        <View style={{ flex: 1, borderRadius: 20, borderTopLeftRadius: 8, backgroundColor: '#F0F4FC', paddingHorizontal: 18, paddingVertical: 13 }}>
-          <Text style={{ color: '#203153', fontSize: 17, lineHeight: 25, fontWeight: '500' }}>Great! Let&apos;s describe this picture together.</Text>
-          <Text style={{ color: '#203153', fontSize: 17, lineHeight: 25, marginTop: 2 }}>You can say: <Text style={{ color: '#0868F2', fontWeight: '800' }}>“The dog is cute.”</Text></Text>
-          <Text style={{ color: '#68758C', fontSize: 14, lineHeight: 21, marginTop: 3 }}>试着跟读这句话吧！</Text>
-        </View>
-      </View>
-
-      <Image
-        source={require('../../../../assets/coach-dog-scene.png')}
-        style={{ width: 244, height: 132, borderRadius: 12, alignSelf: 'center', marginTop: 14, backgroundColor: '#E5E7EB' }}
-        contentFit="cover"
-      />
-
-      <View style={{ alignItems: 'flex-end', marginTop: 16 }}>
-        <View style={{ borderRadius: 18, borderBottomRightRadius: 7, backgroundColor: '#DFEAFC', paddingHorizontal: 20, paddingVertical: 12 }}>
-          <Text style={{ color: '#1D58AE', fontSize: 17, fontWeight: '600' }}>{PRACTICE_SENTENCE}</Text>
-        </View>
-      </View>
-
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 12 }}>
-        <Image
-          source={require('../../../../assets/coach-avatar.png')}
-          style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#DDEBFF' }}
-          contentFit="cover"
-        />
-        <View style={{ flex: 1, borderRadius: 20, borderTopLeftRadius: 8, backgroundColor: '#F0F4FC', paddingHorizontal: 18, paddingVertical: 12 }}>
-          <Text style={{ color: '#34405A', fontSize: 14, lineHeight: 20 }}>Nice try! A small correction:</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-            <Text style={{ flex: 1, color: '#142241', fontSize: 19, lineHeight: 27, fontWeight: '800' }}>The dog <Text style={{ color: '#0B9B68', textDecorationLine: 'underline' }}>is</Text> cute.</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="朗读纠正句子" onPress={() => onSpeak('guided', PRACTICE_SENTENCE)} style={({ pressed }) => ({ width: 38, height: 38, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.55 : 1 })}>
-              {speaking && !paused ? <Pause size={23} color="#0868F2" fill="#0868F2" /> : <Volume2 size={24} color="#0868F2" fill="#0868F2" />}
-            </Pressable>
-          </View>
-          <Text style={{ color: '#68758C', fontSize: 13, lineHeight: 19, marginTop: 2 }}>发音很清晰！注意 is 的发音更轻一些。</Text>
-        </View>
-      </View>
-
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-        <CoachAction label={speaking && speakingRate === 1 ? (paused ? '继续' : '暂停') : '朗读'} active={speaking && speakingRate === 1} icon={speaking && speakingRate === 1 ? (paused ? Play : Pause) : Volume2} onPress={() => onSpeak('guided', PRACTICE_SENTENCE)} />
-        <CoachAction label="慢速" active={speaking && speakingRate === 0.8} icon={Play} onPress={() => onSpeak('guided', PRACTICE_SENTENCE, 0.8, true)} />
-        <CoachAction label="再说一次" icon={RotateCcw} onPress={() => onSpeak('guided', PRACTICE_SENTENCE, 1, true)} />
-      </View>
-    </View>
   );
 }
 
@@ -357,11 +299,18 @@ function RecordingPanel({ seconds, state, streaming, onCancel, onPrimary, onFini
   );
 }
 
+const WELCOME_MSG: Message = {
+  id: 'welcome',
+  role: 'assistant',
+  content: '你好，我是你的 AI 英语教练。可以陪你练表达、纠正语法，也可以直接开始场景对话。',
+};
+
 // ── 主屏 ─────────────────────────────────────────────────
 export default function AiCoachScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ prompt?: string | string[] }>();
-  const [messages, setMessages]   = useState<Message[]>([]);
+  const [messages, setMessages]   = useState<Message[]>([WELCOME_MSG]);
+  const [input, setInput]         = useState('');
   const [streaming, setStreaming] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [pausedId, setPausedId]   = useState<string | null>(null);
@@ -459,7 +408,7 @@ export default function AiCoachScreen() {
       console.log('[STT] result:', JSON.stringify(res).slice(0, 120));
       const text: string = res?.result?.[0] ?? '';
       if (text) {
-        void sendMessage(text);
+        setInput(prev => (prev ? `${prev} ${text}` : text));
       } else {
         setMicError('未识别到语音内容，请靠近麦克风后重试。');
       }
@@ -568,6 +517,7 @@ export default function AiCoachScreen() {
   const sendMessage = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || streaming) return;
+    setInput('');
     const userMsg: Message = { id: Date.now().toString(), role: 'user', content: trimmed };
     const aiId = (Date.now() + 1).toString();
     const aiMsg: Message = { id: aiId, role: 'assistant', content: '', streaming: true };
@@ -654,9 +604,23 @@ export default function AiCoachScreen() {
     void sendMessage(prompt);
   }, [params.prompt]);
 
+  const handleNewChat = () => {
+    abortRef.current?.abort();
+    if (micState !== 'idle') void handleCancelRecording();
+    stopLocalSpeech();
+    setSpeakingId(null);
+    setPausedId(null);
+    setStreaming(false);
+    setMessages([WELCOME_MSG]);
+    setInput('');
+    setMicError('');
+    conversationRecordedRef.current = false;
+  };
+
+  const lastAssistantId = [...messages].reverse().find(message => message.role === 'assistant')?.id;
+
   return (
     <View style={{ flex: 1, backgroundColor: '#F2F5F9', alignItems: 'center' }}>
-      <Tabs.Screen options={{ tabBarStyle: { display: 'none' } }} />
       <StatusBar style="dark" backgroundColor={WHITE} />
       <View style={{ width: '100%', maxWidth: 480, flex: 1, backgroundColor: WHITE }}>
         <View style={{
@@ -669,69 +633,153 @@ export default function AiCoachScreen() {
             </Pressable>
           </View>
           <Text style={{ flex: 1, textAlign: 'center', fontSize: 19, fontWeight: '900', color: '#0B1834' }}>AI Coach</Text>
-          <View style={{ width: 72, alignItems: 'flex-end', justifyContent: 'center' }}>
+          <View style={{ width: 72, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+            <Pressable accessibilityRole="button" accessibilityLabel="新对话" onPress={handleNewChat} style={({ pressed }) => ({ width: 34, height: 42, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}>
+              <Plus size={21} color="#526077" />
+            </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel="打开设置" onPress={() => router.push('/(app)/settings' as any)} style={({ pressed }) => ({ width: 34, height: 42, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}>
               <Settings size={21} color="#0B1834" strokeWidth={2.3} />
             </Pressable>
           </View>
         </View>
 
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={m => m.id}
-          renderItem={({ item }) => (
-            <MessageBubble msg={item} pausedId={pausedId} speakingId={speakingId} onSpeak={handleSpeak} />
-          )}
-          contentContainerStyle={{ paddingTop: 4, paddingBottom: 4 }}
-          showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => {
-            if (messages.length > 0) scrollToBottom();
-          }}
-          ListHeaderComponent={messages.length === 0 ? (
-            <GuidedPractice
-              speakingId={speakingId}
-              pausedId={pausedId}
-              speakingRate={speakingRate}
-              onSpeak={handleSpeak}
-            />
-          ) : null}
-          ListFooterComponent={
-            <View>
-              {micError ? (
-                <View style={{ marginHorizontal: 16, marginTop: 10, borderRadius: 12, backgroundColor: '#FEF2F2', paddingHorizontal: 14, paddingVertical: 10 }}>
-                  <Text style={{ fontSize: 12, lineHeight: 18, color: '#B91C1C' }}>{micError}</Text>
+        <KeyboardAvoidingView
+          behavior={process.env.EXPO_OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+          keyboardVerticalOffset={0}
+        >
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={message => message.id}
+            renderItem={({ item }) => (
+              <MessageBubble
+                msg={item}
+                pausedId={pausedId}
+                speakingId={speakingId}
+                speakingRate={speakingRate}
+                showControls={item.id === lastAssistantId}
+                onSpeak={handleSpeak}
+              />
+            )}
+            contentContainerStyle={{ paddingTop: 8, paddingBottom: 16 }}
+            showsVerticalScrollIndicator={false}
+            onContentSizeChange={scrollToBottom}
+            ListFooterComponent={messages.length === 1 ? (
+              <View style={{ paddingHorizontal: 18, paddingTop: 8 }}>
+                <Text style={{ fontSize: 12, color: '#94A3B8', marginBottom: 8, fontWeight: '600' }}>快速开始</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {STARTERS.map(starter => (
+                    <Pressable
+                      key={starter.text}
+                      accessibilityRole="button"
+                      accessibilityLabel={starter.text}
+                      onPress={() => sendMessage(starter.text)}
+                      style={({ pressed }) => ({
+                        width: '48.8%', minHeight: 50, backgroundColor: '#F7F9FC', borderRadius: 12,
+                        paddingHorizontal: 11, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 8,
+                        borderWidth: 1, borderColor: '#E5EAF1', opacity: pressed ? 0.7 : 1,
+                      })}
+                    >
+                      <Text style={{ fontSize: 17 }}>{starter.emoji}</Text>
+                      <Text numberOfLines={2} style={{ fontSize: 12, lineHeight: 17, fontWeight: '700', color: '#34405A', flex: 1 }}>{starter.text}</Text>
+                      <ChevronDown size={12} color="#94A3B8" style={{ transform: [{ rotate: '-90deg' }] }} />
+                    </Pressable>
+                  ))}
                 </View>
-              ) : null}
+              </View>
+            ) : null}
+          />
+
+          {micState === 'idle' ? (
+            <View style={{
+              backgroundColor: WHITE, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 8,
+              borderTopWidth: 1, borderTopColor: '#E9EDF3',
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+                <View style={{
+                  flex: 1, backgroundColor: '#F3F6FA', borderRadius: 14,
+                  borderWidth: 1, borderColor: input.trim() ? '#9CC3FF' : '#E0E6EE',
+                  paddingHorizontal: 14, paddingVertical: 10, minHeight: 48, maxHeight: 120, justifyContent: 'center',
+                }}>
+                  <TextInput
+                    value={input}
+                    onChangeText={setInput}
+                    placeholder="发送消息…"
+                    placeholderTextColor="#94A3B8"
+                    multiline
+                    style={{ fontSize: 15, color: '#1E293B', lineHeight: 22, padding: 0 }}
+                    onSubmitEditing={() => sendMessage(input)}
+                    editable={!streaming}
+                  />
+                </View>
+
+                {!streaming ? (
+                  <Pressable
+                    onPress={handleMicPress}
+                    accessibilityRole="button"
+                    accessibilityLabel="开始语音输入"
+                    style={({ pressed }) => ({
+                      width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: '#E7F0FF', borderWidth: 1, borderColor: '#C9DCFA',
+                      opacity: pressed ? 0.7 : 1,
+                    })}
+                  >
+                    <Mic size={19} color={BLUE} />
+                  </Pressable>
+                ) : null}
+
+                {streaming ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="停止 AI 回复"
+                    onPress={() => abortRef.current?.abort()}
+                    style={({ pressed }) => ({
+                      width: 48, height: 48, borderRadius: 24, backgroundColor: '#FEE2E2',
+                      alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.7 : 1,
+                    })}
+                  >
+                    <RotateCcw size={18} color="#B91C1C" />
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="发送消息"
+                    onPress={() => sendMessage(input)}
+                    disabled={!input.trim()}
+                    style={({ pressed }) => ({
+                      width: 48, height: 48, borderRadius: 24, backgroundColor: input.trim() ? '#0868F2' : '#E2E8F0',
+                      alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.75 : 1,
+                    })}
+                  >
+                    <Send size={20} color={input.trim() ? WHITE : '#94A3B8'} />
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          ) : (
+            <View style={{ borderTopWidth: 1, borderTopColor: '#E9EDF3', paddingTop: 2 }}>
               <RecordingPanel
                 seconds={recordingSeconds}
                 state={micState}
-                streaming={streaming}
+                streaming={false}
                 onCancel={handleCancelRecording}
                 onPrimary={handleMicPress}
                 onFinish={handleMicPress}
               />
-              <Text style={{ fontSize: 10, color: '#CBD5E1', textAlign: 'center', marginTop: -8, marginBottom: 12 }}>
-                AI 生成内容仅用于英语练习
-              </Text>
-              {streaming ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="停止 AI 回复"
-                  onPress={() => abortRef.current?.abort()}
-                  style={({ pressed }) => ({
-                    alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6,
-                    marginBottom: 14, paddingHorizontal: 14, paddingVertical: 8,
-                    borderRadius: 18, backgroundColor: '#FEE2E2', opacity: pressed ? 0.6 : 1,
-                  })}
-                >
-                  <RotateCcw size={14} color="#B91C1C" />
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#B91C1C' }}>停止回复</Text>
-                </Pressable>
-              ) : null}
             </View>
-          }
-        />
+          )}
+
+          {micError ? (
+            <View style={{ marginHorizontal: 18, marginBottom: 6, borderRadius: 10, backgroundColor: '#FEF2F2', paddingHorizontal: 12, paddingVertical: 8 }}>
+              <Text style={{ fontSize: 12, lineHeight: 17, color: '#B91C1C' }}>{micError}</Text>
+            </View>
+          ) : null}
+
+          <Text style={{ fontSize: 10, color: '#CBD5E1', textAlign: 'center', paddingBottom: 8 }}>
+            AI 生成内容仅用于英语练习
+          </Text>
+        </KeyboardAvoidingView>
       </View>
     </View>
   );
