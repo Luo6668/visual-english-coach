@@ -21,7 +21,11 @@ import Animated, {
 } from 'react-native-reanimated';
 import { supabase } from '@/client/supabase';
 import { addXp, recordActivity } from '@/lib/api';
-import { requestWebMicrophoneStream } from '@/lib/audioCapture';
+import {
+  arrayBufferToBase64,
+  audioBlobTo16kWav,
+  startWebAudioRecording,
+} from '@/lib/audioCapture';
 import { functionsBaseUrl, functionUrl, publicServiceKey } from '@/lib/serviceConfig';
 import {
   pauseLocalSpeech,
@@ -34,9 +38,15 @@ import {
 const BLUE       = '#2563EB';
 const WHITE      = '#FFFFFF';
 const GRAY_TEXT  = '#64748B';
+const MAX_RECORDING_SECONDS = 60;
 
 /** 直接 fetch 调 Edge Function */
-async function callEdgeFn(name: string, body: unknown, token?: string): Promise<any> {
+async function callEdgeFn(
+  name: string,
+  body: unknown,
+  token?: string,
+  signal?: AbortSignal,
+): Promise<any> {
   console.log('[callEdgeFn] calling', name);
   const authKey = token ? `Bearer ${token}` : `Bearer ${publicServiceKey}`;
   const res = await fetch(functionUrl(name), {
@@ -47,42 +57,13 @@ async function callEdgeFn(name: string, body: unknown, token?: string): Promise<
       apikey: publicServiceKey,
     },
     body: JSON.stringify(body),
+    signal,
   });
   const payload = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(typeof payload?.error === 'string' ? payload.error : `${name} HTTP ${res.status}`);
   }
   return payload;
-}
-
-/** ArrayBuffer → base64 */
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
-}
-
-/** Web: webm Blob → 16kHz 单声道 WAV ArrayBuffer */
-async function convertWebmToWav(webmBlob: Blob): Promise<ArrayBuffer> {
-  const arrayBuf = await webmBlob.arrayBuffer();
-  const audioCtx = new AudioContext({ sampleRate: 16000 });
-  const decoded  = await audioCtx.decodeAudioData(arrayBuf);
-  const pcm      = decoded.getChannelData(0);
-  await audioCtx.close();
-  const wav = new ArrayBuffer(44 + pcm.length * 2);
-  const v   = new DataView(wav);
-  const str = (off: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
-  str(0, 'RIFF'); v.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE');
-  str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
-  v.setUint16(22, 1, true); v.setUint32(24, 16000, true); v.setUint32(28, 32000, true);
-  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
-  str(36, 'data'); v.setUint32(40, pcm.length * 2, true);
-  for (let i = 0; i < pcm.length; i++) {
-    const s = Math.max(-1, Math.min(1, pcm[i]));
-    v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-  }
-  return wav;
 }
 
 // ── 消息类型 ─────────────────────────────────────────────
@@ -104,6 +85,14 @@ function cleanMessageMarkup(content: string) {
   return content
     .replace(/\*\*/g, '')
     .replace(/^#{1,3}\s*/gm, '')
+    .trim();
+}
+
+function cleanRecognizedText(value: unknown) {
+  return String(value || '')
+    .replace(/[([](?:speaking in foreign language|blank audio|music|noise|silence|applause)[)\]]/gi, ' ')
+    .replace(/^\s*[-–—:]+\s*/, '')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -247,52 +236,50 @@ function CoachAction({ label, active = false, icon: Icon, onPress }: {
   );
 }
 
-function RecordingPanel({ seconds, state, streaming, onCancel, onPrimary, onFinish }: {
+function RecordingPanel({ seconds, state, onCancel, onPrimary, onFinish }: {
   seconds: number;
   state: 'idle' | 'requesting' | 'recording' | 'recognizing';
-  streaming: boolean;
   onCancel: () => void;
   onPrimary: () => void;
   onFinish: () => void;
 }) {
   const formatted = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
   const listening = state === 'recording';
-  const busy = state === 'requesting' || state === 'recognizing' || streaming;
-  const status = streaming
-    ? 'AI 正在回复'
-    : state === 'recognizing'
-      ? '正在识别'
-      : state === 'requesting'
-        ? '等待麦克风授权'
-        : listening
-          ? '正在聆听'
-          : '点击麦克风开始';
+  const busy = state === 'requesting' || state === 'recognizing';
+  const cancellable = state !== 'idle';
+  const status = state === 'recognizing'
+    ? '正在识别语音'
+    : state === 'requesting'
+      ? '等待麦克风授权'
+      : listening
+        ? `正在聆听，最长 ${MAX_RECORDING_SECONDS} 秒`
+        : '点击麦克风开始';
   return (
     <View style={{ marginHorizontal: 16, marginTop: 14, marginBottom: 16, minHeight: 218, borderRadius: 20, borderWidth: 1, borderColor: '#DFE5EE', backgroundColor: '#FFFFFF', paddingHorizontal: 22, paddingTop: 15, paddingBottom: 14 }}>
       <Text style={{ textAlign: 'center', fontSize: 16, fontWeight: '700', color: '#64748B' }}>{formatted}</Text>
       <View style={{ height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
         {[4, 7, 10, 13, 9, 15, 18, 22, 16, 12, 20, 30, 17, 13, 10, 18, 14, 11, 8, 5, 7, 4].map((height, index) => (
-          <View key={`${height}-${index}`} style={{ width: 2, height: listening ? height : Math.max(3, height * 0.32), borderRadius: 2, backgroundColor: '#1473F7' }} />
+          <View key={`${height}-${index}`} style={{ width: 2, height: listening ? Math.max(5, height * (0.72 + ((seconds + index) % 3) * 0.14)) : Math.max(3, height * 0.32), borderRadius: 2, backgroundColor: '#1473F7' }} />
         ))}
       </View>
       <Text style={{ textAlign: 'center', fontSize: 14, color: '#69758A', marginBottom: 13 }}>{status}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="取消录音" onPress={onCancel} disabled={!listening} style={({ pressed }) => ({ width: 78, alignItems: 'center', gap: 7, opacity: !listening ? 0.58 : pressed ? 0.55 : 1 })}>
+        <Pressable accessibilityRole="button" accessibilityLabel="取消录音" onPress={onCancel} disabled={!cancellable} style={({ pressed }) => ({ width: 78, alignItems: 'center', gap: 7, opacity: !cancellable ? 0.58 : pressed ? 0.55 : 1 })}>
           <View style={{ width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF1F5' }}>
             <X size={24} color="#344055" />
           </View>
           <Text style={{ fontSize: 13, color: '#526077', fontWeight: '600' }}>取消</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={listening ? '正在录音' : '开始录音'} onPress={onPrimary} disabled={busy} style={({ pressed }) => ({ width: 84, alignItems: 'center', opacity: busy ? 0.55 : pressed ? 0.72 : 1 })}>
+        <Pressable accessibilityRole="button" accessibilityLabel={listening ? '停止并识别' : busy ? status : '开始录音'} onPress={onPrimary} disabled={busy} style={({ pressed }) => ({ width: 84, alignItems: 'center', opacity: busy ? 0.55 : pressed ? 0.72 : 1 })}>
           <View style={{ width: 78, height: 78, borderRadius: 39, borderWidth: 9, borderColor: '#BFD8FF', backgroundColor: '#126EF5', alignItems: 'center', justifyContent: 'center' }}>
             <Mic size={32} color="#FFFFFF" strokeWidth={2.4} />
           </View>
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="松开发送" onPress={onFinish} disabled={!listening} style={({ pressed }) => ({ width: 78, alignItems: 'center', gap: 7, opacity: !listening ? 0.58 : pressed ? 0.55 : 1 })}>
+        <Pressable accessibilityRole="button" accessibilityLabel="完成并识别" onPress={onFinish} disabled={!listening} style={({ pressed }) => ({ width: 78, alignItems: 'center', gap: 7, opacity: !listening ? 0.58 : pressed ? 0.55 : 1 })}>
           <View style={{ width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF1F5' }}>
             <Check size={24} color="#526077" />
           </View>
-          <Text style={{ fontSize: 13, color: '#526077', fontWeight: '600' }}>松开发送</Text>
+          <Text style={{ fontSize: 13, color: '#526077', fontWeight: '600' }}>完成识别</Text>
         </Pressable>
       </View>
     </View>
@@ -330,8 +317,10 @@ export default function AiCoachScreen() {
     web: { mimeType: 'audio/webm', bitsPerSecond: 64000 },
   });
   const mrRef     = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   const recordingCancelledRef = useRef(false);
+  const micRequestAbortRef = useRef<AbortController | null>(null);
+  const recognitionAbortRef = useRef<AbortController | null>(null);
+  const micOperationRef = useRef(0);
 
   // supabase url/key 从 useFocusEffect 里读取（保留原有模式）
   const [supabaseUrl, setSupabaseUrl] = useState(functionsBaseUrl);
@@ -341,6 +330,15 @@ export default function AiCoachScreen() {
     setSupabaseUrl(functionsBaseUrl);
     setSupabaseKey(publicServiceKey);
     return () => {
+      micOperationRef.current += 1;
+      micRequestAbortRef.current?.abort();
+      micRequestAbortRef.current = null;
+      recognitionAbortRef.current?.abort();
+      recognitionAbortRef.current = null;
+      recordingCancelledRef.current = true;
+      if (mrRef.current?.state === 'recording') mrRef.current.stop();
+      mrRef.current = null;
+      if (process.env.EXPO_OS !== 'web') void recorder.stop().catch(() => {});
       stopLocalSpeech();
       setSpeakingId(null);
       setPausedId(null);
@@ -383,13 +381,17 @@ export default function AiCoachScreen() {
 
   // ── STT 识别并填入输入框（webm→wav转换后发送）──
   const recognizeAndFill = async (webmBlob: Blob | null, m4aBase64?: string, m4aLen?: number) => {
+    const operation = micOperationRef.current;
+    const recognitionController = new AbortController();
+    recognitionAbortRef.current = recognitionController;
     setMicState('recognizing');
     setMicError('');
     try {
       let speech: string; let len: number; let fmt: string;
       if (process.env.EXPO_OS === 'web' && webmBlob) {
         console.log('[STT] converting webm→wav, blob size=', webmBlob.size);
-        const wavBuf = await convertWebmToWav(webmBlob);
+        const wavBuf = await audioBlobTo16kWav(webmBlob);
+        if (operation !== micOperationRef.current) return;
         speech = arrayBufferToBase64(wavBuf);
         len    = wavBuf.byteLength;
         fmt    = 'wav';
@@ -403,47 +405,53 @@ export default function AiCoachScreen() {
       console.log('[STT] sending fmt=', fmt, 'len=', len);
       const { data: { session } } = await supabase.auth.getSession();
       const res = await callEdgeFn('short-speech-recognition', {
-        speech, len, format: fmt, rate: 16000, cuid: 'ai-coach',
-      }, session?.access_token);
+        speech, len, format: fmt, rate: 16000, language: 'en', cuid: 'ai-coach',
+      }, session?.access_token, recognitionController.signal);
+      if (operation !== micOperationRef.current) return;
       console.log('[STT] result:', JSON.stringify(res).slice(0, 120));
-      const text: string = res?.result?.[0] ?? '';
+      const text = cleanRecognizedText(res?.result?.[0]);
       if (text) {
         setInput(prev => (prev ? `${prev} ${text}` : text));
       } else {
         setMicError('未识别到语音内容，请靠近麦克风后重试。');
       }
     } catch (e) {
+      if (recognitionController.signal.aborted) return;
       console.warn('[STT] 识别失败:', e);
       setMicError(e instanceof Error ? e.message : '语音识别失败，请稍后重试。');
     }
-    finally { setMicState('idle'); }
+    finally {
+      if (recognitionAbortRef.current === recognitionController) recognitionAbortRef.current = null;
+      if (operation === micOperationRef.current) setMicState('idle');
+    }
   };
 
   // ── 麦克风 ──
   const handleMicPress = async () => {
     console.log('[MIC] pressed, micState=', micState, 'EXPO_OS=', process.env.EXPO_OS);
     setMicError('');
+    if (micState === 'requesting' || micState === 'recognizing') return;
+    if (micState === 'idle') {
+      stopLocalSpeech();
+      setSpeakingId(null);
+      setPausedId(null);
+      setRecordingSeconds(0);
+    }
+
     if (process.env.EXPO_OS === 'web') {
       if (micState === 'recording') {
-        mrRef.current?.stop();
+        if (mrRef.current?.state === 'recording') mrRef.current.stop();
       } else if (micState === 'idle') {
+        const operation = micOperationRef.current + 1;
+        micOperationRef.current = operation;
+        const requestController = new AbortController();
+        micRequestAbortRef.current = requestController;
+        recordingCancelledRef.current = false;
         setMicState('requesting');
         try {
-          const stream = await requestWebMicrophoneStream();
-          const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-            ? 'audio/webm;codecs=opus' : 'audio/webm';
-          const mr = new MediaRecorder(stream, { mimeType: mime });
-          chunksRef.current = [];
-          mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-          mr.onstop = async () => {
-            stream.getTracks().forEach(t => t.stop());
-            if (recordingCancelledRef.current) {
-              recordingCancelledRef.current = false;
-              chunksRef.current = [];
-              setMicState('idle');
-              return;
-            }
-            const blob = new Blob(chunksRef.current, { type: mime });
+          const mediaRecorder = await startWebAudioRecording(async (blob) => {
+            mrRef.current = null;
+            if (recordingCancelledRef.current || operation !== micOperationRef.current) return;
             console.log('[MIC] onstop blob size=', blob.size);
             if (blob.size < 200) {
               setMicError('录音时间太短，请重新录制。');
@@ -451,34 +459,64 @@ export default function AiCoachScreen() {
               return;
             }
             await recognizeAndFill(blob);
-          };
-          recordingCancelledRef.current = false;
-          mr.start(250);
-          mrRef.current = mr;
+          }, (error) => {
+            if (operation !== micOperationRef.current) return;
+            micOperationRef.current += 1;
+            recordingCancelledRef.current = true;
+            mrRef.current = null;
+            console.warn('[MIC] MediaRecorder 失败:', error);
+            setMicError(error instanceof Error ? error.message : '录音设备出现异常，请重新尝试。');
+            setMicState('idle');
+          }, requestController.signal);
+
+          if (operation !== micOperationRef.current) {
+            recordingCancelledRef.current = true;
+            if (mediaRecorder.state === 'recording') mediaRecorder.stop();
+            return;
+          }
+          mrRef.current = mediaRecorder;
           setMicState('recording');
           console.log('[MIC] MediaRecorder started');
         } catch (e) {
+          if (operation !== micOperationRef.current || requestController.signal.aborted) return;
           console.warn('[MIC] getUserMedia 失败:', e);
           setMicError(e instanceof Error ? e.message : '无法使用麦克风，请允许浏览器访问麦克风后重试。');
           setMicState('idle');
+        } finally {
+          if (micRequestAbortRef.current === requestController) micRequestAbortRef.current = null;
         }
       }
     } else {
       if (micState === 'recording') {
-        await recorder.stop();
-        const uri = recorder.uri ?? '';
-        if (!uri) {
-          setMicError('没有生成录音文件，请重新录制。');
+        const operation = micOperationRef.current;
+        setMicState('recognizing');
+        try {
+          await recorder.stop();
+          await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+          if (operation !== micOperationRef.current) return;
+          const uri = recorder.uri ?? '';
+          if (!uri) {
+            setMicError('没有生成录音文件，请重新录制。');
+            setMicState('idle');
+            return;
+          }
+          const FileSystem = await import('expo-file-system');
+          const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+          if (operation !== micOperationRef.current) return;
+          await recognizeAndFill(null, b64, Math.round(b64.length * 0.75));
+        } catch (e) {
+          if (operation !== micOperationRef.current) return;
+          console.warn('[MIC] native 结束录音失败:', e);
+          setMicError('无法读取录音，请重新录制。');
           setMicState('idle');
-          return;
         }
-        const FileSystem = await import('expo-file-system');
-        const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-        await recognizeAndFill(null, b64, Math.round(b64.length * 0.75));
       } else if (micState === 'idle') {
+        const operation = micOperationRef.current + 1;
+        micOperationRef.current = operation;
         setMicState('requesting');
         try {
           const perm = await requestRecordingPermissionsAsync();
+          if (operation !== micOperationRef.current) return;
           if (!perm.granted) {
             setMicError('麦克风权限未开启，请在系统设置中允许访问。');
             setMicState('idle');
@@ -486,9 +524,14 @@ export default function AiCoachScreen() {
           }
           await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
           await recorder.prepareToRecordAsync();
+          if (operation !== micOperationRef.current) {
+            await recorder.stop().catch(() => {});
+            return;
+          }
           recorder.record();
           setMicState('recording');
         } catch (e) {
+          if (operation !== micOperationRef.current) return;
           console.warn('[MIC] native 录音失败:', e);
           setMicError('无法启动麦克风，请检查权限后重试。');
           setMicState('idle');
@@ -498,20 +541,33 @@ export default function AiCoachScreen() {
   };
 
   const handleCancelRecording = async () => {
+    micOperationRef.current += 1;
     setMicError('');
     recordingCancelledRef.current = true;
+    micRequestAbortRef.current?.abort();
+    micRequestAbortRef.current = null;
+    recognitionAbortRef.current?.abort();
+    recognitionAbortRef.current = null;
     if (process.env.EXPO_OS === 'web') {
       if (mrRef.current?.state === 'recording') mrRef.current.stop();
-      else setMicState('idle');
+      mrRef.current = null;
+      setMicState('idle');
       return;
     }
     try {
       await recorder.stop();
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
     } catch {
       // The recorder may already be stopping.
     }
     setMicState('idle');
   };
+
+  useEffect(() => {
+    if (micState === 'recording' && recordingSeconds >= MAX_RECORDING_SECONDS) {
+      void handleMicPress();
+    }
+  }, [micState, recordingSeconds]);
 
   // ── 发送消息（流式）──
   const sendMessage = async (text: string) => {
@@ -614,6 +670,7 @@ export default function AiCoachScreen() {
     setMessages([WELCOME_MSG]);
     setInput('');
     setMicError('');
+    setRecordingSeconds(0);
     conversationRecordedRef.current = false;
   };
 
@@ -762,7 +819,6 @@ export default function AiCoachScreen() {
               <RecordingPanel
                 seconds={recordingSeconds}
                 state={micState}
-                streaming={false}
                 onCancel={handleCancelRecording}
                 onPrimary={handleMicPress}
                 onFinish={handleMicPress}

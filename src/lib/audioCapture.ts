@@ -69,18 +69,34 @@ function preferredMimeType(): string {
   return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || '';
 }
 
-export async function requestWebMicrophoneStream(timeoutMs = 15_000): Promise<MediaStream> {
+export async function requestWebMicrophoneStream(
+  timeoutMs = 15_000,
+  signal?: AbortSignal,
+): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error('当前浏览器不支持麦克风录音');
   }
+  if (signal?.aborted) throw new Error('已取消麦克风录音');
 
   const request = navigator.mediaDevices.getUserMedia({ audio: true });
   return await new Promise<MediaStream>((resolve, reject) => {
     let settled = false;
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('已取消麦克风录音'));
+    };
     const timer = setTimeout(() => {
       settled = true;
+      cleanup();
       reject(new Error('等待麦克风授权超时，请在浏览器权限中允许麦克风后重试'));
     }, timeoutMs);
+    signal?.addEventListener('abort', onAbort, { once: true });
 
     void request.then((stream) => {
       if (settled) {
@@ -88,12 +104,12 @@ export async function requestWebMicrophoneStream(timeoutMs = 15_000): Promise<Me
         return;
       }
       settled = true;
-      clearTimeout(timer);
+      cleanup();
       resolve(stream);
     }).catch((error: unknown) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      cleanup();
       const name = error instanceof DOMException ? error.name : '';
       if (name === 'NotAllowedError' || name === 'SecurityError') {
         reject(new Error('麦克风权限未开启，请在浏览器权限中选择允许'));
@@ -111,12 +127,13 @@ export async function requestWebMicrophoneStream(timeoutMs = 15_000): Promise<Me
 export async function startWebAudioRecording(
   onStopped: (blob: Blob) => Promise<void>,
   onFailure: (error: unknown) => void,
+  signal?: AbortSignal,
 ): Promise<MediaRecorder> {
   if (typeof MediaRecorder === 'undefined') {
     throw new Error('当前浏览器不支持麦克风录音');
   }
 
-  const stream = await requestWebMicrophoneStream();
+  const stream = await requestWebMicrophoneStream(15_000, signal);
   try {
     const mimeType = preferredMimeType();
     const recorder = mimeType
