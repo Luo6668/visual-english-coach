@@ -2,11 +2,11 @@ import {requestRecordingPermissionsAsync,
   setAudioModeAsync, 
   useAudioPlayer, useAudioRecorder,
 } from 'expo-audio';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Image } from 'expo-image';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import {ChevronDown, Mic, MicOff, Pause, Play, Plus, RotateCcw, 
-  Send, Sparkles, Volume2, 
+import {ChevronDown, ChevronLeft, Mic, MicOff, Pause, Play, Plus, RotateCcw,
+  Send, Settings, Volume2,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {ActivityIndicator,FlatList,
@@ -29,9 +29,7 @@ import {
 
 // ── 颜色 ────────────────────────────────────────────────
 const BLUE       = '#2563EB';
-const BLUE_LIGHT = '#EFF6FF';
 const WHITE      = '#FFFFFF';
-const BG         = '#F8FAFF';
 const GRAY_TEXT  = '#64748B';
 
 /** 直接 fetch 调 Edge Function */
@@ -143,37 +141,24 @@ function MessageBubble({
   return (
     <View style={{
       flexDirection: 'row', justifyContent: isUser ? 'flex-end' : 'flex-start',
-      paddingHorizontal: 14, paddingVertical: 5,
+      paddingHorizontal: 18, paddingVertical: 6,
     }}>
       {!isUser && (
-        <View style={{
-          width: 34, height: 34, borderRadius: 12, backgroundColor: BLUE_LIGHT,
-          alignItems: 'center', justifyContent: 'center',
-          marginRight: 8, marginTop: 2, borderWidth: 1.5, borderColor: '#BFDBFE', flexShrink: 0,
-        }}>
-          <Sparkles size={16} color={BLUE} />
-        </View>
+        <Image
+          source={require('../../../../assets/coach-avatar.png')}
+          style={{ width: 42, height: 42, borderRadius: 21, marginRight: 9, marginTop: 2, backgroundColor: '#DDEBFF', flexShrink: 0 }}
+          contentFit="cover"
+        />
       )}
-      <View style={{ maxWidth: '78%' }}>
-        <Text style={{
-          fontSize: 10, fontWeight: '700', color: isUser ? '#2563EB' : GRAY_TEXT,
-          marginBottom: 4, textAlign: isUser ? 'right' : 'left', letterSpacing: 0.4,
-        }}>
-          {isUser ? '我' : 'AI Coach'}
-        </Text>
+      <View style={{ maxWidth: isUser ? '76%' : '82%' }}>
         {isUser ? (
-          <LinearGradient
-            colors={['#1E40AF', '#2563EB']}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={{ borderRadius: 20, borderBottomRightRadius: 6, paddingHorizontal: 16, paddingVertical: 12 }}
-          >
-            <Text style={{ fontSize: 15, color: WHITE, lineHeight: 22 }}>{msg.content}</Text>
-          </LinearGradient>
+          <View style={{ borderRadius: 17, borderBottomRightRadius: 6, paddingHorizontal: 16, paddingVertical: 11, backgroundColor: '#DFEAFC' }}>
+            <Text style={{ fontSize: 15, color: '#1D58AE', lineHeight: 22, fontWeight: '600' }}>{msg.content}</Text>
+          </View>
         ) : (
           <View style={{
-            backgroundColor: WHITE, borderRadius: 20, borderBottomLeftRadius: 6,
+            backgroundColor: '#F0F4FC', borderRadius: 18, borderTopLeftRadius: 7,
             paddingHorizontal: 16, paddingVertical: 12,
-            borderWidth: 1, borderColor: '#E2E8F0',
           }}>
             {msg.streaming && msg.content === '' ? (
               <TypingDots />
@@ -183,17 +168,14 @@ function MessageBubble({
                 {msg.streaming && <Text style={{ color: BLUE }}>▌</Text>}
               </Text>
             )}
-            {/* 朗读按钮：只在非streaming时显示 */}
             {!msg.streaming && msg.content !== '' && (
               <Pressable
                 onPress={() => onSpeak(msg.id, msg.content)}
                 className="active:opacity-60"
                 style={{
-                  marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 4,
-                  alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4,
-                  borderRadius: 8,
-                  backgroundColor: isSpeaking ? BLUE + '20' : '#F1F5F9',
-                  borderWidth: 1, borderColor: isSpeaking ? BLUE + '40' : '#E2E8F0',
+                  marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 5,
+                  alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6,
+                  borderRadius: 16, backgroundColor: isSpeaking ? '#D4E5FF' : '#FFFFFF',
                 }}
               >
                 {isSpeaking
@@ -211,11 +193,11 @@ function MessageBubble({
       </View>
       {isUser && (
         <View style={{
-          width: 34, height: 34, borderRadius: 12, backgroundColor: '#DBEAFE',
+          width: 34, height: 34, borderRadius: 17, backgroundColor: '#DBEAFE',
           alignItems: 'center', justifyContent: 'center',
           marginLeft: 8, marginTop: 2, flexShrink: 0,
         }}>
-          <Text style={{ fontSize: 16 }}>👤</Text>
+          <Text style={{ fontSize: 12, color: BLUE, fontWeight: '900' }}>我</Text>
         </View>
       )}
     </View>
@@ -226,11 +208,12 @@ function MessageBubble({
 const WELCOME_MSG: Message = {
   id: 'welcome',
   role: 'assistant',
-  content: '你好！👋 我是你的 AI 英语教练。\n\n我可以帮你：\n• 练习日常场景英语对话\n• 纠正语法与表达方式\n• 教你地道的英语短语\n• 模拟真实场景对话\n\n随时开始！你想练习什么？😊',
+  content: '你好，我是你的 AI 英语教练。可以陪你练表达、纠正语法，也可以直接开始场景对话。',
 };
 
 // ── 主屏 ─────────────────────────────────────────────────
 export default function AiCoachScreen() {
+  const router = useRouter();
   const params = useLocalSearchParams<{ prompt?: string | string[] }>();
   const [messages, setMessages]   = useState<Message[]>([WELCOME_MSG]);
   const [input, setInput]         = useState('');
@@ -503,34 +486,28 @@ export default function AiCoachScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: BG }}>
+    <View style={{ flex: 1, backgroundColor: '#F2F5F9', alignItems: 'center' }}>
       <StatusBar style="dark" backgroundColor={WHITE} />
-
-      {/* ── 顶部导航栏 ── */}
-      <View style={{
-        backgroundColor: WHITE, paddingTop: 56, paddingBottom: 14,
-        paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 12,
-        borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-      }}>
-        <LinearGradient
-          colors={['#DBEAFE', '#E0E7FF']}
-          style={{ width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#BFDBFE' }}
-        >
-          <Sparkles size={18} color={BLUE} />
-        </LinearGradient>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 16, fontWeight: '900', color: '#1E293B' }}>AI Coach</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E' }} />
-            <Text style={{ fontSize: 11, color: GRAY_TEXT }}>{streaming ? '正在思考…' : '随时为你服务'}</Text>
+      <View style={{ width: '100%', maxWidth: 480, flex: 1, backgroundColor: WHITE }}>
+        <View style={{
+          backgroundColor: WHITE, paddingTop: 48, paddingBottom: 9,
+          paddingHorizontal: 14, minHeight: 96, flexDirection: 'row', alignItems: 'center',
+        }}>
+          <View style={{ width: 72, flexDirection: 'row', alignItems: 'center' }}>
+            <Pressable accessibilityRole="button" accessibilityLabel="返回" onPress={() => router.back()} style={({ pressed }) => ({ width: 42, height: 42, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}>
+              <ChevronLeft size={27} color="#0B1834" strokeWidth={2.4} />
+            </Pressable>
+          </View>
+          <Text style={{ flex: 1, textAlign: 'center', fontSize: 19, fontWeight: '900', color: '#0B1834' }}>AI Coach</Text>
+          <View style={{ width: 72, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+            <Pressable accessibilityRole="button" accessibilityLabel="新对话" onPress={handleNewChat} style={({ pressed }) => ({ width: 34, height: 42, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}>
+              <Plus size={21} color="#526077" />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="打开设置" onPress={() => router.push('/(app)/settings' as any)} style={({ pressed }) => ({ width: 34, height: 42, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}>
+              <Settings size={21} color="#0B1834" strokeWidth={2.3} />
+            </Pressable>
           </View>
         </View>
-        <Pressable onPress={handleNewChat} className="active:opacity-70"
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F1F5F9', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}>
-          <Plus size={14} color={GRAY_TEXT} />
-          <Text style={{ fontSize: 12, fontWeight: '700', color: GRAY_TEXT }}>新对话</Text>
-        </Pressable>
-      </View>
 
       <KeyboardAvoidingView
         behavior={process.env.EXPO_OS === 'ios' ? 'padding' : 'height'}
@@ -545,25 +522,27 @@ export default function AiCoachScreen() {
           renderItem={({ item }) => (
             <MessageBubble msg={item} pausedId={pausedId} speakingId={speakingId} onSpeak={handleSpeak} />
           )}
-          contentContainerStyle={{ paddingTop: 16, paddingBottom: 20 }}
+          contentContainerStyle={{ paddingTop: 8, paddingBottom: 16 }}
           showsVerticalScrollIndicator={false}
           onContentSizeChange={scrollToBottom}
           ListFooterComponent={
             messages.length === 1 ? (
-              <View style={{ paddingHorizontal: 14, paddingTop: 10, gap: 8 }}>
-                <Text style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center', marginBottom: 4 }}>— 快速开始 —</Text>
+              <View style={{ paddingHorizontal: 18, paddingTop: 8 }}>
+                <Text style={{ fontSize: 12, color: '#94A3B8', marginBottom: 8, fontWeight: '600' }}>快速开始</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {STARTERS.map(s => (
                   <Pressable key={s.text} onPress={() => sendMessage(s.text)} className="active:opacity-75"
                     style={{
-                      backgroundColor: WHITE, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 13,
-                      flexDirection: 'row', alignItems: 'center', gap: 12,
-                      borderWidth: 1.5, borderColor: '#E2E8F0',
+                      width: '48.8%', minHeight: 50, backgroundColor: '#F7F9FC', borderRadius: 12,
+                      paddingHorizontal: 11, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 8,
+                      borderWidth: 1, borderColor: '#E5EAF1',
                     }}>
-                    <Text style={{ fontSize: 22 }}>{s.emoji}</Text>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#1E293B', flex: 1 }}>{s.text}</Text>
-                    <ChevronDown size={14} color="#94A3B8" style={{ transform: [{ rotate: '-90deg' }] }} />
+                    <Text style={{ fontSize: 17 }}>{s.emoji}</Text>
+                    <Text numberOfLines={2} style={{ fontSize: 12, lineHeight: 17, fontWeight: '700', color: '#34405A', flex: 1 }}>{s.text}</Text>
+                    <ChevronDown size={12} color="#94A3B8" style={{ transform: [{ rotate: '-90deg' }] }} />
                   </Pressable>
                 ))}
+                </View>
               </View>
             ) : null
           }
@@ -571,15 +550,15 @@ export default function AiCoachScreen() {
 
         {/* ── 输入区 ── */}
         <View style={{
-          backgroundColor: WHITE, paddingHorizontal: 14, paddingVertical: 12,
-          borderTopWidth: 1, borderTopColor: '#F1F5F9',
+          backgroundColor: WHITE, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 8,
+          borderTopWidth: 1, borderTopColor: '#E9EDF3',
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
             {/* 输入框 */}
             <View style={{
-              flex: 1, backgroundColor: '#F8FAFF', borderRadius: 22,
-              borderWidth: 1.5, borderColor: micState === 'recording' ? '#FCA5A5' : input.trim() ? '#BFDBFE' : '#E2E8F0',
-              paddingHorizontal: 16, paddingVertical: 10, minHeight: 46, maxHeight: 120, justifyContent: 'center',
+              flex: 1, backgroundColor: '#F3F6FA', borderRadius: 14,
+              borderWidth: 1, borderColor: micState === 'recording' ? '#FCA5A5' : input.trim() ? '#9CC3FF' : '#E0E6EE',
+              paddingHorizontal: 14, paddingVertical: 10, minHeight: 48, maxHeight: 120, justifyContent: 'center',
             }}>
               {micState === 'requesting' ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -625,10 +604,10 @@ export default function AiCoachScreen() {
                       : '开始语音输入'}
                 className="active:opacity-75"
                 style={{
-                  width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: micState === 'recording' ? '#FEE2E2' : micState === 'recognizing' ? '#F1F5F9' : BLUE_LIGHT,
-                  borderWidth: 1.5,
-                  borderColor: micState === 'recording' ? '#FCA5A5' : micState === 'recognizing' ? '#E2E8F0' : '#BFDBFE',
+                  width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: micState === 'recording' ? '#FEE2E2' : micState === 'recognizing' ? '#F1F5F9' : '#E7F0FF',
+                  borderWidth: 1,
+                  borderColor: micState === 'recording' ? '#FCA5A5' : micState === 'recognizing' ? '#E2E8F0' : '#C9DCFA',
                 }}
               >
                 {micState === 'requesting' || micState === 'recognizing'
@@ -643,17 +622,17 @@ export default function AiCoachScreen() {
             {/* 发送 / 停止 */}
             {streaming ? (
               <Pressable onPress={() => abortRef.current?.abort()} className="active:opacity-75"
-                style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center' }}>
+                  style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center' }}>
                 <RotateCcw size={18} color="#EF4444" />
               </Pressable>
             ) : (
               <Pressable onPress={() => sendMessage(input)} className="active:opacity-80"
                 disabled={!input.trim() || micState !== 'idle'}
-                style={{ width: 46, height: 46, borderRadius: 23, overflow: 'hidden' }}>
+                style={{ width: 48, height: 48, borderRadius: 24, overflow: 'hidden' }}>
                 {input.trim() ? (
-                  <LinearGradient colors={['#1E40AF', '#2563EB']} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ flex: 1, backgroundColor: '#0868F2', alignItems: 'center', justifyContent: 'center' }}>
                     <Send size={20} color={WHITE} />
-                  </LinearGradient>
+                  </View>
                 ) : (
                   <View style={{ flex: 1, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' }}>
                     <Send size={20} color="#94A3B8" />
@@ -670,10 +649,11 @@ export default function AiCoachScreen() {
           ) : null}
 
           <Text style={{ fontSize: 10, color: '#CBD5E1', textAlign: 'center', marginTop: 8 }}>
-            AI Coach · 英语思维训练助手
+            AI 生成内容仅用于英语练习
           </Text>
         </View>
       </KeyboardAvoidingView>
+      </View>
     </View>
   );
 }
