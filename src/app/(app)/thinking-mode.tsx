@@ -4,11 +4,12 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { AlertCircle, Bookmark, BookOpen, Camera, ChevronLeft, Eye, Languages, MessageCircle, MessageSquare, Mic, RefreshCw, Volume2 } from 'lucide-react-native';
-import { useCallback, useRef, useState } from 'react';
+import { AlertCircle, Bookmark, BookOpen, Camera, Check, ChevronLeft, Eye, Languages, MessageCircle, MessageSquare, Mic, PencilLine, RefreshCw, ScanLine, Volume2, WifiOff } from 'lucide-react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { createHighFreqWord, createLearningRecord, createSentence, invokeEdgeFunction, updateLearningRecord, upsertScene } from '@/lib/api';
 import { consumePendingUri } from '@/lib/imageStore';
+import { isLocalServiceMode } from '@/lib/serviceConfig';
 import { speakWithTTS, stopLocalSpeech } from '@/lib/speech';
 
 type Difficulty = 'simple' | 'natural' | 'advanced';
@@ -132,6 +133,8 @@ export default function ThinkingModeScreen() {
   const [result, setResult] = useState<ThinkingResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [imageReady, setImageReady] = useState(false);
+  const [recognitionProgress, setRecognitionProgress] = useState(12);
   const [saved, setSaved] = useState(false);
   const [recordId, setRecordId] = useState<string | null>(null);
   const [speakingKey, setSpeakingKey] = useState<string | null>(null);
@@ -146,6 +149,21 @@ export default function ThinkingModeScreen() {
   // 防止切换 Tab 回来时重复分析
   const hasGenerated = useRef(false);
   const player = useAudioPlayer();
+  const normalizedInputType = Array.isArray(inputType) ? inputType[0] : inputType;
+  const isPhotoRecognition = normalizedInputType === 'photo';
+
+  useEffect(() => {
+    if (!loading || !isPhotoRecognition) return;
+
+    const timer = setInterval(() => {
+      setRecognitionProgress((current) => {
+        if (current >= 88) return current;
+        return Math.min(88, current + (current < 52 ? 7 : 3));
+      });
+    }, 420);
+
+    return () => clearInterval(timer);
+  }, [isPhotoRecognition, loading]);
 
   /** 一键翻译三张卡片全部英文 */
   const handleTranslateAll = async () => {
@@ -218,6 +236,8 @@ export default function ThinkingModeScreen() {
     setLoading(true);
     setResult(null);
     setError(null);
+    setImageReady(false);
+    setRecognitionProgress(12);
     setActionError(null);
     setTranslations({});
     try {
@@ -231,6 +251,10 @@ export default function ThinkingModeScreen() {
       if (type === 'photo' && !imageUri) throw new Error('图片已失效，请返回首页重新选择图片');
       if (type === 'photo' && !imageBase64) throw new Error('无法读取图片，请重新选择 JPG 或 PNG 图片');
       if (imageBase64.length > 10_000_000) throw new Error('图片仍然过大，请选择较小的图片后重试');
+      if (type === 'photo') {
+        setImageReady(true);
+        setRecognitionProgress((current) => Math.max(current, 36));
+      }
       const persistedSceneImage = type === 'photo' && imageBase64
         ? `data:image/jpeg;base64,${imageBase64}`
         : null;
@@ -245,6 +269,7 @@ export default function ThinkingModeScreen() {
       if (response?.error) throw new Error(response.error);
       const data = normalizeThinkingResult(response);
       setResult(data);
+      if (type === 'photo') setRecognitionProgress(100);
 
       const recordValues = {
         input_type: type,
@@ -423,6 +448,134 @@ export default function ThinkingModeScreen() {
   );
 
   const displayImage = imageUri || FALLBACK_IMAGE;
+
+  if (isPhotoRecognition && (loading || error)) {
+    const completed = Boolean(result);
+    const statusTitle = error
+      ? '识别未完成'
+      : completed
+        ? '识别成功！'
+        : imageReady
+          ? '图片读取成功'
+          : '正在读取图片';
+    const statusText = error
+      ? error
+      : completed
+        ? `识别到“${result?.scene_name || '当前场景'}”，正在整理学习内容。`
+        : imageReady
+          ? '图片已经准备好，AI 正在分析场景内容。'
+          : '正在读取你选择的图片，请稍候。';
+
+    return (
+      <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+        <View style={{ paddingTop: 52, paddingBottom: 17, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#EEF1F5' }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="返回"
+            onPress={() => router.back()}
+            className="active:opacity-60"
+            style={{ width: 38, height: 38, alignItems: 'flex-start', justifyContent: 'center' }}>
+            <ChevronLeft size={28} color="#0F1E3A" strokeWidth={2.1} />
+          </Pressable>
+          <Text style={{ flex: 1, textAlign: 'center', fontSize: 19, fontWeight: '800', color: '#101828' }}>正在识别</Text>
+          <View style={{ width: 38 }} />
+        </View>
+
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 32, gap: 18 }}>
+          <View style={{ borderWidth: 1, borderColor: '#DDE3EC', borderRadius: 16, backgroundColor: '#FFFFFF', padding: 16, flexDirection: 'row', gap: 16 }}>
+            {imageUri ? (
+              <Image
+                source={{ uri: imageUri }}
+                style={{ width: 116, height: 116, borderRadius: 14, backgroundColor: '#EEF3F8' }}
+                contentFit="cover"
+                transition={250}
+              />
+            ) : (
+              <View style={{ width: 116, height: 116, borderRadius: 14, backgroundColor: '#F3F6FA', alignItems: 'center', justifyContent: 'center' }}>
+                <Camera size={32} color="#8B98AA" />
+              </View>
+            )}
+
+            <View style={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <ScanLine size={27} color={error ? '#E5484D' : '#1268EE'} strokeWidth={2.2} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#101828' }}>{error ? '识别失败' : completed ? '整理学习内容' : '正在识别'}</Text>
+                  <Text style={{ marginTop: 4, fontSize: 12, lineHeight: 18, color: '#7A8799' }}>
+                    {error ? '请检查图片后重新尝试' : completed ? '马上为你展示结果' : 'AI 正在分析图片内容…'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ marginTop: 17, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ flex: 1, height: 9, borderRadius: 999, overflow: 'hidden', backgroundColor: '#E8EDF4' }}>
+                  <View style={{ width: `${error ? recognitionProgress : completed ? 100 : recognitionProgress}%`, height: '100%', borderRadius: 999, backgroundColor: error ? '#E5484D' : '#1268EE' }} />
+                </View>
+                <Text style={{ width: 34, fontSize: 13, fontWeight: '700', color: '#667085', textAlign: 'right' }}>
+                  {completed ? 100 : recognitionProgress}%
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={{ borderRadius: 16, backgroundColor: error ? '#FFF1F2' : '#ECF9F3', paddingHorizontal: 18, paddingVertical: 20, flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>
+            <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: error ? '#E5484D' : '#20AA72', alignItems: 'center', justifyContent: 'center' }}>
+              {error ? <AlertCircle size={23} color="#FFFFFF" /> : imageReady || completed ? <Check size={24} color="#FFFFFF" strokeWidth={2.6} /> : <ActivityIndicator size="small" color="#FFFFFF" />}
+            </View>
+            <View style={{ flex: 1, paddingTop: 1 }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: '#152235' }}>{statusTitle}</Text>
+              <Text style={{ marginTop: 5, fontSize: 13, lineHeight: 20, color: error ? '#A33A43' : '#637083' }}>{statusText}</Text>
+            </View>
+          </View>
+
+          {isLocalServiceMode && (
+            <View style={{ borderRadius: 16, backgroundColor: '#FFF7E6', paddingHorizontal: 18, paddingVertical: 20, flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>
+              <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: '#FFC857', alignItems: 'center', justifyContent: 'center' }}>
+                <WifiOff size={21} color="#162033" strokeWidth={2.2} />
+              </View>
+              <View style={{ flex: 1, paddingTop: 1 }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#152235' }}>已切换到本地服务模式</Text>
+                <Text style={{ marginTop: 5, fontSize: 13, lineHeight: 20, color: '#6F7887' }}>
+                  当前由本机服务处理识别请求，学习记录会保存在本地。
+                </Text>
+              </View>
+            </View>
+          )}
+
+          <View style={{ borderWidth: 1, borderColor: '#DDE3EC', borderRadius: 16, backgroundColor: '#FFFFFF', padding: 16 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#7A8799' }}>当前图片：</Text>
+            <View style={{ marginTop: 10, minHeight: 58, borderRadius: 12, backgroundColor: '#F4F6F9', paddingLeft: 16, paddingRight: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Text numberOfLines={2} style={{ flex: 1, fontSize: 15, lineHeight: 21, fontWeight: '600', color: '#1A2940' }}>
+                {completed ? result?.scene_name : error ? '请返回重新选择，或直接再次识别' : '正在提取图片中的场景信息…'}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="返回重新选择图片"
+                onPress={() => router.replace('/(app)/(tabs)/home' as any)}
+                className="active:opacity-60"
+                style={{ width: 42, height: 42, alignItems: 'center', justifyContent: 'center' }}>
+                <PencilLine size={20} color="#617087" />
+              </Pressable>
+            </View>
+          </View>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={error ? '重新尝试识别' : '正在识别图片'}
+            accessibilityState={{ disabled: !error }}
+            disabled={!error}
+            onPress={() => generate(difficulty)}
+            className="active:opacity-80"
+            style={{ height: 58, borderRadius: 14, backgroundColor: '#1268EE', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, opacity: error ? 1 : 0.72 }}>
+            {error ? <RefreshCw size={21} color="#FFFFFF" /> : <ActivityIndicator size="small" color="#FFFFFF" />}
+            <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '800' }}>{error ? '重新尝试' : '正在识别…'}</Text>
+          </Pressable>
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F0F4F8' }}>
