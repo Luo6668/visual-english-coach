@@ -443,7 +443,7 @@ export default function ThinkingModeScreen() {
       await updateLearningRecord(recordId, { is_favorited: nextSaved });
       setSaved(nextSaved);
       showFavoriteFeedback({
-        message: nextSaved ? '已收藏到我的学习记录' : '已取消收藏',
+        message: nextSaved ? '已收藏到我的表达本' : '已取消收藏',
         type: 'success',
       });
       if (process.env.EXPO_OS !== 'web') {
