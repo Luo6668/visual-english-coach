@@ -29,20 +29,17 @@ import {
   Square,
   Volume2,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   type GestureResponderEvent,
   Pressable,
-  type PressableProps,
   ScrollView,
-  type StyleProp,
   StyleSheet,
   Text,
   TextInput,
   useWindowDimensions,
   View,
-  type ViewStyle,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -67,6 +64,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
+import { MotionPressable } from '@/components/motion-pressable';
 import { addXp, fetchLearningRecords, fetchXpData, invokeEdgeFunction } from '@/lib/api';
 import { arrayBufferToBase64, audioBlobTo16kWav, startWebAudioRecording } from '@/lib/audioCapture';
 import { setPendingUri } from '@/lib/imageStore';
@@ -102,6 +100,7 @@ const RECORDING_OPTIONS = {
 };
 
 type InputMode = 'text' | 'voice';
+type SceneInputMode = 'camera' | 'gallery' | InputMode;
 
 interface LearningRecord {
   id: string;
@@ -194,7 +193,70 @@ function AudioWave({ active }: { active: boolean }) {
   );
 }
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+function InputModeButton({
+  mode,
+  label,
+  icon: Icon,
+  color,
+  background,
+  selected,
+  onPress,
+}: {
+  mode: SceneInputMode;
+  label: string;
+  icon: ComponentType<{ size?: number; color?: string }>;
+  color: string;
+  background: string;
+  selected: boolean;
+  onPress: (event: GestureResponderEvent, mode: SceneInputMode, color: string) => void;
+}) {
+  const reduceMotion = useReducedMotion();
+  const selection = useSharedValue(selected ? 1 : 0);
+
+  useEffect(() => {
+    selection.value = reduceMotion
+      ? selected ? 1 : 0
+      : withSpring(selected ? 1 : 0, { damping: 17, stiffness: 260, mass: 0.7 });
+  }, [reduceMotion, selected, selection]);
+
+  const containerStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: -3 * selection.value },
+      { scale: 1 + 0.018 * selection.value },
+    ],
+  }));
+
+  const iconStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + 0.09 * selection.value }],
+  }));
+
+  return (
+    <Animated.View style={[styles.modeSlot, containerStyle]}>
+      <MotionPressable
+        onPress={event => onPress(event, mode, color)}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}输入`}
+        accessibilityState={{ selected }}
+        style={[
+          styles.modeButton,
+          { backgroundColor: background, borderColor: selected ? color : 'transparent' },
+          selected && styles.modeButtonSelected,
+        ]}
+      >
+        <Animated.View style={[styles.modeIcon, { backgroundColor: color }, iconStyle]}>
+          <Icon size={20} color={WHITE} />
+        </Animated.View>
+        <Text style={styles.modeLabel}>{label}</Text>
+        {selected && (
+          <Animated.View entering={reduceMotion ? undefined : ZoomIn.duration(180)} style={[styles.modeCheck, { backgroundColor: color }]}>
+            <Check size={10} color={WHITE} strokeWidth={3} />
+          </Animated.View>
+        )}
+      </MotionPressable>
+    </Animated.View>
+  );
+}
+
 const AnimatedImage = Animated.createAnimatedComponent(Image);
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -247,56 +309,12 @@ function ProgressRing({ progress, count, goal }: { progress: number; count: numb
   );
 }
 
-interface MotionPressableProps extends Omit<PressableProps, 'style'> {
-  style?: StyleProp<ViewStyle>;
-  pressedScale?: number;
-  haptic?: boolean;
-}
-
-function MotionPressable({
-  style,
-  pressedScale = 0.975,
-  haptic = true,
-  disabled,
-  onPressIn,
-  onPressOut,
-  ...props
-}: MotionPressableProps) {
-  const scale = useSharedValue(1);
-  const reduceMotion = useReducedMotion();
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = (event: GestureResponderEvent) => {
-    scale.value = reduceMotion ? pressedScale : withSpring(pressedScale, { damping: 18, stiffness: 360 });
-    if (haptic && process.env.EXPO_OS !== 'web') void Haptics.selectionAsync();
-    onPressIn?.(event);
-  };
-
-  const handlePressOut = (event: GestureResponderEvent) => {
-    scale.value = reduceMotion ? 1 : withSpring(1, { damping: 17, stiffness: 300 });
-    onPressOut?.(event);
-  };
-
-  return (
-    <AnimatedPressable
-      {...props}
-      disabled={disabled}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      style={[style, animatedStyle, disabled && styles.motionDisabled]}
-    />
-  );
-}
-
 interface LearningDeckProps {
   records: LearningRecord[];
   loading: boolean;
   failedImageId: string | null;
   onImageError: (id: string) => void;
-  onOpen: (record: LearningRecord) => void;
+  onOpen: (record: LearningRecord, event: GestureResponderEvent) => void;
   onEmpty: () => void;
 }
 
@@ -443,8 +461,8 @@ function LearningDeck({ records, loading, failedImageId, onImageError, onOpen, o
         <GestureDetector gesture={pan}>
           <Animated.View style={[styles.deckCard, styles.deckCardFront, activeCardStyle]}>
             <Pressable
-              onPress={() => {
-                if (!draggedRef.current) onOpen(activeRecord);
+              onPress={(event) => {
+                if (!draggedRef.current) onOpen(activeRecord, event);
               }}
               accessibilityRole="button"
               accessibilityLabel={`继续学习 ${activeRecord.scene_name}`}
@@ -771,7 +789,7 @@ export default function HomeScreen() {
   );
   const weekCompleted = weekDays.filter((date) => practicedDays.has(dateKey(date))).length;
 
-  const selectInputMode = (mode: 'camera' | 'gallery' | InputMode) => {
+  const selectInputMode = (mode: SceneInputMode) => {
     setRecError('');
     if (mode === 'camera') {
       void handleCamera();
@@ -786,7 +804,7 @@ export default function HomeScreen() {
 
   const handleInputModePress = (
     event: GestureResponderEvent,
-    mode: 'camera' | 'gallery' | InputMode,
+    mode: SceneInputMode,
     color: string,
   ) => {
     if (mode === 'camera' || mode === 'gallery') {
@@ -886,31 +904,19 @@ export default function HomeScreen() {
             layout={reduceMotion ? undefined : LinearTransition.springify().damping(19).stiffness(190)}
             style={styles.modeRow}
           >
-            {inputModes.map(({ key, label, icon: Icon, color, background }) => {
+            {inputModes.map(({ key, label, icon, color, background }) => {
               const selected = sceneInputMode === key;
               return (
-                <MotionPressable
+                <InputModeButton
                   key={key}
-                  onPress={event => handleInputModePress(event, key, color)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${label}输入`}
-                  accessibilityState={{ selected }}
-                  style={[
-                    styles.modeButton,
-                    { backgroundColor: background, borderColor: selected ? color : 'transparent' },
-                    selected && styles.modeButtonSelected,
-                  ]}
-                >
-                  <View style={[styles.modeIcon, { backgroundColor: color }]}>
-                    <Icon size={20} color={WHITE} />
-                  </View>
-                  <Text style={styles.modeLabel}>{label}</Text>
-                  {selected && (
-                    <Animated.View entering={reduceMotion ? undefined : ZoomIn.duration(180)} style={[styles.modeCheck, { backgroundColor: color }]}>
-                      <Check size={10} color={WHITE} strokeWidth={3} />
-                    </Animated.View>
-                  )}
-                </MotionPressable>
+                  mode={key}
+                  label={label}
+                  icon={icon}
+                  color={color}
+                  background={background}
+                  selected={selected}
+                  onPress={handleInputModePress}
+                />
               );
             })}
           </Animated.View>
@@ -1029,7 +1035,11 @@ export default function HomeScreen() {
               loading={loading}
               failedImageId={failedRecordImageId}
               onImageError={setFailedRecordImageId}
-              onOpen={record => router.push(`/(app)/record/${record.id}` as any)}
+              onOpen={(record, event) => runCircularAction(
+                event,
+                () => router.push(`/(app)/record/${record.id}` as any),
+                '#F4F7FB',
+              )}
               onEmpty={() => void handleCamera()}
             />
           </Animated.View>
@@ -1241,10 +1251,10 @@ const styles = StyleSheet.create({
   heroButton: { position: 'relative', minWidth: 198, height: 50, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, overflow: 'hidden' },
   heroButtonText: { color: WHITE, fontSize: 15, fontWeight: '800' },
   pressed: { opacity: 0.76 },
-  motionDisabled: { opacity: 0.52 },
   modeRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  modeButton: { position: 'relative', flex: 1, height: 82, borderRadius: 8, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', gap: 8, overflow: 'hidden', shadowColor: '#274D7E', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 13, elevation: 2 },
-  modeButtonSelected: { transform: [{ translateY: -3 }], shadowColor: BLUE, shadowOpacity: 0.22, shadowRadius: 16, elevation: 5 },
+  modeSlot: { flex: 1 },
+  modeButton: { position: 'relative', height: 82, borderRadius: 8, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', gap: 8, overflow: 'hidden', shadowColor: '#274D7E', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 13, elevation: 2 },
+  modeButtonSelected: { shadowColor: BLUE, shadowOpacity: 0.22, shadowRadius: 16, elevation: 5 },
   modeIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center', shadowColor: '#14213D', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.16, shadowRadius: 8, elevation: 3 },
   modeLabel: { color: INK, fontSize: 13, fontWeight: '800' },
   modeCheck: { position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },

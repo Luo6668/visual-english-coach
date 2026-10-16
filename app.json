@@ -45,7 +45,7 @@
       "root": "src"
     },
     "experiments": {
-      "typedRoutes": true
+      "typedRoutes": false
     },
     "scheme": "appcf15398uqfpd"
   }

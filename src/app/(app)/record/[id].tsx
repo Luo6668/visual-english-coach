@@ -1,9 +1,21 @@
 import { useAudioPlayer } from 'expo-audio';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { AlertCircle, Bookmark, CheckCircle2, ChevronLeft, Languages, MessageCircle, Mic, RefreshCw, Save, Volume2 } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
+import Animated, {
+  Extrapolation,
+  FadeInDown,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+} from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MotionPressable } from '@/components/motion-pressable';
 import { createHighFreqWord, createSentence, fetchLearningRecord, invokeEdgeFunction, updateLearningRecord } from '@/lib/api';
 import { speakWithTTS, stopLocalSpeech } from '@/lib/speech';
 
@@ -23,6 +35,8 @@ const DEFAULT_SPEECH_RATES: Record<SentenceKey, SpeechRate> = {
   i_think: 1,
   i_say: 1,
 };
+
+const AnimatedImage = Animated.createAnimatedComponent(Image);
 
 function normalizeGeneratedResult(value: unknown) {
   if (!value || typeof value !== 'object') throw new Error('AI 返回格式异常，请重试');
@@ -58,6 +72,8 @@ const LAYER_CONFIG = [
 
 export default function RecordDetailScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const reduceMotion = useReducedMotion();
   const { id } = useLocalSearchParams();
   const [record, setRecord] = useState<any>(null);
   const [loading, setLoading]   = useState(true);
@@ -76,6 +92,34 @@ export default function RecordDetailScreen() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
   const player = useAudioPlayer();
+  const scrollY = useSharedValue(0);
+
+  const handleScroll = useAnimatedScrollHandler((event) => {
+    scrollY.value = event.contentOffset.y;
+  });
+
+  const heroStyle = useAnimatedStyle(() => ({
+    height: reduceMotion
+      ? 240
+      : interpolate(scrollY.value, [0, 170], [240, 108], Extrapolation.CLAMP),
+  }));
+
+  const heroImageStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(scrollY.value, [0, 170], [0, 22], Extrapolation.CLAMP) },
+      { scale: interpolate(scrollY.value, [0, 170], [1, 1.1], Extrapolation.CLAMP) },
+    ],
+  }));
+
+  const heroTitleStyle = useAnimatedStyle(() => ({
+    opacity: reduceMotion ? 1 : interpolate(scrollY.value, [0, 105], [1, 0], Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [0, 105], [0, 12], Extrapolation.CLAMP) }],
+  }));
+
+  const compactTitleStyle = useAnimatedStyle(() => ({
+    opacity: reduceMotion ? 0 : interpolate(scrollY.value, [70, 145], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [70, 145], [6, 0], Extrapolation.CLAMP) }],
+  }));
 
   useFocusEffect(useCallback(() => {
     (async () => {
@@ -273,44 +317,59 @@ export default function RecordDetailScreen() {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: BG }}>
+    <View style={styles.screen}>
+      <StatusBar style="light" />
       {/* ── 场景图 + 返回导航叠层 ── */}
-      <View style={{ position: 'relative' }}>
-        <Image
+      <Animated.View style={[styles.hero, heroStyle]}>
+        <AnimatedImage
           source={record.scene_image && !record.scene_image.startsWith('blob:') && !imageFailed
             ? { uri: record.scene_image }
             : require('../../../../assets/home-cafe-hero.png')}
-          style={{ width: '100%', height: 240 }}
+          style={[StyleSheet.absoluteFillObject, heroImageStyle]}
           contentFit="cover"
           transition={300}
           onError={() => setImageFailed(true)}
         />
-        {/* 渐变遮罩 */}
-        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 100, backgroundColor: 'rgba(0,0,0,0.45)' }} />
+        <View style={styles.heroScrim} />
 
         {/* 导航栏 */}
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, paddingTop: 54, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' }}>
-          <Pressable onPress={() => router.back()} className="active:opacity-70"
-            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={[styles.heroNav, { paddingTop: Math.max(insets.top + 10, 14) }]}>
+          <MotionPressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="返回"
+            style={styles.heroNavButton}
+          >
             <ChevronLeft size={20} color={WHITE} />
-          </Pressable>
-          <View style={{ flex: 1 }} />
-          <Pressable onPress={handleToggleFav} className="active:opacity-70"
-            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' }}>
+          </MotionPressable>
+          <Animated.Text numberOfLines={1} style={[styles.compactTitle, compactTitleStyle]}>
+            {record.scene_name}
+          </Animated.Text>
+          <MotionPressable
+            onPress={handleToggleFav}
+            accessibilityRole="button"
+            accessibilityLabel={favorited ? '取消收藏' : '收藏场景'}
+            style={styles.heroNavButton}
+          >
             <Bookmark size={18} color={favorited ? YELLOW : WHITE} fill={favorited ? YELLOW : 'transparent'} />
-          </Pressable>
+          </MotionPressable>
         </View>
 
         {/* 场景名 + 时间 */}
-        <View style={{ position: 'absolute', bottom: 12, left: 16, right: 16 }}>
-          <Text style={{ color: WHITE, fontSize: 20, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }}>{record.scene_name}</Text>
-          <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12, marginTop: 2 }}>
+        <Animated.View style={[styles.heroTitleBlock, heroTitleStyle]}>
+          <Text style={styles.heroTitle}>{record.scene_name}</Text>
+          <Text style={styles.heroMeta}>
             {new Date(record.created_at).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </Text>
-        </View>
-      </View>
+        </Animated.View>
+      </Animated.View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic">
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        contentInsetAdjustmentBehavior="automatic"
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+      >
         <View style={{ padding: 16, gap: 14, paddingBottom: 40 }}>
 
           {/* ── 看场景、学表达、开口说 ── */}
@@ -318,12 +377,11 @@ export default function RecordDetailScreen() {
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 15, fontWeight: '900', color: '#1E293B' }}>三步场景表达</Text>
             </View>
-            <Pressable
+            <MotionPressable
               accessibilityRole="button"
               accessibilityLabel="换一组场景英语句子"
               onPress={handleRegenerateAll}
               disabled={regeneratingAll || regeneratingKey !== null}
-              className="active:opacity-70"
               style={{
                 minWidth: 106, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
                 backgroundColor: BLUE_DARK, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10,
@@ -336,7 +394,7 @@ export default function RecordDetailScreen() {
               <Text style={{ fontSize: 13, fontWeight: '800', color: WHITE }}>
                 {regeneratingAll ? '生成中…' : '换一组'}
               </Text>
-            </Pressable>
+            </MotionPressable>
           </View>
 
           {actionError && (
@@ -346,12 +404,15 @@ export default function RecordDetailScreen() {
             </View>
           )}
 
-          {LAYER_CONFIG.map(cfg => {
+          {LAYER_CONFIG.map((cfg, index) => {
             const text = record[cfg.key];
             const isSpeaking = speakingKey === cfg.key;
             if (!text) return null;
             return (
-              <View key={cfg.key} style={{
+              <Animated.View
+                key={cfg.key}
+                entering={reduceMotion ? undefined : FadeInDown.delay(70 + index * 70).duration(360)}
+                style={{
                 position: 'relative', borderRadius: 14, overflow: 'hidden',
                 backgroundColor: WHITE, borderWidth: 1, borderColor: '#E2E8F0',
                 shadowColor: '#29496E', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.09, shadowRadius: 12,
@@ -365,18 +426,17 @@ export default function RecordDetailScreen() {
                     <Text style={{ marginLeft: 10, color: '#10213D', fontSize: 17, fontWeight: '900' }}>{cfg.label}</Text>
                     <Text style={{ marginLeft: 10, color: '#8B98AA', fontSize: 12, fontWeight: '800' }}>{cfg.en}</Text>
                     <View style={{ flex: 1 }} />
-                    <Pressable
+                    <MotionPressable
                       accessibilityRole="button"
                       accessibilityLabel={`${isSpeaking ? '停止' : '朗读'}${cfg.label}英文句子`}
                       onPress={() => handlePlay(text, cfg.key)}
-                      className="active:opacity-70"
                       style={{
                         width: 40, height: 40, borderRadius: 20,
                         backgroundColor: isSpeaking ? cfg.numberBg : '#F2F5F9',
                         alignItems: 'center', justifyContent: 'center',
                       }}>
                       <Volume2 size={19} color={isSpeaking ? cfg.numberText : '#11284A'} />
-                    </Pressable>
+                    </MotionPressable>
                   </View>
 
                   <Text style={{ marginTop: 15, fontSize: 17, lineHeight: 28, color: '#10213D', fontWeight: '700' }}>{text}</Text>
@@ -390,10 +450,9 @@ export default function RecordDetailScreen() {
                   )}
 
                   <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                    <Pressable
+                    <MotionPressable
                       onPress={() => handleTranslate(cfg.key, text)}
                       disabled={regeneratingKey === cfg.key || regeneratingAll}
-                      className="active:opacity-70"
                       style={{
                         flexDirection: 'row', alignItems: 'center', gap: 5,
                         backgroundColor: translations[cfg.key] && translations[cfg.key] !== '__hidden__'
@@ -419,13 +478,12 @@ export default function RecordDetailScreen() {
                           : translations[cfg.key] && translations[cfg.key] !== '__hidden__' ? '隐藏中文'
                           : '中文'}
                       </Text>
-                    </Pressable>
-                    <Pressable
+                    </MotionPressable>
+                    <MotionPressable
                       accessibilityRole="button"
                       accessibilityLabel={`替换${cfg.label}句子`}
                       onPress={() => handleRegenerateSentence(cfg.key)}
                       disabled={regeneratingKey !== null || regeneratingAll}
-                      className="active:opacity-70"
                       style={{
                         minWidth: 82, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
                         backgroundColor: '#F3F5F8', borderRadius: 10, paddingHorizontal: 11, paddingVertical: 8,
@@ -439,7 +497,7 @@ export default function RecordDetailScreen() {
                       <Text style={{ fontSize: 12, fontWeight: '700', color: '#526176' }}>
                         {regeneratingKey === cfg.key ? '生成中…' : '换一句'}
                       </Text>
-                    </Pressable>
+                    </MotionPressable>
                     <View style={{
                       marginLeft: 'auto', height: 36, flexDirection: 'row', alignItems: 'center',
                       backgroundColor: '#F3F5F8', borderRadius: 10, padding: 3, gap: 2,
@@ -447,7 +505,7 @@ export default function RecordDetailScreen() {
                       {([0.8, 1] as const).map((rate) => {
                         const active = speechRates[cfg.key] === rate;
                         return (
-                          <Pressable
+                          <MotionPressable
                             key={rate}
                             accessibilityRole="button"
                             accessibilityLabel={`${rate}倍语速`}
@@ -458,7 +516,7 @@ export default function RecordDetailScreen() {
                               backgroundColor: active ? '#DCEBFF' : 'transparent',
                             }}>
                             <Text style={{ fontSize: 12, fontWeight: '800', color: active ? '#1268EE' : '#667085' }}>{rate.toFixed(1)}×</Text>
-                          </Pressable>
+                          </MotionPressable>
                         );
                       })}
                     </View>
@@ -471,7 +529,7 @@ export default function RecordDetailScreen() {
                     </View>
                   )}
                 </View>
-              </View>
+              </Animated.View>
             );
           })}
 
@@ -506,12 +564,11 @@ export default function RecordDetailScreen() {
               editable={!saving}
               multiline
             />
-            <Pressable
+            <MotionPressable
               accessibilityRole="button"
               accessibilityLabel={noteSaveState === 'saved' ? '备注已保存' : '保存备注'}
               onPress={handleSaveNote}
               disabled={saving}
-              className="active:opacity-80"
               style={{
                 backgroundColor: noteSaveState === 'saved' ? GREEN : noteSaveState === 'error' ? '#DC2626' : BLUE,
                 borderRadius: 14, paddingVertical: 12, alignItems: 'center',
@@ -536,7 +593,7 @@ export default function RecordDetailScreen() {
                   </Text>
                 </>
               )}
-            </Pressable>
+            </MotionPressable>
             {noteSaveError && (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <AlertCircle size={13} color="#DC2626" />
@@ -547,22 +604,104 @@ export default function RecordDetailScreen() {
 
           {/* ── 继续练习 ── */}
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Pressable className="active:opacity-80"
+            <MotionPressable
               onPress={() => router.push({ pathname: '/(app)/dialogue', params: { scene: record.scene_name, recordId: record.id } } as any)}
               style={{ flex: 1, backgroundColor: BLUE_DARK, borderRadius: 18, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, shadowColor: BLUE_DARK, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12 }}>
               <MessageCircle size={17} color={YELLOW} />
               <Text style={{ color: WHITE, fontWeight: '800', fontSize: 14 }}>AI 场景对话</Text>
-            </Pressable>
-            <Pressable className="active:opacity-80"
+            </MotionPressable>
+            <MotionPressable
               onPress={() => router.push({ pathname: '/(app)/shadowing', params: { sentence: record.i_say, recordId: record.id } } as any)}
               style={{ flex: 1, backgroundColor: WHITE, borderRadius: 18, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: '#E2E8F0' }}>
               <Mic size={17} color={BLUE} />
               <Text style={{ color: '#1E293B', fontWeight: '800', fontSize: 14 }}>Shadowing</Text>
-            </Pressable>
+            </MotionPressable>
           </View>
 
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: BG,
+  },
+  hero: {
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#CBD5E1',
+    shadowColor: '#102A4C',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    elevation: 7,
+    zIndex: 2,
+  },
+  heroScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(5, 18, 36, 0.25)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.22)',
+  },
+  heroNav: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    zIndex: 3,
+  },
+  heroNavButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(8, 20, 39, 0.48)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactTitle: {
+    flex: 1,
+    minWidth: 0,
+    color: WHITE,
+    textAlign: 'center',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '900',
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  heroTitleBlock: {
+    position: 'absolute',
+    bottom: 15,
+    left: 16,
+    right: 16,
+  },
+  heroTitle: {
+    color: WHITE,
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '900',
+    textShadowColor: 'rgba(0,0,0,0.52)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 5,
+  },
+  heroMeta: {
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 12,
+    marginTop: 3,
+    fontWeight: '600',
+  },
+});
