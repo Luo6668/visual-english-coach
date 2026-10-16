@@ -53,6 +53,8 @@ import Animated, {
   interpolate,
   LinearTransition,
   runOnJS,
+  useAnimatedProps,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -64,6 +66,7 @@ import Animated, {
   ZoomIn,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle } from 'react-native-svg';
 import { addXp, fetchLearningRecords, fetchXpData, invokeEdgeFunction } from '@/lib/api';
 import { arrayBufferToBase64, audioBlobTo16kWav, startWebAudioRecording } from '@/lib/audioCapture';
 import { setPendingUri } from '@/lib/imageStore';
@@ -192,6 +195,57 @@ function AudioWave({ active }: { active: boolean }) {
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const AnimatedImage = Animated.createAnimatedComponent(Image);
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+function ProgressRing({ progress, count, goal }: { progress: number; count: number; goal: number }) {
+  const reduceMotion = useReducedMotion();
+  const animatedProgress = useSharedValue(0);
+  const radius = 27;
+  const circumference = 2 * Math.PI * radius;
+
+  useEffect(() => {
+    animatedProgress.value = reduceMotion ? progress : withTiming(progress, { duration: 780 });
+  }, [animatedProgress, progress, reduceMotion]);
+
+  const animatedProps = useAnimatedProps(() => ({
+    strokeDashoffset: circumference * (1 - Math.max(0, Math.min(animatedProgress.value, 1))),
+  }));
+
+  return (
+    <View style={styles.progressRingWrap} accessibilityLabel={`今日学习进度 ${count}/${goal}`}>
+      <Svg width={68} height={68} viewBox="0 0 68 68">
+        <Circle cx={34} cy={34} r={radius} fill="none" stroke="#E7EEF8" strokeWidth={7} />
+        <AnimatedCircle
+          animatedProps={animatedProps}
+          cx={34}
+          cy={34}
+          r={radius}
+          fill="none"
+          stroke={progress >= 1 ? GREEN : BLUE}
+          strokeWidth={7}
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeLinecap="round"
+          rotation="-90"
+          origin="34, 34"
+        />
+      </Svg>
+      <View style={styles.progressRingCopy}>
+        {progress >= 1 ? (
+          <View style={styles.progressRingCompleted}>
+            <Check size={16} color={GREEN} strokeWidth={3} />
+            <Text style={styles.progressRingCompletedText}>完成</Text>
+          </View>
+        ) : (
+          <View style={styles.progressRingFraction}>
+            <Text style={styles.progressRingNumber}>{count}</Text>
+            <Text style={styles.progressRingGoal}>/{goal}</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
 
 interface MotionPressableProps extends Omit<PressableProps, 'style'> {
   style?: StyleProp<ViewStyle>;
@@ -453,6 +507,7 @@ export default function HomeScreen() {
   const webRecorderRef = useRef<MediaRecorder | null>(null);
   const progressValue = useSharedValue(0);
   const revealProgress = useSharedValue(0);
+  const scrollY = useSharedValue(0);
   const contentWidth = Math.min(width, 760);
   const compactHeader = width < 480;
   const heroHeight = Math.min(360, Math.max(300, Math.round((contentWidth - 32) * 0.78)));
@@ -659,6 +714,17 @@ export default function HomeScreen() {
     width: `${Math.max(0, Math.min(progressValue.value, 1)) * 100}%`,
   }));
 
+  const handleScroll = useAnimatedScrollHandler(event => {
+    scrollY.value = event.contentOffset.y;
+  });
+
+  const heroImageAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(scrollY.value, [0, 360], [0, 58], Extrapolation.CLAMP) },
+      { scale: interpolate(scrollY.value, [0, 360], [1.02, 1.1], Extrapolation.CLAMP) },
+    ],
+  }));
+
   const revealAnimatedStyle = useAnimatedStyle(() => {
     const maxScale = (Math.hypot(width, height) * 2.2) / 72;
     return {
@@ -741,10 +807,12 @@ export default function HomeScreen() {
   return (
     <View style={styles.screen}>
       <StatusBar style="dark" backgroundColor={WHITE} />
-      <ScrollView
+      <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       >
         <View style={[styles.page, { paddingTop: Math.max(insets.top + 12, 24) }]}>
           <Animated.View
@@ -777,9 +845,9 @@ export default function HomeScreen() {
             entering={reduceMotion ? undefined : FadeInDown.delay(70).duration(460)}
             style={[styles.hero, { height: heroHeight }]}
           >
-            <Image
+            <AnimatedImage
               source={require('../../../../assets/home-cafe-hero.png')}
-              style={StyleSheet.absoluteFillObject}
+              style={[styles.heroImage, heroImageAnimatedStyle]}
               contentFit="cover"
               contentPosition="center"
               transition={250}
@@ -789,6 +857,10 @@ export default function HomeScreen() {
               locations={[0, 0.45, 1]}
               style={StyleSheet.absoluteFillObject}
             />
+            <View style={styles.heroVisionBadge}>
+              <Sparkles size={13} color={WHITE} />
+              <Text style={styles.heroVisionText}>AI 视觉场景</Text>
+            </View>
             <View style={styles.heroContent}>
               <Text style={styles.heroTitle}>今天从哪个{`\n`}场景开始？</Text>
               <Text style={styles.heroDescription}>拍下你眼前的场景，让 AI 帮你看图学英语。</Text>
@@ -967,18 +1039,17 @@ export default function HomeScreen() {
             style={styles.progressPanel}
           >
             <View style={styles.progressHeader}>
-              <View>
+              <View style={styles.progressHeaderCopy}>
+                <View style={styles.progressEyebrowRow}>
+                  <View style={styles.progressPulse} />
+                  <Text style={styles.progressEyebrow}>今日目标</Text>
+                </View>
                 <Text style={styles.sectionTitle}>学习进度</Text>
                 <Text style={styles.progressSubtitle}>
                   {dailyProgress >= 1 ? '今日目标已完成，保持这个节奏' : `再完成 ${DAILY_GOAL - todayCount} 个场景达成目标`}
                 </Text>
               </View>
-              <View style={[styles.progressBadge, dailyProgress >= 1 && styles.progressBadgeCompleted]}>
-                {dailyProgress >= 1 ? <Check size={14} color={GREEN} strokeWidth={3} /> : null}
-                <Text style={[styles.progressCount, dailyProgress >= 1 && styles.progressCountCompleted]}>
-                  {todayCount}/{DAILY_GOAL}
-                </Text>
-              </View>
+              <ProgressRing progress={dailyProgress} count={todayCount} goal={DAILY_GOAL} />
             </View>
             <View style={styles.progressTrack}>
               <Animated.View style={[styles.progressFill, progressAnimatedStyle]} />
@@ -988,6 +1059,14 @@ export default function HomeScreen() {
               <Text style={styles.weekCount}>{weekCompleted}/7 天</Text>
             </View>
             <View style={styles.weekRow}>
+              <View pointerEvents="none" style={styles.weekConnector}>
+                <View
+                  style={[
+                    styles.weekConnectorFill,
+                    { width: `${Math.max(0, Math.min((weekCompleted - 1) / 6, 1)) * 100}%` },
+                  ]}
+                />
+              </View>
               {weekDays.map((date, index) => {
                 const completed = practicedDays.has(dateKey(date));
                 const isToday = dateKey(date) === dateKey(today);
@@ -1121,7 +1200,7 @@ export default function HomeScreen() {
             </MotionPressable>
           </Animated.View>
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
       {reveal ? (
         <Animated.View
           pointerEvents="none"
@@ -1147,26 +1226,29 @@ const styles = StyleSheet.create({
   brandAccent: { color: BLUE },
   brandSubtitle: { color: MUTED, fontSize: 13, lineHeight: 19, marginTop: 1 },
   brandSubtitleCompact: { paddingRight: 78 },
-  streakPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 38, borderRadius: 8, backgroundColor: WHITE, borderWidth: 1, borderColor: BORDER, flexShrink: 0 },
+  streakPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 38, borderRadius: 8, backgroundColor: WHITE, borderWidth: 1, borderColor: '#DCE6F4', flexShrink: 0, shadowColor: '#2F6FED', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 2 },
   streakPillCompact: { position: 'absolute', right: 0, bottom: 3, height: 34, paddingHorizontal: 8 },
   streakText: { color: MUTED, fontSize: 12, fontWeight: '700' },
   streakNumber: { color: ORANGE, fontSize: 16, fontWeight: '900' },
-  hero: { borderRadius: 8, overflow: 'hidden', backgroundColor: '#D8E0E8' },
+  hero: { borderRadius: 8, overflow: 'hidden', backgroundColor: '#D8E0E8', borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)', shadowColor: '#234A87', shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.18, shadowRadius: 28, elevation: 7 },
+  heroImage: { ...StyleSheet.absoluteFillObject },
+  heroVisionBadge: { position: 'absolute', top: 16, right: 16, height: 32, paddingHorizontal: 11, borderRadius: 8, backgroundColor: 'rgba(11,26,51,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', flexDirection: 'row', alignItems: 'center', gap: 6 },
+  heroVisionText: { color: WHITE, fontSize: 11, fontWeight: '800' },
   heroContent: { position: 'absolute', left: 22, right: 22, bottom: 22, alignItems: 'flex-start' },
   heroTitle: { color: WHITE, fontSize: 32, lineHeight: 39, fontWeight: '900', letterSpacing: 0 },
   heroDescription: { color: 'rgba(255,255,255,0.88)', fontSize: 14, lineHeight: 21, marginTop: 8, maxWidth: 330 },
-  heroButtonWrap: { marginTop: 16, borderRadius: 8, overflow: 'hidden' },
-  heroButton: { minWidth: 198, height: 50, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  heroButtonWrap: { marginTop: 16, borderRadius: 8, overflow: 'hidden', shadowColor: '#0D4FD1', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.36, shadowRadius: 18, elevation: 6 },
+  heroButton: { position: 'relative', minWidth: 198, height: 50, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, overflow: 'hidden' },
   heroButtonText: { color: WHITE, fontSize: 15, fontWeight: '800' },
   pressed: { opacity: 0.76 },
   motionDisabled: { opacity: 0.52 },
   modeRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  modeButton: { position: 'relative', flex: 1, height: 82, borderRadius: 8, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  modeButtonSelected: { transform: [{ translateY: -2 }] },
-  modeIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  modeButton: { position: 'relative', flex: 1, height: 82, borderRadius: 8, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', gap: 8, overflow: 'hidden', shadowColor: '#274D7E', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 13, elevation: 2 },
+  modeButtonSelected: { transform: [{ translateY: -3 }], shadowColor: BLUE, shadowOpacity: 0.22, shadowRadius: 16, elevation: 5 },
+  modeIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center', shadowColor: '#14213D', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.16, shadowRadius: 8, elevation: 3 },
   modeLabel: { color: INK, fontSize: 13, fontWeight: '800' },
   modeCheck: { position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  sceneInputPanel: { marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, padding: 12 },
+  sceneInputPanel: { marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: '#D8E4F5', backgroundColor: WHITE, padding: 12, shadowColor: '#315D93', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 3 },
   textInputRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sceneTextInput: { flex: 1, height: 46, borderRadius: 8, borderWidth: 1, borderColor: '#D8E2F0', backgroundColor: '#FAFBFD', paddingHorizontal: 13, color: INK, fontSize: 14 },
   roundAction: { width: 46, height: 46, borderRadius: 8, backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center' },
@@ -1209,9 +1291,9 @@ const styles = StyleSheet.create({
   learningDeck: { position: 'relative', height: 126, marginHorizontal: 2 },
   learningDeckLoading: { borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, alignItems: 'center', justifyContent: 'center' },
   emptyLearningCard: { minHeight: 92, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  deckCard: { position: 'absolute', minHeight: 106, borderRadius: 8, borderWidth: 1, borderColor: '#DCE5F2', backgroundColor: WHITE, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12, overflow: 'hidden', shadowColor: '#1B3B6F', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.07, shadowRadius: 18, elevation: 2 },
-  deckCardBack: { minHeight: 104 },
-  deckCardFront: { top: 0, left: 0, right: 0, zIndex: 4, padding: 0, backgroundColor: WHITE },
+  deckCard: { position: 'absolute', minHeight: 106, borderRadius: 8, borderWidth: 1, borderColor: '#D4E1F4', backgroundColor: WHITE, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12, overflow: 'hidden', shadowColor: '#1B3B6F', shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.13, shadowRadius: 20, elevation: 4 },
+  deckCardBack: { minHeight: 104, backgroundColor: '#F5F8FD', borderColor: '#C9D9F0' },
+  deckCardFront: { top: 0, left: 0, right: 0, zIndex: 4, padding: 0, backgroundColor: WHITE, borderColor: '#C7D9F7' },
   deckPressable: { minHeight: 104, flex: 1, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12 },
   deckImage: { width: 76, height: 76, borderRadius: 8, backgroundColor: '#EDF1F5' },
   deckFallback: { width: 76, height: 76, borderRadius: 8, backgroundColor: '#FFF3E8', alignItems: 'center', justifyContent: 'center' },
@@ -1229,26 +1311,39 @@ const styles = StyleSheet.create({
   deckIndicator: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#CFD8E6' },
   deckIndicatorActive: { width: 20, backgroundColor: BLUE },
   deckSwipeHint: { width: 54, color: '#98A2B3', fontSize: 10, textAlign: 'right' },
-  progressPanel: { marginTop: 14, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, padding: 16 },
-  progressHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  progressPanel: { position: 'relative', marginTop: 14, borderRadius: 8, borderWidth: 1, borderColor: '#D5E1F2', backgroundColor: WHITE, padding: 16, overflow: 'hidden', shadowColor: '#2457A6', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 22, elevation: 4 },
+  progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  progressHeaderCopy: { flex: 1, minWidth: 0 },
+  progressEyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
+  progressPulse: { width: 7, height: 7, borderRadius: 4, backgroundColor: BLUE, shadowColor: BLUE, shadowOpacity: 0.58, shadowRadius: 6, elevation: 3 },
+  progressEyebrow: { color: BLUE, fontSize: 10, fontWeight: '900' },
   progressSubtitle: { color: MUTED, fontSize: 12, marginTop: 3 },
   progressBadge: { minWidth: 54, height: 32, borderRadius: 8, paddingHorizontal: 9, backgroundColor: BLUE_SOFT, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   progressBadgeCompleted: { backgroundColor: '#EAF8F1' },
   progressCount: { color: BLUE, fontSize: 18, fontWeight: '900' },
   progressCountCompleted: { color: GREEN },
+  progressRingWrap: { width: 68, height: 68, alignItems: 'center', justifyContent: 'center' },
+  progressRingCopy: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  progressRingCompleted: { alignItems: 'center', justifyContent: 'center' },
+  progressRingCompletedText: { color: GREEN, fontSize: 9, lineHeight: 11, fontWeight: '900' },
+  progressRingFraction: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center' },
+  progressRingNumber: { color: BLUE, fontSize: 20, fontWeight: '900' },
+  progressRingGoal: { color: MUTED, fontSize: 10, fontWeight: '800', marginLeft: 1 },
   progressTrack: { height: 8, borderRadius: 4, backgroundColor: '#EAF0F7', marginTop: 13, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 4, backgroundColor: GREEN },
   weekHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, paddingTop: 14, borderTopWidth: 1, borderTopColor: BORDER },
   weekTitle: { color: INK, fontSize: 13, fontWeight: '800' },
   weekCount: { color: GREEN, fontSize: 12, fontWeight: '800' },
-  weekRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 11 },
-  weekDay: { width: 30, alignItems: 'center', gap: 7 },
+  weekRow: { position: 'relative', flexDirection: 'row', justifyContent: 'space-between', marginTop: 11 },
+  weekConnector: { position: 'absolute', left: 15, right: 15, top: 32, height: 2, backgroundColor: '#E7ECF3', overflow: 'hidden' },
+  weekConnectorFill: { height: '100%', backgroundColor: '#83CCAD' },
+  weekDay: { width: 30, alignItems: 'center', gap: 7, zIndex: 1 },
   weekDayLabel: { color: '#98A2B3', fontSize: 11, fontWeight: '700' },
   weekDayLabelToday: { color: BLUE },
   weekDot: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#F0F2F5', alignItems: 'center', justifyContent: 'center' },
   weekDotCompleted: { backgroundColor: GREEN },
   weekDotToday: { backgroundColor: WHITE, borderWidth: 2, borderColor: BLUE },
-  coachSection: { marginTop: 22, borderRadius: 8, borderWidth: 1, borderColor: '#D7E4FC', backgroundColor: WHITE, padding: 16 },
+  coachSection: { position: 'relative', marginTop: 22, borderRadius: 8, borderWidth: 1, borderColor: '#CFE0FB', backgroundColor: WHITE, padding: 16, overflow: 'hidden', shadowColor: '#2F6FED', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 22, elevation: 4 },
   coachHeading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   coachMark: { width: 40, height: 40, borderRadius: 8, backgroundColor: BLUE_SOFT, alignItems: 'center', justifyContent: 'center' },
   coachHeadingCopy: { flex: 1, minWidth: 0 },
@@ -1274,7 +1369,7 @@ const styles = StyleSheet.create({
   continueChatButton: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, paddingVertical: 3 },
   continueChatText: { color: BLUE, fontSize: 12, fontWeight: '800' },
   shortcutRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  shortcut: { flex: 1, minHeight: 76, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, padding: 11, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  shortcut: { flex: 1, minHeight: 76, borderRadius: 8, borderWidth: 1, borderColor: '#DCE5F1', backgroundColor: WHITE, padding: 11, flexDirection: 'row', alignItems: 'center', gap: 9, shadowColor: '#24486F', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.08, shadowRadius: 15, elevation: 3 },
   shortcutIcon: { width: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   shortcutIconOrange: { backgroundColor: '#FFF3EA' },
   shortcutIconGreen: { backgroundColor: '#EAF8F1' },
