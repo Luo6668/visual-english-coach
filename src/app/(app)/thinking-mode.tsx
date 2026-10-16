@@ -26,6 +26,11 @@ interface ThinkingResult {
   web_fallback?: boolean;
 }
 
+interface FavoriteFeedback {
+  message: string;
+  type: 'success' | 'error';
+}
+
 const FALLBACK_IMAGE = 'https://miaoda-site-img.cdn.bcebos.com/images/baidu_image_search_a781594c-4d9a-42be-8a26-4e12780b9593.jpg';
 
 /** 可靠的 base64 读取：web 用 FileReader，native 用 FileSystem */
@@ -127,6 +132,8 @@ export default function ThinkingModeScreen() {
   const [imageReady, setImageReady] = useState(false);
   const [recognitionProgress, setRecognitionProgress] = useState(12);
   const [saved, setSaved] = useState(false);
+  const [savingFavorite, setSavingFavorite] = useState(false);
+  const [favoriteFeedback, setFavoriteFeedback] = useState<FavoriteFeedback | null>(null);
   const [recordId, setRecordId] = useState<string | null>(null);
   const [speakingKey, setSpeakingKey] = useState<string | null>(null);
   const [speechRates, setSpeechRates] = useState<Record<SentenceKey, SpeechRate>>(DEFAULT_SPEECH_RATES);
@@ -137,6 +144,7 @@ export default function ThinkingModeScreen() {
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [translatingKey, setTranslatingKey] = useState<string | null>(null);
   const imageUri = useRef(consumePendingUri()).current;
+  const favoriteFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 防止切换 Tab 回来时重复分析
   const hasGenerated = useRef(false);
   const player = useAudioPlayer();
@@ -155,6 +163,10 @@ export default function ThinkingModeScreen() {
 
     return () => clearInterval(timer);
   }, [isPhotoRecognition, loading]);
+
+  useEffect(() => () => {
+    if (favoriteFeedbackTimer.current) clearTimeout(favoriteFeedbackTimer.current);
+  }, []);
 
   /** 一键翻译三张卡片全部英文 */
   const handleTranslateAll = async () => {
@@ -408,11 +420,43 @@ export default function ThinkingModeScreen() {
     );
   };
 
+  const showFavoriteFeedback = (feedback: FavoriteFeedback) => {
+    if (favoriteFeedbackTimer.current) clearTimeout(favoriteFeedbackTimer.current);
+    setFavoriteFeedback(feedback);
+    favoriteFeedbackTimer.current = setTimeout(() => {
+      setFavoriteFeedback(null);
+      favoriteFeedbackTimer.current = null;
+    }, 2400);
+  };
+
   const handleSave = async () => {
-    if (recordId && !saved) {
-      await updateLearningRecord(recordId, { is_favorited: true });
-      setSaved(true);
-      if (process.env.EXPO_OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (savingFavorite) return;
+    if (!recordId) {
+      showFavoriteFeedback({ message: '学习记录尚未保存，请稍后重试', type: 'error' });
+      return;
+    }
+
+    const nextSaved = !saved;
+    setSavingFavorite(true);
+    setFavoriteFeedback(null);
+    try {
+      await updateLearningRecord(recordId, { is_favorited: nextSaved });
+      setSaved(nextSaved);
+      showFavoriteFeedback({
+        message: nextSaved ? '已收藏到我的学习记录' : '已取消收藏',
+        type: 'success',
+      });
+      if (process.env.EXPO_OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.error('update favorite failed:', error);
+      showFavoriteFeedback({ message: '收藏状态保存失败，请重试', type: 'error' });
+      if (process.env.EXPO_OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    } finally {
+      setSavingFavorite(false);
     }
   };
 
@@ -574,13 +618,44 @@ export default function ThinkingModeScreen() {
           <ChevronLeft size={25} color="#1268EE" strokeWidth={2.2} />
         </Pressable>
         <Text style={{ flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '900', color: '#1268EE' }}>场景英语</Text>
-        <Pressable onPress={handleSave} className="active:opacity-70"
+        <Pressable onPress={handleSave} disabled={savingFavorite} className="active:opacity-70"
           accessibilityRole="button"
-          accessibilityLabel={saved ? '已收藏' : '收藏这个场景'}
-          style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
-          <Bookmark size={22} color="#1268EE" fill={saved ? '#1268EE' : 'transparent'} />
+          accessibilityLabel={saved ? '取消收藏这个场景' : '收藏这个场景'}
+          accessibilityState={{ disabled: savingFavorite, selected: saved }}
+          style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: savingFavorite ? 0.65 : 1 }}>
+          {savingFavorite
+            ? <ActivityIndicator size={20} color="#1268EE" />
+            : <Bookmark size={23} color="#1268EE" fill={saved ? '#1268EE' : 'transparent'} />
+          }
         </Pressable>
       </View>
+
+      {favoriteFeedback && (
+        <View
+          accessibilityRole="alert"
+          style={{
+            position: 'absolute', top: 108, left: 0, right: 0, zIndex: 20,
+            alignItems: 'center', paddingHorizontal: 24,
+          }}>
+          <View style={{
+            width: '100%', maxWidth: 360, minHeight: 42,
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+            borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+            backgroundColor: favoriteFeedback.type === 'success' ? '#ECFDF5' : '#FFF1F2',
+            borderWidth: 1,
+            borderColor: favoriteFeedback.type === 'success' ? '#A7F3D0' : '#FECDD3',
+            shadowColor: '#10213D', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 10,
+          }}>
+            {favoriteFeedback.type === 'success'
+              ? <Check size={17} color="#059669" strokeWidth={2.6} />
+              : <AlertCircle size={17} color="#E11D48" strokeWidth={2.4} />
+            }
+            <Text style={{ color: favoriteFeedback.type === 'success' ? '#047857' : '#BE123C', fontSize: 13, fontWeight: '800' }}>
+              {favoriteFeedback.message}
+            </Text>
+          </View>
+        </View>
+      )}
 
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
