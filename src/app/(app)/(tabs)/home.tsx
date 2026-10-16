@@ -195,7 +195,9 @@ function AudioWave({ active }: { active: boolean }) {
 
 function InputModeButton({
   mode,
+  index,
   label,
+  description,
   icon: Icon,
   color,
   background,
@@ -203,7 +205,9 @@ function InputModeButton({
   onPress,
 }: {
   mode: SceneInputMode;
+  index: string;
   label: string;
+  description: string;
   icon: ComponentType<{ size?: number; color?: string }>;
   color: string;
   background: string;
@@ -243,10 +247,19 @@ function InputModeButton({
           selected && styles.modeButtonSelected,
         ]}
       >
-        <Animated.View style={[styles.modeIcon, { backgroundColor: color }, iconStyle]}>
-          <Icon size={20} color={WHITE} />
-        </Animated.View>
-        <Text style={styles.modeLabel}>{label}</Text>
+        <View style={styles.modeTopRow}>
+          <Animated.View style={[styles.modeIcon, { backgroundColor: color }, iconStyle]}>
+            <Icon size={20} color={WHITE} />
+          </Animated.View>
+          <Text style={[styles.modeIndex, { color }]}>{index}</Text>
+        </View>
+        <View style={styles.modeCopy}>
+          <Text style={styles.modeLabel}>{label}</Text>
+          <Text style={styles.modeDescription} numberOfLines={1}>{description}</Text>
+        </View>
+        <View style={[styles.modeDirection, selected && { backgroundColor: color }]}>
+          <ChevronRight size={14} color={selected ? WHITE : color} strokeWidth={2.5} />
+        </View>
         {selected && (
           <Animated.View entering={reduceMotion ? undefined : ZoomIn.duration(180)} style={[styles.modeCheck, { backgroundColor: color }]}>
             <Check size={10} color={WHITE} strokeWidth={3} />
@@ -288,8 +301,7 @@ function ProgressRing({ progress, count, goal }: { progress: number; count: numb
           strokeWidth={7}
           strokeDasharray={`${circumference} ${circumference}`}
           strokeLinecap="round"
-          rotation="-90"
-          origin="34, 34"
+          transform="rotate(-90 34 34)"
         />
       </Svg>
       <View style={styles.progressRingCopy}>
@@ -410,6 +422,7 @@ function LearningDeck({ records, loading, failedImageId, onImageError, onOpen, o
 
   const renderCardContent = (record: LearningRecord) => (
     <>
+      <View style={styles.deckAccentRail} />
       {record.scene_image && !record.scene_image.startsWith('blob:') && failedImageId !== record.id ? (
         <Image
           source={{ uri: record.scene_image }}
@@ -428,7 +441,10 @@ function LearningDeck({ records, loading, failedImageId, onImageError, onOpen, o
         <Text style={styles.deckTitle} numberOfLines={1}>{record.scene_name}</Text>
         <Text style={styles.deckSentence} numberOfLines={2}>{record.i_see || '继续完成你的场景英语练习'}</Text>
       </View>
-      <View style={styles.deckArrow}><ChevronRight size={17} color={BLUE} /></View>
+      <View style={styles.deckArrow}>
+        <Text style={styles.deckArrowLabel}>继续</Text>
+        <ChevronRight size={15} color={BLUE} strokeWidth={2.5} />
+      </View>
     </>
   );
 
@@ -475,7 +491,7 @@ function LearningDeck({ records, loading, failedImageId, onImageError, onOpen, o
       </View>
 
       <View style={styles.deckPagination}>
-        <Text style={styles.deckCounter}>{activeIndex + 1}/{visibleRecords.length}</Text>
+        <Text style={styles.deckCounter}>第 {activeIndex + 1}/{visibleRecords.length} 条</Text>
         <View style={styles.deckIndicatorRow}>
           {visibleRecords.map((record, index) => (
             <Pressable
@@ -509,6 +525,7 @@ export default function HomeScreen() {
   const [sceneInputMode, setSceneInputMode] = useState<InputMode | null>(null);
   const [sceneInputText, setSceneInputText] = useState('');
   const [coachInput, setCoachInput] = useState('');
+  const [coachInputFocused, setCoachInputFocused] = useState(false);
   const [records, setRecords] = useState<LearningRecord[]>([]);
   const [streakDays, setStreakDays] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -815,11 +832,12 @@ export default function HomeScreen() {
   };
 
   const inputModes = [
-    { key: 'camera' as const, label: '拍照', icon: Camera, color: BLUE, background: '#EDF4FF' },
-    { key: 'gallery' as const, label: '相册', icon: ImageIcon, color: GREEN, background: '#ECF9F2' },
-    { key: 'text' as const, label: '文字', icon: Pencil, color: ORANGE, background: '#FFF3EA' },
-    { key: 'voice' as const, label: '语音', icon: Mic, color: '#8B5CF6', background: '#F4EFFF' },
+    { key: 'camera' as const, index: '01', label: '拍照', description: '拍下眼前场景', icon: Camera, color: BLUE, background: '#F4F8FF' },
+    { key: 'gallery' as const, index: '02', label: '相册', description: '从已有照片开始', icon: ImageIcon, color: GREEN, background: '#F2FBF7' },
+    { key: 'text' as const, index: '03', label: '文字', description: '描述正在经历的', icon: Pencil, color: ORANGE, background: '#FFF7F1' },
+    { key: 'voice' as const, index: '04', label: '语音', description: '说出眼前的场景', icon: Mic, color: '#7357D9', background: '#F7F4FF' },
   ];
+  const activeInputMode = inputModes.find(({ key }) => key === sceneInputMode);
   const coachSuggestions = ['咖啡馆怎么自然点单？', '帮我纠正一句英语', '练习机场英语对话'];
 
   return (
@@ -904,13 +922,15 @@ export default function HomeScreen() {
             layout={reduceMotion ? undefined : LinearTransition.springify().damping(19).stiffness(190)}
             style={styles.modeRow}
           >
-            {inputModes.map(({ key, label, icon, color, background }) => {
+            {inputModes.map(({ key, index, label, description, icon, color, background }) => {
               const selected = sceneInputMode === key;
               return (
                 <InputModeButton
                   key={key}
                   mode={key}
+                  index={index}
                   label={label}
+                  description={description}
                   icon={icon}
                   color={color}
                   background={background}
@@ -928,6 +948,14 @@ export default function HomeScreen() {
               layout={reduceMotion ? undefined : LinearTransition.springify().damping(20).stiffness(180)}
               style={styles.sceneInputPanel}
             >
+              <View style={styles.sceneInputHeader}>
+                <View style={[styles.sceneInputMarker, { backgroundColor: activeInputMode?.color ?? BLUE }]} />
+                <View style={styles.sceneInputHeaderCopy}>
+                  <Text style={styles.sceneInputEyebrow}>当前输入方式</Text>
+                  <Text style={styles.sceneInputTitle}>{activeInputMode?.label}</Text>
+                </View>
+                <Text style={styles.sceneInputStep}>{activeInputMode?.index}</Text>
+              </View>
               {sceneInputMode === 'text' ? (
                 <View style={styles.textInputRow}>
                   <TextInput
@@ -1022,7 +1050,10 @@ export default function HomeScreen() {
             entering={reduceMotion ? undefined : FadeInDown.delay(170).duration(420)}
             style={styles.sectionHeader}
           >
-            <Text style={styles.sectionTitle}>继续学习</Text>
+            <View style={styles.sectionHeadingBlock}>
+              <Text style={styles.sectionEyebrow}>LEARNING PATH</Text>
+              <Text style={styles.sectionTitle}>继续学习</Text>
+            </View>
             <MotionPressable onPress={() => router.push('/(app)/(tabs)/learning' as any)} style={styles.textLink}>
               <Text style={styles.textLinkLabel}>全部记录</Text>
               <ChevronRight size={15} color={BLUE} />
@@ -1063,6 +1094,22 @@ export default function HomeScreen() {
             </View>
             <View style={styles.progressTrack}>
               <Animated.View style={[styles.progressFill, progressAnimatedStyle]} />
+            </View>
+            <View style={styles.progressMetricRow}>
+              <View style={styles.progressMetric}>
+                <Text style={styles.progressMetricValue}>{todayCount}</Text>
+                <Text style={styles.progressMetricLabel}>今日场景</Text>
+              </View>
+              <View style={styles.progressMetricDivider} />
+              <View style={styles.progressMetric}>
+                <Text style={styles.progressMetricValue}>{streakDays}</Text>
+                <Text style={styles.progressMetricLabel}>连续天数</Text>
+              </View>
+              <View style={styles.progressMetricDivider} />
+              <View style={styles.progressMetric}>
+                <Text style={styles.progressMetricValue}>{weekCompleted}</Text>
+                <Text style={styles.progressMetricLabel}>本周完成</Text>
+              </View>
             </View>
             <View style={styles.weekHeader}>
               <Text style={styles.weekTitle}>本周学习</Text>
@@ -1105,11 +1152,18 @@ export default function HomeScreen() {
             entering={reduceMotion ? undefined : FadeInDown.delay(300).duration(440)}
             style={styles.coachSection}
           >
+            <LinearGradient
+              colors={['#2F6FED', '#62A0FF']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.coachTopAccent}
+            />
             <View style={styles.coachHeading}>
               <View style={styles.coachMark}>
                 <Sparkles size={18} color={BLUE} />
               </View>
               <View style={styles.coachHeadingCopy}>
+                <Text style={styles.coachKicker}>PERSONAL COACH</Text>
                 <Text style={styles.sectionTitle}>AI 英语教练</Text>
                 <Text style={styles.coachSubtitle}>问表达、练对话、纠正英语</Text>
               </View>
@@ -1119,10 +1173,12 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            <View style={styles.coachComposer}>
+            <View style={[styles.coachComposer, coachInputFocused && styles.coachComposerFocused]}>
               <TextInput
                 value={coachInput}
                 onChangeText={setCoachInput}
+                onFocus={() => setCoachInputFocused(true)}
+                onBlur={() => setCoachInputFocused(false)}
                 placeholder="问问 AI 教练…"
                 placeholderTextColor="#98A2B3"
                 returnKeyType="send"
@@ -1163,7 +1219,10 @@ export default function HomeScreen() {
 
             <View style={styles.coachReply}>
               <View style={styles.replyTopRow}>
-                <Text style={styles.replyLabel}>AI 教练推荐</Text>
+                <View style={styles.replyLabelRow}>
+                  <View style={styles.replyStatusDot} />
+                  <Text style={styles.replyLabel}>AI 教练推荐</Text>
+                </View>
                 <MotionPressable onPress={togglePreviewSpeech} style={styles.readButton}>
                   {previewSpeaking ? <Square size={12} color={BLUE} fill={BLUE} /> : <Volume2 size={15} color={BLUE} />}
                   <Text style={styles.readButtonText}>{previewSpeaking ? '停止' : '朗读'}</Text>
@@ -1186,27 +1245,37 @@ export default function HomeScreen() {
               onPress={() => router.push(`/(app)/shadowing?sentence=${encodeURIComponent(COACH_EXPRESSION)}` as any)}
               style={styles.shortcut}
             >
-              <View style={[styles.shortcutIcon, styles.shortcutIconOrange]}>
-                <Headphones size={21} color={ORANGE} />
+              <View style={styles.shortcutTopRow}>
+                <View style={[styles.shortcutIcon, styles.shortcutIconOrange]}>
+                  <Headphones size={21} color={ORANGE} />
+                </View>
+                <Text style={styles.shortcutIndex}>01</Text>
               </View>
-              <View style={styles.shortcutCopy}>
-                <Text style={styles.shortcutTitle}>影子跟读</Text>
+              <Text style={styles.shortcutTitle}>影子跟读</Text>
+              <View style={styles.shortcutFooter}>
                 <Text style={styles.shortcutSubtitle}>练语音节奏</Text>
+                <View style={styles.shortcutArrow}>
+                  <ChevronRight size={15} color={ORANGE} strokeWidth={2.5} />
+                </View>
               </View>
-              <ChevronRight size={17} color="#98A2B3" />
             </MotionPressable>
             <MotionPressable
               onPress={() => router.push('/(app)/scene-map' as any)}
               style={styles.shortcut}
             >
-              <View style={[styles.shortcutIcon, styles.shortcutIconGreen]}>
-                <Map size={21} color={GREEN} />
+              <View style={styles.shortcutTopRow}>
+                <View style={[styles.shortcutIcon, styles.shortcutIconGreen]}>
+                  <Map size={21} color={GREEN} />
+                </View>
+                <Text style={styles.shortcutIndex}>02</Text>
               </View>
-              <View style={styles.shortcutCopy}>
-                <Text style={styles.shortcutTitle}>场景地图</Text>
+              <Text style={styles.shortcutTitle}>场景地图</Text>
+              <View style={styles.shortcutFooter}>
                 <Text style={styles.shortcutSubtitle}>探索更多场景</Text>
+                <View style={styles.shortcutArrow}>
+                  <ChevronRight size={15} color={GREEN} strokeWidth={2.5} />
+                </View>
               </View>
-              <ChevronRight size={17} color="#98A2B3" />
             </MotionPressable>
           </Animated.View>
         </View>
@@ -1251,14 +1320,25 @@ const styles = StyleSheet.create({
   heroButton: { position: 'relative', minWidth: 198, height: 50, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, overflow: 'hidden' },
   heroButtonText: { color: WHITE, fontSize: 15, fontWeight: '800' },
   pressed: { opacity: 0.76 },
-  modeRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  modeSlot: { flex: 1 },
-  modeButton: { position: 'relative', height: 82, borderRadius: 8, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', gap: 8, overflow: 'hidden', shadowColor: '#274D7E', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 13, elevation: 2 },
-  modeButtonSelected: { shadowColor: BLUE, shadowOpacity: 0.22, shadowRadius: 16, elevation: 5 },
-  modeIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center', shadowColor: '#14213D', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.16, shadowRadius: 8, elevation: 3 },
-  modeLabel: { color: INK, fontSize: 13, fontWeight: '800' },
+  modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
+  modeSlot: { width: '48.5%', flexGrow: 1 },
+  modeButton: { position: 'relative', minHeight: 112, borderRadius: 8, borderWidth: 1.5, padding: 12, justifyContent: 'space-between', overflow: 'hidden', shadowColor: '#274D7E', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.08, shadowRadius: 15, elevation: 2 },
+  modeButtonSelected: { shadowColor: BLUE, shadowOpacity: 0.2, shadowRadius: 18, elevation: 5 },
+  modeTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  modeIcon: { width: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center', shadowColor: '#14213D', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 8, elevation: 3 },
+  modeIndex: { fontSize: 11, fontWeight: '900' },
+  modeCopy: { paddingRight: 24, marginTop: 10 },
+  modeLabel: { color: INK, fontSize: 15, lineHeight: 20, fontWeight: '900' },
+  modeDescription: { color: MUTED, fontSize: 10, lineHeight: 15, marginTop: 2, fontWeight: '600' },
+  modeDirection: { position: 'absolute', right: 10, bottom: 11, width: 24, height: 24, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.78)', alignItems: 'center', justifyContent: 'center' },
   modeCheck: { position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  sceneInputPanel: { marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: '#D8E4F5', backgroundColor: WHITE, padding: 12, shadowColor: '#315D93', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 3 },
+  sceneInputPanel: { marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: '#C9DAF3', backgroundColor: WHITE, padding: 12, shadowColor: '#315D93', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.1, shadowRadius: 18, elevation: 3 },
+  sceneInputHeader: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingBottom: 10, marginBottom: 11, borderBottomWidth: 1, borderBottomColor: '#E9EEF5' },
+  sceneInputMarker: { width: 4, height: 30, borderRadius: 2 },
+  sceneInputHeaderCopy: { flex: 1 },
+  sceneInputEyebrow: { color: '#98A2B3', fontSize: 9, lineHeight: 12, fontWeight: '800' },
+  sceneInputTitle: { color: INK, fontSize: 14, lineHeight: 18, fontWeight: '900' },
+  sceneInputStep: { color: '#B3BCC9', fontSize: 16, fontWeight: '900' },
   textInputRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sceneTextInput: { flex: 1, height: 46, borderRadius: 8, borderWidth: 1, borderColor: '#D8E2F0', backgroundColor: '#FAFBFD', paddingHorizontal: 13, color: INK, fontSize: 14 },
   roundAction: { width: 46, height: 46, borderRadius: 8, backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center' },
@@ -1284,7 +1364,9 @@ const styles = StyleSheet.create({
   secondarySmallButtonText: { color: MUTED, fontSize: 13, fontWeight: '800' },
   errorText: { color: '#D92D20', fontSize: 12, lineHeight: 18, marginTop: 8 },
   sectionGap: { height: 26 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 10 },
+  sectionHeadingBlock: { gap: 1 },
+  sectionEyebrow: { color: BLUE, fontSize: 9, lineHeight: 12, fontWeight: '900' },
   sectionTitle: { color: INK, fontSize: 18, lineHeight: 24, fontWeight: '900', letterSpacing: 0 },
   textLink: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 4 },
   textLinkLabel: { color: BLUE, fontSize: 12, fontWeight: '800' },
@@ -1305,6 +1387,7 @@ const styles = StyleSheet.create({
   deckCardBack: { minHeight: 104, backgroundColor: '#F5F8FD', borderColor: '#C9D9F0' },
   deckCardFront: { top: 0, left: 0, right: 0, zIndex: 4, padding: 0, backgroundColor: WHITE, borderColor: '#C7D9F7' },
   deckPressable: { minHeight: 104, flex: 1, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12 },
+  deckAccentRail: { position: 'absolute', left: 0, top: 12, bottom: 12, width: 3, borderRadius: 2, backgroundColor: BLUE },
   deckImage: { width: 76, height: 76, borderRadius: 8, backgroundColor: '#EDF1F5' },
   deckFallback: { width: 76, height: 76, borderRadius: 8, backgroundColor: '#FFF3E8', alignItems: 'center', justifyContent: 'center' },
   deckEmoji: { fontSize: 34 },
@@ -1314,12 +1397,13 @@ const styles = StyleSheet.create({
   deckDate: { color: '#98A2B3', fontSize: 10, fontWeight: '700' },
   deckTitle: { color: INK, fontSize: 16, lineHeight: 21, fontWeight: '900', marginTop: 4 },
   deckSentence: { color: MUTED, fontSize: 12, lineHeight: 17, marginTop: 3 },
-  deckArrow: { width: 30, height: 30, borderRadius: 8, backgroundColor: BLUE_SOFT, alignItems: 'center', justifyContent: 'center' },
+  deckArrow: { height: 32, paddingHorizontal: 8, borderRadius: 8, backgroundColor: BLUE_SOFT, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 1 },
+  deckArrowLabel: { color: BLUE, fontSize: 10, fontWeight: '900' },
   deckPagination: { minHeight: 28, marginTop: 4, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  deckCounter: { width: 42, color: MUTED, fontSize: 11, fontWeight: '800' },
-  deckIndicatorRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  deckIndicator: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#CFD8E6' },
-  deckIndicatorActive: { width: 20, backgroundColor: BLUE },
+  deckCounter: { width: 62, color: MUTED, fontSize: 10, fontWeight: '800' },
+  deckIndicatorRow: { height: 16, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 5, borderRadius: 8, backgroundColor: '#E9EEF5' },
+  deckIndicator: { width: 12, height: 4, borderRadius: 2, backgroundColor: '#C6D0DE' },
+  deckIndicatorActive: { width: 30, backgroundColor: BLUE },
   deckSwipeHint: { width: 54, color: '#98A2B3', fontSize: 10, textAlign: 'right' },
   progressPanel: { position: 'relative', marginTop: 14, borderRadius: 8, borderWidth: 1, borderColor: '#D5E1F2', backgroundColor: WHITE, padding: 16, overflow: 'hidden', shadowColor: '#2457A6', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 22, elevation: 4 },
   progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
@@ -1341,7 +1425,12 @@ const styles = StyleSheet.create({
   progressRingGoal: { color: MUTED, fontSize: 10, fontWeight: '800', marginLeft: 1 },
   progressTrack: { height: 8, borderRadius: 4, backgroundColor: '#EAF0F7', marginTop: 13, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 4, backgroundColor: GREEN },
-  weekHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, paddingTop: 14, borderTopWidth: 1, borderTopColor: BORDER },
+  progressMetricRow: { minHeight: 54, marginTop: 13, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F6F8FB', borderRadius: 8, paddingVertical: 8 },
+  progressMetric: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  progressMetricValue: { color: INK, fontSize: 17, lineHeight: 21, fontWeight: '900' },
+  progressMetricLabel: { color: MUTED, fontSize: 9, lineHeight: 13, marginTop: 1, fontWeight: '700' },
+  progressMetricDivider: { width: 1, height: 27, backgroundColor: '#DDE4EE' },
+  weekHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, paddingTop: 13, borderTopWidth: 1, borderTopColor: BORDER },
   weekTitle: { color: INK, fontSize: 13, fontWeight: '800' },
   weekCount: { color: GREEN, fontSize: 12, fontWeight: '800' },
   weekRow: { position: 'relative', flexDirection: 'row', justifyContent: 'space-between', marginTop: 11 },
@@ -1353,15 +1442,18 @@ const styles = StyleSheet.create({
   weekDot: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#F0F2F5', alignItems: 'center', justifyContent: 'center' },
   weekDotCompleted: { backgroundColor: GREEN },
   weekDotToday: { backgroundColor: WHITE, borderWidth: 2, borderColor: BLUE },
-  coachSection: { position: 'relative', marginTop: 22, borderRadius: 8, borderWidth: 1, borderColor: '#CFE0FB', backgroundColor: WHITE, padding: 16, overflow: 'hidden', shadowColor: '#2F6FED', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 22, elevation: 4 },
+  coachSection: { position: 'relative', marginTop: 22, borderRadius: 8, borderWidth: 1, borderColor: '#CFE0FB', backgroundColor: WHITE, padding: 16, paddingTop: 19, overflow: 'hidden', shadowColor: '#2F6FED', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 22, elevation: 4 },
+  coachTopAccent: { position: 'absolute', left: 0, right: 0, top: 0, height: 3 },
   coachHeading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   coachMark: { width: 40, height: 40, borderRadius: 8, backgroundColor: BLUE_SOFT, alignItems: 'center', justifyContent: 'center' },
   coachHeadingCopy: { flex: 1, minWidth: 0 },
+  coachKicker: { color: BLUE, fontSize: 8, lineHeight: 10, fontWeight: '900' },
   coachSubtitle: { color: MUTED, fontSize: 12, marginTop: 1 },
-  onlineStatus: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  onlineStatus: { height: 27, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, borderRadius: 8, backgroundColor: '#ECF9F2' },
   onlineDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: GREEN },
   onlineText: { color: MUTED, fontSize: 11, fontWeight: '700' },
   coachComposer: { height: 52, marginTop: 15, borderRadius: 8, borderWidth: 1, borderColor: '#D7E0EB', backgroundColor: '#FAFBFD', flexDirection: 'row', alignItems: 'center', paddingLeft: 13, paddingRight: 5, gap: 5 },
+  coachComposerFocused: { borderColor: BLUE, backgroundColor: WHITE, shadowColor: BLUE, shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 3 },
   coachInput: { flex: 1, minWidth: 0, color: INK, fontSize: 14, paddingVertical: 0 },
   coachMicButton: { width: 38, height: 38, borderRadius: 8, backgroundColor: BLUE_SOFT, alignItems: 'center', justifyContent: 'center' },
   coachSendButton: { width: 38, height: 38, borderRadius: 8, backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center' },
@@ -1371,6 +1463,8 @@ const styles = StyleSheet.create({
   suggestionText: { color: '#475467', fontSize: 12, fontWeight: '700' },
   coachReply: { marginTop: 13, borderRadius: 8, backgroundColor: '#F5F8FF', padding: 13, borderLeftWidth: 3, borderLeftColor: BLUE },
   replyTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  replyLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  replyStatusDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: BLUE },
   replyLabel: { color: BLUE_DARK, fontSize: 11, fontWeight: '900' },
   readButton: { height: 30, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, borderRadius: 8, backgroundColor: WHITE, borderWidth: 1, borderColor: '#D9E4F8' },
   readButtonText: { color: BLUE, fontSize: 11, fontWeight: '800' },
@@ -1379,12 +1473,15 @@ const styles = StyleSheet.create({
   continueChatButton: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, paddingVertical: 3 },
   continueChatText: { color: BLUE, fontSize: 12, fontWeight: '800' },
   shortcutRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  shortcut: { flex: 1, minHeight: 76, borderRadius: 8, borderWidth: 1, borderColor: '#DCE5F1', backgroundColor: WHITE, padding: 11, flexDirection: 'row', alignItems: 'center', gap: 9, shadowColor: '#24486F', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.08, shadowRadius: 15, elevation: 3 },
+  shortcut: { flex: 1, minHeight: 116, borderRadius: 8, borderWidth: 1, borderColor: '#DCE5F1', backgroundColor: WHITE, padding: 12, justifyContent: 'space-between', shadowColor: '#24486F', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.08, shadowRadius: 15, elevation: 3 },
+  shortcutTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   shortcutIcon: { width: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   shortcutIconOrange: { backgroundColor: '#FFF3EA' },
   shortcutIconGreen: { backgroundColor: '#EAF8F1' },
-  shortcutCopy: { flex: 1, minWidth: 0 },
-  shortcutTitle: { color: INK, fontSize: 13, fontWeight: '900' },
-  shortcutSubtitle: { color: MUTED, fontSize: 10, marginTop: 2 },
+  shortcutIndex: { color: '#B4BECC', fontSize: 10, fontWeight: '900' },
+  shortcutTitle: { color: INK, fontSize: 15, lineHeight: 20, fontWeight: '900', marginTop: 9 },
+  shortcutFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 3 },
+  shortcutSubtitle: { color: MUTED, fontSize: 10 },
+  shortcutArrow: { width: 25, height: 25, borderRadius: 8, backgroundColor: '#F5F7FA', alignItems: 'center', justifyContent: 'center' },
   revealCircle: { position: 'absolute', width: 72, height: 72, borderRadius: 36, zIndex: 100, elevation: 20 },
 });
