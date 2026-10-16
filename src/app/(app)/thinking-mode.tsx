@@ -4,7 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { AlertCircle, Bookmark, BookOpen, Camera, Check, ChevronLeft, Eye, Languages, MessageCircle, MessageSquare, Mic, PencilLine, RefreshCw, ScanLine, Volume2, WifiOff } from 'lucide-react-native';
+import { AlertCircle, Bookmark, Camera, Check, ChevronLeft, Languages, MessageCircle, Mic, PencilLine, RefreshCw, ScanLine, Volume2, WifiOff } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { createHighFreqWord, createLearningRecord, createSentence, invokeEdgeFunction, updateLearningRecord, upsertScene } from '@/lib/api';
@@ -104,32 +104,23 @@ const DEFAULT_SPEECH_RATES: Record<SentenceKey, SpeechRate> = {
 
 const CARD_CONFIG = [
   {
-    key: 'i_see' as const, label: '看场景', en: 'See', Icon: Eye,
-    headerBg: YELLOW, headerText: '#1C1C1E', bodyBg: '#FFFDF0',
-    dotColor: YELLOW,
+    key: 'i_see' as const, step: '01', label: '看见场景', en: 'SEE',
+    accentColor: '#F6C945', numberBg: '#FFF2BE', numberText: '#9A6A00',
   },
   {
-    key: 'i_think' as const, label: '学表达', en: 'Learn', Icon: BookOpen,
-    headerBg: BLUE_DARK, headerText: '#FFFFFF', bodyBg: '#F0F5FB',
-    dotColor: BLUE,
+    key: 'i_think' as const, step: '02', label: '学会表达', en: 'LEARN',
+    accentColor: '#2F80ED', numberBg: '#DCEBFF', numberText: '#1268EE',
   },
   {
-    key: 'i_say' as const, label: '开口说', en: 'Speak', Icon: MessageSquare,
-    headerBg: '#FF6B35', headerText: '#FFFFFF', bodyBg: '#FFF5F0',
-    dotColor: '#FF6B35',
+    key: 'i_say' as const, step: '03', label: '现在开口', en: 'SPEAK',
+    accentColor: '#FF6B2C', numberBg: '#FFE2D3', numberText: '#D94C0F',
   },
-];
-
-const DIFFICULTY_CONFIG = [
-  { value: 'simple' as Difficulty, label: '🌱 简单', sub: 'A1-A2' },
-  { value: 'natural' as Difficulty, label: '✨ 自然', sub: 'B1-B2' },
-  { value: 'advanced' as Difficulty, label: '🔥 高级', sub: 'C1-C2' },
 ];
 
 export default function ThinkingModeScreen() {
   const router = useRouter();
   const { inputType, text } = useLocalSearchParams();
-  const [difficulty, setDifficulty] = useState<Difficulty>('natural');
+  const [difficulty] = useState<Difficulty>('natural');
   const [result, setResult] = useState<ThinkingResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -307,11 +298,6 @@ export default function ThinkingModeScreen() {
     (async () => { await generate(difficulty); })();
   }, [])); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleDifficulty = (v: Difficulty) => {
-    setDifficulty(v);
-    (async () => { await generate(v); })();
-  };
-
   const persistRegeneratedResult = async (next: ThinkingResult, changedSentences: string[]) => {
     if (!recordId) return;
     await updateLearningRecord(recordId, {
@@ -439,7 +425,7 @@ export default function ThinkingModeScreen() {
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 2 }}>
       {sentence.split(' ').map((word, i) => (
         <Pressable key={i} onPress={() => handleWordPress(word)} className="active:opacity-50">
-          <Text style={{ fontSize: 15, lineHeight: 26, color: '#1E293B', fontWeight: '500' }}>
+          <Text style={{ fontSize: 17, lineHeight: 28, color: '#10213D', fontWeight: '700' }}>
             {word}{' '}
           </Text>
         </Pressable>
@@ -578,38 +564,47 @@ export default function ThinkingModeScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F0F4F8' }}>
+    <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
       {/* 顶部导航栏 */}
-      <View style={{ backgroundColor: BLUE_DARK, paddingTop: 52, paddingBottom: 14, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' }}>
+      <View style={{ backgroundColor: '#FFFFFF', paddingTop: 52, paddingBottom: 14, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#EEF2F6' }}>
         <Pressable onPress={() => router.back()} className="active:opacity-70"
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}>
-          <ChevronLeft size={20} color="#FFFFFF" />
+          accessibilityRole="button"
+          accessibilityLabel="返回"
+          style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+          <ChevronLeft size={25} color="#1268EE" strokeWidth={2.2} />
         </Pressable>
-        <Text style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '800', color: '#FFFFFF' }}>场景英语</Text>
+        <Text style={{ flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '900', color: '#1268EE' }}>场景英语</Text>
         <Pressable onPress={handleSave} className="active:opacity-70"
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}>
-          <Bookmark size={18} color={saved ? YELLOW : '#FFFFFF'} fill={saved ? YELLOW : 'transparent'} />
+          accessibilityRole="button"
+          accessibilityLabel={saved ? '已收藏' : '收藏这个场景'}
+          style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+          <Bookmark size={22} color="#1268EE" fill={saved ? '#1268EE' : 'transparent'} />
         </Pressable>
       </View>
 
-      <ScrollView contentInsetAdjustmentBehavior="automatic" showsVerticalScrollIndicator={false} bounces>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
+        bounces
+        contentContainerStyle={{ width: '100%', maxWidth: 720, alignSelf: 'center' }}>
         {/* 场景图片 */}
-        <View style={{ marginHorizontal: 16, marginTop: 14, borderRadius: 24, overflow: 'hidden', height: 210,
-          shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 16 }}>
-          <Image source={{ uri: displayImage }} style={{ width: '100%', height: 210 }} contentFit="cover" transition={400} />
+        <View style={{ marginHorizontal: 16, marginTop: 14, borderRadius: 18, overflow: 'hidden', height: 270,
+          shadowColor: '#253B5B', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.14, shadowRadius: 15 }}>
+          <Image source={{ uri: displayImage }} style={{ width: '100%', height: 270 }} contentFit="cover" transition={400} />
           {/* 渐变遮罩 */}
-          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 90, backgroundColor: 'rgba(0,0,0,0.42)' }} />
-          <View style={{ position: 'absolute', bottom: 12, left: 12, right: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 116, backgroundColor: 'rgba(7,18,35,0.55)' }} />
+          <View style={{ position: 'absolute', bottom: 15, left: 16, right: 14, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
             {result ? (
-              <View style={{ backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Camera size={12} color={YELLOW} />
-                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '800' }}>{result.scene_name}</Text>
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={1} style={{ color: '#FFFFFF', fontSize: 22, lineHeight: 28, fontWeight: '900' }}>{result.scene_name}</Text>
+                <Text style={{ marginTop: 4, color: 'rgba(255,255,255,0.9)', fontSize: 13, fontWeight: '600' }}>先学会一句现在就能用的英语</Text>
               </View>
             ) : <View />}
             <View style={{ flexDirection: 'row', gap: 6 }}>
               {result?.vision_used && (
-                <View style={{ backgroundColor: YELLOW, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 }}>
-                  <Text style={{ color: '#1C1C1E', fontSize: 10, fontWeight: '800' }}>👁 AI视觉</Text>
+                <View style={{ backgroundColor: 'rgba(9,21,42,0.76)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' }}>
+                  <Camera size={13} color="#FFFFFF" />
+                  <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>AI视觉</Text>
                 </View>
               )}
             </View>
@@ -623,28 +618,6 @@ export default function ThinkingModeScreen() {
             <Text style={{ fontSize: 11, color: '#92400E', flex: 1 }}>Web预览不支持图片识别，请在手机App中使用拍照功能</Text>
           </View>
         )}
-
-        {/* 难度选择 */}
-        <View style={{ flexDirection: 'row', paddingHorizontal: 16, marginTop: 12, gap: 8 }}>
-          {DIFFICULTY_CONFIG.map(({ value, label, sub }) => {
-            const active = difficulty === value;
-            return (
-              <Pressable key={value} onPress={() => handleDifficulty(value)}
-                className="active:opacity-80"
-                style={{
-                  flex: 1, paddingVertical: 10, borderRadius: 14, alignItems: 'center',
-                  backgroundColor: active ? BLUE : '#FFFFFF',
-                  shadowColor: active ? BLUE : '#000',
-                  shadowOffset: { width: 0, height: active ? 4 : 1 },
-                  shadowOpacity: active ? 0.25 : 0.06, shadowRadius: active ? 10 : 4,
-                  borderWidth: active ? 0 : 1, borderColor: '#E2E8F0',
-                }}>
-                <Text style={{ fontSize: 12, fontWeight: '800', color: active ? '#FFFFFF' : '#64748B' }}>{label}</Text>
-                <Text style={{ fontSize: 10, color: active ? 'rgba(255,255,255,0.75)' : '#94A3B8', marginTop: 2 }}>{sub}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
 
         {/* 内容区 */}
         {loading ? (
@@ -698,18 +671,13 @@ export default function ThinkingModeScreen() {
                     className="active:opacity-70"
                     style={{
                       flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-                      backgroundColor: allVisible ? BLUE + '15' : '#FFFFFF',
-                      borderRadius: 14, paddingVertical: 11,
-                      borderWidth: 1.5,
-                      borderColor: allVisible ? BLUE + '60' : '#E2E8F0',
-                      shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4,
+                      minHeight: 52, backgroundColor: allVisible ? '#EFF6FF' : '#FFFFFF',
+                      borderRadius: 12, paddingVertical: 12,
+                      borderWidth: 1.5, borderColor: '#1268EE',
                     }}>
-                    {isTranslatingAll
-                      ? <ActivityIndicator size={15} color={BLUE} />
-                      : <Languages size={15} color={allVisible ? BLUE : '#64748B'} />
-                    }
-                    <Text style={{ fontSize: 13, fontWeight: '800', color: allVisible ? BLUE : '#475569' }}>
-                      {isTranslatingAll ? '翻译中…' : allVisible ? '隐藏全部译文' : '一键翻译全部'}
+                    {isTranslatingAll ? <ActivityIndicator size={17} color="#1268EE" /> : <Languages size={18} color="#1268EE" />}
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#1268EE' }}>
+                      {isTranslatingAll ? '翻译中…' : allVisible ? '隐藏全部译文' : '翻译全部'}
                     </Text>
                   </Pressable>
                   <Pressable
@@ -719,15 +687,15 @@ export default function ThinkingModeScreen() {
                     disabled={regeneratingAll || regeneratingKey !== null}
                     className="active:opacity-70"
                     style={{
-                      minWidth: 106, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      backgroundColor: BLUE_DARK, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11,
+                      flex: 1, minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+                      backgroundColor: '#1268EE', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
                       opacity: regeneratingKey ? 0.55 : 1,
                     }}>
                     {regeneratingAll
-                      ? <ActivityIndicator size={15} color="#FFFFFF" />
-                      : <RefreshCw size={15} color="#FFFFFF" />
+                      ? <ActivityIndicator size={17} color="#FFFFFF" />
+                      : <RefreshCw size={18} color="#FFFFFF" />
                     }
-                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF' }}>
                       {regeneratingAll ? '生成中…' : '换一组'}
                     </Text>
                   </Pressable>
@@ -747,38 +715,40 @@ export default function ThinkingModeScreen() {
               const isSpeaking = speakingKey === cfg.key;
               return (
                 <View key={cfg.key} style={{
-                  borderRadius: 20, overflow: 'hidden',
-                  shadowColor: cfg.dotColor, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 14,
+                  position: 'relative', borderRadius: 14, overflow: 'hidden',
+                  backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0',
+                  shadowColor: '#29496E', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.09, shadowRadius: 12,
                 }}>
-                  {/* 彩色标题栏 */}
-                  <View style={{ backgroundColor: cfg.headerBg, paddingHorizontal: 16, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <cfg.Icon size={17} color={cfg.headerText} />
-                      <Text style={{ color: cfg.headerText, fontSize: 16, fontWeight: '800' }}>{cfg.label}</Text>
-                      <View style={{ backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 }}>
-                        <Text style={{ color: cfg.headerText, fontSize: 10, fontWeight: '700' }}>{cfg.en}</Text>
+                  <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 5, backgroundColor: cfg.accentColor }} />
+                  <View style={{ paddingLeft: 19, paddingRight: 16, paddingTop: 16, paddingBottom: 15 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: cfg.numberBg, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ color: cfg.numberText, fontSize: 15, fontWeight: '900' }}>{cfg.step}</Text>
                       </View>
+                      <Text style={{ marginLeft: 10, color: '#10213D', fontSize: 17, fontWeight: '900' }}>{cfg.label}</Text>
+                      <Text style={{ marginLeft: 10, color: '#8B98AA', fontSize: 12, fontWeight: '800' }}>{cfg.en}</Text>
+                      <View style={{ flex: 1 }} />
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`${isSpeaking ? '停止' : '朗读'}${cfg.label}英文句子`}
+                        onPress={() => handleSpeak(result[cfg.key], cfg.key)}
+                        className="active:opacity-70"
+                        style={{
+                          width: 40, height: 40, borderRadius: 20,
+                          backgroundColor: isSpeaking ? cfg.numberBg : '#F2F5F9',
+                          alignItems: 'center', justifyContent: 'center',
+                        }}>
+                        <Volume2 size={19} color={isSpeaking ? cfg.numberText : '#11284A'} />
+                      </Pressable>
                     </View>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`${isSpeaking ? '停止' : '朗读'}${cfg.label}英文句子`}
-                      onPress={() => handleSpeak(result[cfg.key], cfg.key)}
-                      className="active:opacity-70"
-                      style={{
-                        width: 36, height: 36, borderRadius: 18,
-                        backgroundColor: isSpeaking ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.2)',
-                        alignItems: 'center', justifyContent: 'center',
-                      }}>
-                      <Volume2 size={16} color={isSpeaking ? YELLOW : cfg.headerText} />
-                    </Pressable>
-                  </View>
-                  {/* 浅色内容区 */}
-                  <View style={{ backgroundColor: cfg.bodyBg, paddingHorizontal: 16, paddingVertical: 14 }}>
-                    {renderSentence(result[cfg.key], false)}
+
+                    <View style={{ marginTop: 15 }}>
+                      {renderSentence(result[cfg.key], false)}
+                    </View>
                     {isSpeaking && (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 }}>
                         {[0,1,2].map(i => (
-                          <View key={i} style={{ width: 4, height: 4 + i * 3, borderRadius: 2, backgroundColor: cfg.dotColor, opacity: 0.8 }} />
+                          <View key={i} style={{ width: 4, height: 4 + i * 3, borderRadius: 2, backgroundColor: cfg.accentColor, opacity: 0.85 }} />
                         ))}
                         <Text style={{ fontSize: 11, color: '#94A3B8', marginLeft: 2 }}>朗读中，点击停止</Text>
                       </View>
@@ -793,27 +763,27 @@ export default function ThinkingModeScreen() {
                         style={{
                           flexDirection: 'row', alignItems: 'center', gap: 5,
                           backgroundColor: translations[cfg.key] && translations[cfg.key] !== '__hidden__'
-                            ? cfg.dotColor + '22' : '#F1F5F9',
-                          borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6,
+                            ? cfg.numberBg : '#F3F5F8',
+                          minWidth: 72, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 8,
                           borderWidth: 1,
                           borderColor: translations[cfg.key] && translations[cfg.key] !== '__hidden__'
-                            ? cfg.dotColor + '50' : '#E2E8F0',
+                            ? cfg.accentColor : '#EDF0F4',
                         }}>
                         {translatingKey === cfg.key
-                          ? <ActivityIndicator size={12} color={cfg.dotColor} />
+                          ? <ActivityIndicator size={13} color={cfg.numberText} />
                           : <Languages size={13} color={
                               translations[cfg.key] && translations[cfg.key] !== '__hidden__'
-                                ? cfg.dotColor : '#64748B'
+                                ? cfg.numberText : '#526176'
                             } />
                         }
                         <Text style={{
                           fontSize: 12, fontWeight: '700',
                           color: translations[cfg.key] && translations[cfg.key] !== '__hidden__'
-                            ? cfg.dotColor : '#64748B',
+                            ? cfg.numberText : '#526176',
                         }}>
                           {translatingKey === cfg.key ? '翻译中…'
-                            : translations[cfg.key] && translations[cfg.key] !== '__hidden__' ? '隐藏译文'
-                            : '查看中文'}
+                            : translations[cfg.key] && translations[cfg.key] !== '__hidden__' ? '隐藏中文'
+                            : '中文'}
                         </Text>
                       </Pressable>
                       <Pressable
@@ -823,26 +793,25 @@ export default function ThinkingModeScreen() {
                         disabled={regeneratingKey !== null || regeneratingAll}
                         className="active:opacity-70"
                         style={{
-                          minWidth: 86, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-                          backgroundColor: '#F1F5F9', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6,
-                          borderWidth: 1, borderColor: '#E2E8F0',
+                          minWidth: 82, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+                          backgroundColor: '#F3F5F8', borderRadius: 10, paddingHorizontal: 11, paddingVertical: 8,
+                          borderWidth: 1, borderColor: '#EDF0F4',
                           opacity: regeneratingAll || (regeneratingKey && regeneratingKey !== cfg.key) ? 0.5 : 1,
                         }}>
                         {regeneratingKey === cfg.key
-                          ? <ActivityIndicator size={12} color={cfg.dotColor} />
-                          : <RefreshCw size={13} color="#64748B" />
+                          ? <ActivityIndicator size={13} color={cfg.numberText} />
+                          : <RefreshCw size={13} color="#526176" />
                         }
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#526176' }}>
                           {regeneratingKey === cfg.key ? '生成中…' : '换一句'}
                         </Text>
                       </Pressable>
                       <View
                         accessibilityLabel={`${cfg.label}朗读语速`}
                         style={{
-                          marginLeft: 'auto', height: 32, flexDirection: 'row', alignItems: 'center',
-                          backgroundColor: '#E2E8F0', borderRadius: 999, padding: 3, gap: 2,
+                          marginLeft: 'auto', height: 36, flexDirection: 'row', alignItems: 'center',
+                          backgroundColor: '#F3F5F8', borderRadius: 10, padding: 3, gap: 2,
                         }}>
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B', paddingHorizontal: 5 }}>语速</Text>
                         {([0.8, 1] as const).map((rate) => {
                           const active = speechRates[cfg.key] === rate;
                           return (
@@ -853,10 +822,10 @@ export default function ThinkingModeScreen() {
                               accessibilityState={{ selected: active }}
                               onPress={() => handleSpeechRate(cfg.key, rate)}
                               style={{
-                                minWidth: 42, height: 26, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
-                                backgroundColor: active ? '#FFFFFF' : 'transparent',
+                                minWidth: 48, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+                                backgroundColor: active ? '#DCEBFF' : 'transparent',
                               }}>
-                              <Text style={{ fontSize: 11, fontWeight: '800', color: active ? BLUE_DARK : '#64748B' }}>{rate.toFixed(1)}×</Text>
+                              <Text style={{ fontSize: 12, fontWeight: '800', color: active ? '#1268EE' : '#667085' }}>{rate.toFixed(1)}×</Text>
                             </Pressable>
                           );
                         })}
@@ -866,9 +835,9 @@ export default function ThinkingModeScreen() {
                     {/* 译文展示 */}
                     {translations[cfg.key] && translations[cfg.key] !== '__hidden__' && (
                       <View style={{
-                        marginTop: 10, backgroundColor: '#FFFFFF',
-                        borderRadius: 12, padding: 12,
-                        borderLeftWidth: 3, borderLeftColor: cfg.dotColor,
+                        marginTop: 11, backgroundColor: '#F8FAFC',
+                        borderRadius: 10, padding: 12,
+                        borderLeftWidth: 3, borderLeftColor: cfg.accentColor,
                       }}>
                         <Text style={{ fontSize: 12, color: '#94A3B8', fontWeight: '600', marginBottom: 4 }}>中文译文</Text>
                         <Text style={{ fontSize: 14, color: '#1E293B', lineHeight: 22 }}>
