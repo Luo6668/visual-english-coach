@@ -7,6 +7,7 @@ import {
   useAudioPlayer,
   useAudioRecorder,
 } from 'expo-audio';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -31,22 +32,36 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  type GestureResponderEvent,
   Pressable,
+  type PressableProps,
   ScrollView,
+  type StyleProp,
   StyleSheet,
   Text,
   TextInput,
   useWindowDimensions,
   View,
+  type ViewStyle,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   cancelAnimation,
+  Extrapolation,
+  FadeInDown,
+  FadeOutUp,
+  interpolate,
+  LinearTransition,
+  runOnJS,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
   withRepeat,
   withSequence,
+  withSpring,
   withTiming,
+  ZoomIn,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addXp, fetchLearningRecords, fetchXpData, invokeEdgeFunction } from '@/lib/api';
@@ -176,10 +191,246 @@ function AudioWave({ active }: { active: boolean }) {
   );
 }
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+interface MotionPressableProps extends Omit<PressableProps, 'style'> {
+  style?: StyleProp<ViewStyle>;
+  pressedScale?: number;
+  haptic?: boolean;
+}
+
+function MotionPressable({
+  style,
+  pressedScale = 0.975,
+  haptic = true,
+  disabled,
+  onPressIn,
+  onPressOut,
+  ...props
+}: MotionPressableProps) {
+  const scale = useSharedValue(1);
+  const reduceMotion = useReducedMotion();
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = (event: GestureResponderEvent) => {
+    scale.value = reduceMotion ? pressedScale : withSpring(pressedScale, { damping: 18, stiffness: 360 });
+    if (haptic && process.env.EXPO_OS !== 'web') void Haptics.selectionAsync();
+    onPressIn?.(event);
+  };
+
+  const handlePressOut = (event: GestureResponderEvent) => {
+    scale.value = reduceMotion ? 1 : withSpring(1, { damping: 17, stiffness: 300 });
+    onPressOut?.(event);
+  };
+
+  return (
+    <AnimatedPressable
+      {...props}
+      disabled={disabled}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={[style, animatedStyle, disabled && styles.motionDisabled]}
+    />
+  );
+}
+
+interface LearningDeckProps {
+  records: LearningRecord[];
+  loading: boolean;
+  failedImageId: string | null;
+  onImageError: (id: string) => void;
+  onOpen: (record: LearningRecord) => void;
+  onEmpty: () => void;
+}
+
+function LearningDeck({ records, loading, failedImageId, onImageError, onOpen, onEmpty }: LearningDeckProps) {
+  const reduceMotion = useReducedMotion();
+  const [activeIndex, setActiveIndex] = useState(0);
+  const draggedRef = useRef(false);
+  const dragResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const translateX = useSharedValue(0);
+  const cardTilt = useSharedValue(0);
+  const visibleRecords = records.slice(0, 3);
+
+  useEffect(() => {
+    if (activeIndex >= visibleRecords.length) setActiveIndex(0);
+  }, [activeIndex, visibleRecords.length]);
+
+  useEffect(() => () => {
+    if (dragResetTimerRef.current) clearTimeout(dragResetTimerRef.current);
+  }, []);
+
+  const finishSwipe = useCallback((direction: 1 | -1) => {
+    if (visibleRecords.length < 2) return;
+    setActiveIndex(current => (current + direction + visibleRecords.length) % visibleRecords.length);
+    translateX.value = 0;
+    cardTilt.value = 0;
+    if (process.env.EXPO_OS !== 'web') void Haptics.selectionAsync();
+  }, [cardTilt, translateX, visibleRecords.length]);
+
+  const pan = useMemo(() => Gesture.Pan()
+    .runOnJS(true)
+    .activeOffsetX([-12, 12])
+    .failOffsetY([-16, 16])
+    .onBegin(() => {
+      draggedRef.current = false;
+      if (dragResetTimerRef.current) clearTimeout(dragResetTimerRef.current);
+    })
+    .onUpdate(event => {
+      if (Math.abs(event.translationX) > 10) draggedRef.current = true;
+      translateX.value = event.translationX;
+      cardTilt.value = interpolate(event.translationX, [-240, 0, 240], [-3.5, 0, 3.5], Extrapolation.CLAMP);
+    })
+    .onEnd(event => {
+      const shouldAdvance = Math.abs(event.translationX) > 70 || Math.abs(event.velocityX) > 650;
+      if (!shouldAdvance || visibleRecords.length < 2) {
+        translateX.value = withSpring(0, { damping: 18, stiffness: 220 });
+        cardTilt.value = withSpring(0, { damping: 18, stiffness: 220 });
+        return;
+      }
+      const direction: 1 | -1 = event.translationX < 0 ? 1 : -1;
+      const target = direction === 1 ? -520 : 520;
+      translateX.value = withTiming(target, { duration: reduceMotion ? 1 : 230 }, finished => {
+        if (finished) runOnJS(finishSwipe)(direction);
+      });
+    })
+    .onFinalize(() => {
+      dragResetTimerRef.current = setTimeout(() => {
+        draggedRef.current = false;
+      }, 120);
+    }), [cardTilt, finishSwipe, reduceMotion, translateX, visibleRecords.length]);
+
+  const activeCardStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { rotate: `${cardTilt.value}deg` },
+    ],
+  }));
+
+  if (loading) {
+    return (
+      <View style={[styles.learningDeck, styles.learningDeckLoading]}>
+        <ActivityIndicator size="small" color={BLUE} />
+      </View>
+    );
+  }
+
+  if (visibleRecords.length === 0) {
+    return (
+      <MotionPressable onPress={onEmpty} style={styles.emptyLearningCard} accessibilityRole="button" accessibilityLabel="开始第一个场景">
+        <View style={styles.continueFallback}><Text style={styles.continueEmoji}>📍</Text></View>
+        <View style={styles.continueCopy}>
+          <Text style={styles.continueTitle}>开始第一个场景</Text>
+          <Text style={styles.continueMeta}>拍一张照片，建立你的第一条学习记录</Text>
+        </View>
+        <View style={styles.continueAction}><Text style={styles.continueActionText}>开始</Text><ChevronRight size={16} color={BLUE} /></View>
+      </MotionPressable>
+    );
+  }
+
+  const ordered = [0, 1, 2]
+    .filter(offset => offset < visibleRecords.length)
+    .map(offset => ({ offset, record: visibleRecords[(activeIndex + offset) % visibleRecords.length] }));
+  const activeRecord = visibleRecords[activeIndex];
+
+  const renderCardContent = (record: LearningRecord) => (
+    <>
+      {record.scene_image && !record.scene_image.startsWith('blob:') && failedImageId !== record.id ? (
+        <Image
+          source={{ uri: record.scene_image }}
+          style={styles.deckImage}
+          contentFit="cover"
+          onError={() => onImageError(record.id)}
+        />
+      ) : (
+        <View style={styles.deckFallback}><Text style={styles.deckEmoji}>{getSceneIcon(record.scene_name)}</Text></View>
+      )}
+      <View style={styles.deckCopy}>
+        <View style={styles.deckEyebrowRow}>
+          <Text style={styles.deckEyebrow}>最近练习</Text>
+          <Text style={styles.deckDate}>{relativeRecordTime(record.created_at)}</Text>
+        </View>
+        <Text style={styles.deckTitle} numberOfLines={1}>{record.scene_name}</Text>
+        <Text style={styles.deckSentence} numberOfLines={2}>{record.i_see || '继续完成你的场景英语练习'}</Text>
+      </View>
+      <View style={styles.deckArrow}><ChevronRight size={17} color={BLUE} /></View>
+    </>
+  );
+
+  return (
+    <View>
+      <View style={styles.learningDeck}>
+        {[...ordered].reverse().map(({ offset, record }) => {
+          if (offset === 0) return null;
+          return (
+            <Animated.View
+              key={`${record.id}-${offset}`}
+              layout={reduceMotion ? undefined : LinearTransition.springify().damping(19).stiffness(180)}
+              style={[
+                styles.deckCard,
+                styles.deckCardBack,
+                {
+                  top: offset * 9,
+                  left: offset * 10,
+                  right: offset * 10,
+                  opacity: 1 - offset * 0.18,
+                  transform: [{ scale: 1 - offset * 0.035 }],
+                  zIndex: 3 - offset,
+                },
+              ]}
+            >
+              {renderCardContent(record)}
+            </Animated.View>
+          );
+        })}
+        <GestureDetector gesture={pan}>
+          <Animated.View style={[styles.deckCard, styles.deckCardFront, activeCardStyle]}>
+            <Pressable
+              onPress={() => {
+                if (!draggedRef.current) onOpen(activeRecord);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`继续学习 ${activeRecord.scene_name}`}
+              style={styles.deckPressable}
+            >
+              {renderCardContent(activeRecord)}
+            </Pressable>
+          </Animated.View>
+        </GestureDetector>
+      </View>
+
+      <View style={styles.deckPagination}>
+        <Text style={styles.deckCounter}>{activeIndex + 1}/{visibleRecords.length}</Text>
+        <View style={styles.deckIndicatorRow}>
+          {visibleRecords.map((record, index) => (
+            <Pressable
+              key={record.id}
+              accessibilityRole="button"
+              accessibilityLabel={`查看第 ${index + 1} 条学习记录`}
+              onPress={() => setActiveIndex(index)}
+              hitSlop={8}
+            >
+              <Animated.View
+                layout={reduceMotion ? undefined : LinearTransition.springify().damping(20).stiffness(220)}
+                style={[styles.deckIndicator, index === activeIndex && styles.deckIndicatorActive]}
+              />
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.deckSwipeHint}>左右滑动</Text>
+      </View>
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const reduceMotion = useReducedMotion();
   const player = useAudioPlayer();
   const recorder = useAudioRecorder(RECORDING_OPTIONS);
 
@@ -194,9 +445,14 @@ export default function HomeScreen() {
   const [recState, setRecState] = useState<'idle' | 'requesting' | 'recording' | 'transcribing'>('idle');
   const [recError, setRecError] = useState('');
   const [recSeconds, setRecSeconds] = useState(0);
+  const [reveal, setReveal] = useState<{ x: number; y: number; color: string } | null>(null);
 
   const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const revealActionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealCleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webRecorderRef = useRef<MediaRecorder | null>(null);
+  const progressValue = useSharedValue(0);
+  const revealProgress = useSharedValue(0);
   const contentWidth = Math.min(width, 760);
   const compactHeader = width < 480;
   const heroHeight = Math.min(360, Math.max(300, Math.round((contentWidth - 32) * 0.78)));
@@ -235,6 +491,8 @@ export default function HomeScreen() {
 
   useEffect(() => () => {
     if (recTimerRef.current) clearInterval(recTimerRef.current);
+    if (revealActionTimerRef.current) clearTimeout(revealActionTimerRef.current);
+    if (revealCleanupTimerRef.current) clearTimeout(revealCleanupTimerRef.current);
   }, []);
 
   const handleCamera = async () => {
@@ -388,9 +646,48 @@ export default function HomeScreen() {
   };
 
   const today = useMemo(() => new Date(), [records]);
-  const latestRecord = records[0];
   const todayCount = records.filter((record) => dateKey(parseRecordDate(record.created_at)) === dateKey(today)).length;
   const dailyProgress = Math.min(todayCount / DAILY_GOAL, 1);
+
+  useEffect(() => {
+    progressValue.value = reduceMotion
+      ? dailyProgress
+      : withTiming(dailyProgress, { duration: 720 });
+  }, [dailyProgress, progressValue, reduceMotion]);
+
+  const progressAnimatedStyle = useAnimatedStyle(() => ({
+    width: `${Math.max(0, Math.min(progressValue.value, 1)) * 100}%`,
+  }));
+
+  const revealAnimatedStyle = useAnimatedStyle(() => {
+    const maxScale = (Math.hypot(width, height) * 2.2) / 72;
+    return {
+      opacity: interpolate(revealProgress.value, [0, 0.12, 1], [0, 0.94, 0.97], Extrapolation.CLAMP),
+      transform: [{ scale: interpolate(revealProgress.value, [0, 1], [0.2, maxScale], Extrapolation.CLAMP) }],
+    };
+  });
+
+  const runCircularAction = (event: GestureResponderEvent, action: () => void, color = BLUE) => {
+    if (reduceMotion) {
+      action();
+      return;
+    }
+    if (revealActionTimerRef.current) clearTimeout(revealActionTimerRef.current);
+    if (revealCleanupTimerRef.current) clearTimeout(revealCleanupTimerRef.current);
+    const { pageX, pageY } = event.nativeEvent;
+    setReveal({ x: pageX, y: pageY, color });
+    revealProgress.value = 0;
+    requestAnimationFrame(() => {
+      revealProgress.value = withTiming(1, { duration: 390 });
+    });
+    if (process.env.EXPO_OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    revealActionTimerRef.current = setTimeout(action, 270);
+    revealCleanupTimerRef.current = setTimeout(() => {
+      setReveal(null);
+      revealProgress.value = 0;
+    }, 620);
+  };
+
   const weekDays = useMemo(() => {
     const start = new Date(today);
     const offset = (today.getDay() + 6) % 7;
@@ -421,6 +718,18 @@ export default function HomeScreen() {
     setSceneInputMode((current) => (current === mode ? null : mode));
   };
 
+  const handleInputModePress = (
+    event: GestureResponderEvent,
+    mode: 'camera' | 'gallery' | InputMode,
+    color: string,
+  ) => {
+    if (mode === 'camera' || mode === 'gallery') {
+      runCircularAction(event, () => selectInputMode(mode), color);
+      return;
+    }
+    selectInputMode(mode);
+  };
+
   const inputModes = [
     { key: 'camera' as const, label: '拍照', icon: Camera, color: BLUE, background: '#EDF4FF' },
     { key: 'gallery' as const, label: '相册', icon: ImageIcon, color: GREEN, background: '#ECF9F2' },
@@ -438,7 +747,10 @@ export default function HomeScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={[styles.page, { paddingTop: Math.max(insets.top + 12, 24) }]}>
-          <View style={[styles.brandRow, compactHeader && styles.brandRowCompact]}>
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeInDown.duration(420)}
+            style={[styles.brandRow, compactHeader && styles.brandRowCompact]}
+          >
             <View style={styles.brandBlock}>
               <Text style={styles.brandTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.86}>
                 Visual English <Text style={styles.brandAccent}>Coach</Text>
@@ -447,7 +759,7 @@ export default function HomeScreen() {
                 用真实场景，看见更地道的英语
               </Text>
             </View>
-            <Pressable
+            <MotionPressable
               onPress={() => router.push('/(app)/(tabs)/growth' as any)}
               accessibilityRole="button"
               accessibilityLabel={`连续学习 ${streakDays} 天，查看成长进度`}
@@ -458,10 +770,13 @@ export default function HomeScreen() {
               <Text style={styles.streakNumber}>{streakDays}</Text>
               <Text style={styles.streakText}>天</Text>
               <ChevronRight size={15} color="#98A2B3" />
-            </Pressable>
-          </View>
+            </MotionPressable>
+          </Animated.View>
 
-          <View style={[styles.hero, { height: heroHeight }]}>
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeInDown.delay(70).duration(460)}
+            style={[styles.hero, { height: heroHeight }]}
+          >
             <Image
               source={require('../../../../assets/home-cafe-hero.png')}
               style={StyleSheet.absoluteFillObject}
@@ -477,47 +792,64 @@ export default function HomeScreen() {
             <View style={styles.heroContent}>
               <Text style={styles.heroTitle}>今天从哪个{`\n`}场景开始？</Text>
               <Text style={styles.heroDescription}>拍下你眼前的场景，让 AI 帮你看图学英语。</Text>
-              <Pressable
-                onPress={handleCamera}
+              <MotionPressable
+                onPress={event => runCircularAction(event, () => void handleCamera())}
                 accessibilityRole="button"
                 accessibilityLabel="拍下眼前场景"
-                style={({ pressed }) => [styles.heroButtonWrap, pressed && styles.pressed]}
+                style={styles.heroButtonWrap}
+                pressedScale={0.965}
+                haptic={false}
               >
                 <LinearGradient colors={['#2F7AF8', '#245EDB']} style={styles.heroButton}>
                   <Camera size={21} color={WHITE} />
                   <Text style={styles.heroButtonText}>拍下眼前场景</Text>
                   <ChevronRight size={19} color={WHITE} />
                 </LinearGradient>
-              </Pressable>
+              </MotionPressable>
             </View>
-          </View>
+          </Animated.View>
 
-          <View style={styles.modeRow}>
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeInDown.delay(130).duration(440)}
+            layout={reduceMotion ? undefined : LinearTransition.springify().damping(19).stiffness(190)}
+            style={styles.modeRow}
+          >
             {inputModes.map(({ key, label, icon: Icon, color, background }) => {
               const selected = sceneInputMode === key;
               return (
-                <Pressable
+                <MotionPressable
                   key={key}
-                  onPress={() => selectInputMode(key)}
+                  onPress={event => handleInputModePress(event, key, color)}
                   accessibilityRole="button"
                   accessibilityLabel={`${label}输入`}
-                  style={({ pressed }) => [
+                  accessibilityState={{ selected }}
+                  style={[
                     styles.modeButton,
                     { backgroundColor: background, borderColor: selected ? color : 'transparent' },
-                    pressed && styles.pressed,
+                    selected && styles.modeButtonSelected,
                   ]}
                 >
                   <View style={[styles.modeIcon, { backgroundColor: color }]}>
                     <Icon size={20} color={WHITE} />
                   </View>
                   <Text style={styles.modeLabel}>{label}</Text>
-                </Pressable>
+                  {selected && (
+                    <Animated.View entering={reduceMotion ? undefined : ZoomIn.duration(180)} style={[styles.modeCheck, { backgroundColor: color }]}>
+                      <Check size={10} color={WHITE} strokeWidth={3} />
+                    </Animated.View>
+                  )}
+                </MotionPressable>
               );
             })}
-          </View>
+          </Animated.View>
 
           {sceneInputMode ? (
-            <View style={styles.sceneInputPanel}>
+            <Animated.View
+              entering={reduceMotion ? undefined : FadeInDown.duration(260)}
+              exiting={reduceMotion ? undefined : FadeOutUp.duration(180)}
+              layout={reduceMotion ? undefined : LinearTransition.springify().damping(20).stiffness(180)}
+              style={styles.sceneInputPanel}
+            >
               {sceneInputMode === 'text' ? (
                 <View style={styles.textInputRow}>
                   <TextInput
@@ -603,66 +935,53 @@ export default function HomeScreen() {
                 </View>
               ) : null}
               {recError ? <Text style={styles.errorText}>{recError}</Text> : null}
-            </View>
+            </Animated.View>
           ) : null}
 
           <View style={styles.sectionGap} />
 
-          <View style={styles.sectionHeader}>
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeInDown.delay(170).duration(420)}
+            style={styles.sectionHeader}
+          >
             <Text style={styles.sectionTitle}>继续学习</Text>
-            <Pressable onPress={() => router.push('/(app)/(tabs)/learning' as any)} style={styles.textLink}>
+            <MotionPressable onPress={() => router.push('/(app)/(tabs)/learning' as any)} style={styles.textLink}>
               <Text style={styles.textLinkLabel}>全部记录</Text>
               <ChevronRight size={15} color={BLUE} />
-            </Pressable>
-          </View>
+            </MotionPressable>
+          </Animated.View>
 
-          <Pressable
-            onPress={() => latestRecord
-              ? router.push(`/(app)/record/${latestRecord.id}` as any)
-              : handleCamera()}
-            disabled={loading}
-            style={({ pressed }) => [styles.continueRow, pressed && styles.pressed]}
+          <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(210).duration(440)}>
+            <LearningDeck
+              records={records}
+              loading={loading}
+              failedImageId={failedRecordImageId}
+              onImageError={setFailedRecordImageId}
+              onOpen={record => router.push(`/(app)/record/${record.id}` as any)}
+              onEmpty={() => void handleCamera()}
+            />
+          </Animated.View>
+
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeInDown.delay(250).duration(440)}
+            style={styles.progressPanel}
           >
-            {loading ? (
-              <ActivityIndicator size="small" color={BLUE} style={styles.continueLoader} />
-            ) : latestRecord?.scene_image
-              && !latestRecord.scene_image.startsWith('blob:')
-              && failedRecordImageId !== latestRecord.id ? (
-              <Image
-                source={{ uri: latestRecord.scene_image }}
-                style={styles.continueImage}
-                contentFit="cover"
-                onError={() => setFailedRecordImageId(latestRecord.id)}
-              />
-            ) : (
-              <View style={styles.continueFallback}>
-                <Text style={styles.continueEmoji}>{getSceneIcon(latestRecord?.scene_name ?? '')}</Text>
-              </View>
-            )}
-            <View style={styles.continueCopy}>
-              <Text style={styles.continueTitle} numberOfLines={1}>
-                {latestRecord?.scene_name || '开始第一个场景'}
-              </Text>
-              <Text style={styles.continueMeta} numberOfLines={1}>
-                {latestRecord ? relativeRecordTime(latestRecord.created_at) : '拍一张照片，建立你的第一条学习记录'}
-              </Text>
-            </View>
-            <View style={styles.continueAction}>
-              <Text style={styles.continueActionText}>{latestRecord ? '继续' : '开始'}</Text>
-              <ChevronRight size={16} color={BLUE} />
-            </View>
-          </Pressable>
-
-          <View style={styles.progressPanel}>
             <View style={styles.progressHeader}>
               <View>
                 <Text style={styles.sectionTitle}>学习进度</Text>
-                <Text style={styles.progressSubtitle}>今天完成 {todayCount} 个场景</Text>
+                <Text style={styles.progressSubtitle}>
+                  {dailyProgress >= 1 ? '今日目标已完成，保持这个节奏' : `再完成 ${DAILY_GOAL - todayCount} 个场景达成目标`}
+                </Text>
               </View>
-              <Text style={styles.progressCount}>{todayCount}/{DAILY_GOAL}</Text>
+              <View style={[styles.progressBadge, dailyProgress >= 1 && styles.progressBadgeCompleted]}>
+                {dailyProgress >= 1 ? <Check size={14} color={GREEN} strokeWidth={3} /> : null}
+                <Text style={[styles.progressCount, dailyProgress >= 1 && styles.progressCountCompleted]}>
+                  {todayCount}/{DAILY_GOAL}
+                </Text>
+              </View>
             </View>
             <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${dailyProgress * 100}%` }]} />
+              <Animated.View style={[styles.progressFill, progressAnimatedStyle]} />
             </View>
             <View style={styles.weekHeader}>
               <Text style={styles.weekTitle}>本周学习</Text>
@@ -677,20 +996,26 @@ export default function HomeScreen() {
                     <Text style={[styles.weekDayLabel, isToday && styles.weekDayLabelToday]}>
                       {['一', '二', '三', '四', '五', '六', '日'][index]}
                     </Text>
-                    <View style={[
-                      styles.weekDot,
-                      completed && styles.weekDotCompleted,
-                      isToday && !completed && styles.weekDotToday,
-                    ]}>
+                    <Animated.View
+                      entering={reduceMotion ? undefined : ZoomIn.delay(300 + index * 45).duration(240)}
+                      style={[
+                        styles.weekDot,
+                        completed && styles.weekDotCompleted,
+                        isToday && !completed && styles.weekDotToday,
+                      ]}
+                    >
                       {completed ? <Check size={13} color={WHITE} strokeWidth={3} /> : null}
-                    </View>
+                    </Animated.View>
                   </View>
                 );
               })}
             </View>
-          </View>
+          </Animated.View>
 
-          <View style={styles.coachSection}>
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeInDown.delay(300).duration(440)}
+            style={styles.coachSection}
+          >
             <View style={styles.coachHeading}>
               <View style={styles.coachMark}>
                 <Sparkles size={18} color={BLUE} />
@@ -715,15 +1040,15 @@ export default function HomeScreen() {
                 onSubmitEditing={() => openCoach(coachInput)}
                 style={styles.coachInput}
               />
-              <Pressable
+              <MotionPressable
                 onPress={() => openCoach()}
                 accessibilityRole="button"
                 accessibilityLabel="打开 AI 教练语音输入"
                 style={styles.coachMicButton}
               >
                 <Mic size={19} color={BLUE} />
-              </Pressable>
-              <Pressable
+              </MotionPressable>
+              <MotionPressable
                 onPress={() => openCoach(coachInput)}
                 disabled={!coachInput.trim()}
                 accessibilityRole="button"
@@ -731,38 +1056,46 @@ export default function HomeScreen() {
                 style={[styles.coachSendButton, !coachInput.trim() && styles.coachSendDisabled]}
               >
                 <Send size={18} color={coachInput.trim() ? WHITE : '#98A2B3'} />
-              </Pressable>
+              </MotionPressable>
             </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              decelerationRate="fast"
+              contentContainerStyle={styles.suggestionRow}
+            >
               {coachSuggestions.map((suggestion) => (
-                <Pressable key={suggestion} onPress={() => openCoach(suggestion)} style={styles.suggestionChip}>
+                <MotionPressable key={suggestion} onPress={() => openCoach(suggestion)} style={styles.suggestionChip}>
                   <Text style={styles.suggestionText}>{suggestion}</Text>
-                </Pressable>
+                </MotionPressable>
               ))}
             </ScrollView>
 
             <View style={styles.coachReply}>
               <View style={styles.replyTopRow}>
                 <Text style={styles.replyLabel}>AI 教练推荐</Text>
-                <Pressable onPress={togglePreviewSpeech} style={styles.readButton}>
+                <MotionPressable onPress={togglePreviewSpeech} style={styles.readButton}>
                   {previewSpeaking ? <Square size={12} color={BLUE} fill={BLUE} /> : <Volume2 size={15} color={BLUE} />}
                   <Text style={styles.readButtonText}>{previewSpeaking ? '停止' : '朗读'}</Text>
-                </Pressable>
+                </MotionPressable>
               </View>
               <Text style={styles.replyEnglish}>{COACH_EXPRESSION}</Text>
               <Text style={styles.replyChinese}>我想要一杯拿铁，谢谢。</Text>
-              <Pressable onPress={() => openCoach('请和我练习在咖啡馆用英语点单。')} style={styles.continueChatButton}>
+              <MotionPressable onPress={() => openCoach('请和我练习在咖啡馆用英语点单。')} style={styles.continueChatButton}>
                 <Text style={styles.continueChatText}>继续这个对话</Text>
                 <ArrowRight size={15} color={BLUE} />
-              </Pressable>
+              </MotionPressable>
             </View>
-          </View>
+          </Animated.View>
 
-          <View style={styles.shortcutRow}>
-            <Pressable
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeInDown.delay(350).duration(440)}
+            style={styles.shortcutRow}
+          >
+            <MotionPressable
               onPress={() => router.push(`/(app)/shadowing?sentence=${encodeURIComponent(COACH_EXPRESSION)}` as any)}
-              style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}
+              style={styles.shortcut}
             >
               <View style={[styles.shortcutIcon, styles.shortcutIconOrange]}>
                 <Headphones size={21} color={ORANGE} />
@@ -772,10 +1105,10 @@ export default function HomeScreen() {
                 <Text style={styles.shortcutSubtitle}>练语音节奏</Text>
               </View>
               <ChevronRight size={17} color="#98A2B3" />
-            </Pressable>
-            <Pressable
+            </MotionPressable>
+            <MotionPressable
               onPress={() => router.push('/(app)/scene-map' as any)}
-              style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}
+              style={styles.shortcut}
             >
               <View style={[styles.shortcutIcon, styles.shortcutIconGreen]}>
                 <Map size={21} color={GREEN} />
@@ -785,10 +1118,20 @@ export default function HomeScreen() {
                 <Text style={styles.shortcutSubtitle}>探索更多场景</Text>
               </View>
               <ChevronRight size={17} color="#98A2B3" />
-            </Pressable>
-          </View>
+            </MotionPressable>
+          </Animated.View>
         </View>
       </ScrollView>
+      {reveal ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.revealCircle,
+            { left: reveal.x - 36, top: reveal.y - 36, backgroundColor: reveal.color },
+            revealAnimatedStyle,
+          ]}
+        />
+      ) : null}
     </View>
   );
 }
@@ -816,10 +1159,13 @@ const styles = StyleSheet.create({
   heroButton: { minWidth: 198, height: 50, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   heroButtonText: { color: WHITE, fontSize: 15, fontWeight: '800' },
   pressed: { opacity: 0.76 },
+  motionDisabled: { opacity: 0.52 },
   modeRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  modeButton: { flex: 1, height: 82, borderRadius: 8, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  modeButton: { position: 'relative', flex: 1, height: 82, borderRadius: 8, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  modeButtonSelected: { transform: [{ translateY: -2 }] },
   modeIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   modeLabel: { color: INK, fontSize: 13, fontWeight: '800' },
+  modeCheck: { position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   sceneInputPanel: { marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, padding: 12 },
   textInputRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sceneTextInput: { flex: 1, height: 46, borderRadius: 8, borderWidth: 1, borderColor: '#D8E2F0', backgroundColor: '#FAFBFD', paddingHorizontal: 13, color: INK, fontSize: 14 },
@@ -860,10 +1206,36 @@ const styles = StyleSheet.create({
   continueMeta: { color: MUTED, fontSize: 12, lineHeight: 17, marginTop: 4 },
   continueAction: { height: 34, paddingHorizontal: 9, borderRadius: 8, backgroundColor: BLUE_SOFT, flexDirection: 'row', alignItems: 'center', gap: 2 },
   continueActionText: { color: BLUE, fontSize: 12, fontWeight: '800' },
+  learningDeck: { position: 'relative', height: 126, marginHorizontal: 2 },
+  learningDeckLoading: { borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, alignItems: 'center', justifyContent: 'center' },
+  emptyLearningCard: { minHeight: 92, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  deckCard: { position: 'absolute', minHeight: 106, borderRadius: 8, borderWidth: 1, borderColor: '#DCE5F2', backgroundColor: WHITE, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12, overflow: 'hidden', shadowColor: '#1B3B6F', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.07, shadowRadius: 18, elevation: 2 },
+  deckCardBack: { minHeight: 104 },
+  deckCardFront: { top: 0, left: 0, right: 0, zIndex: 4, padding: 0, backgroundColor: WHITE },
+  deckPressable: { minHeight: 104, flex: 1, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12 },
+  deckImage: { width: 76, height: 76, borderRadius: 8, backgroundColor: '#EDF1F5' },
+  deckFallback: { width: 76, height: 76, borderRadius: 8, backgroundColor: '#FFF3E8', alignItems: 'center', justifyContent: 'center' },
+  deckEmoji: { fontSize: 34 },
+  deckCopy: { flex: 1, minWidth: 0, alignSelf: 'stretch', justifyContent: 'center' },
+  deckEyebrowRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  deckEyebrow: { color: BLUE, fontSize: 10, fontWeight: '900' },
+  deckDate: { color: '#98A2B3', fontSize: 10, fontWeight: '700' },
+  deckTitle: { color: INK, fontSize: 16, lineHeight: 21, fontWeight: '900', marginTop: 4 },
+  deckSentence: { color: MUTED, fontSize: 12, lineHeight: 17, marginTop: 3 },
+  deckArrow: { width: 30, height: 30, borderRadius: 8, backgroundColor: BLUE_SOFT, alignItems: 'center', justifyContent: 'center' },
+  deckPagination: { minHeight: 28, marginTop: 4, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  deckCounter: { width: 42, color: MUTED, fontSize: 11, fontWeight: '800' },
+  deckIndicatorRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  deckIndicator: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#CFD8E6' },
+  deckIndicatorActive: { width: 20, backgroundColor: BLUE },
+  deckSwipeHint: { width: 54, color: '#98A2B3', fontSize: 10, textAlign: 'right' },
   progressPanel: { marginTop: 14, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, padding: 16 },
   progressHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   progressSubtitle: { color: MUTED, fontSize: 12, marginTop: 3 },
+  progressBadge: { minWidth: 54, height: 32, borderRadius: 8, paddingHorizontal: 9, backgroundColor: BLUE_SOFT, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  progressBadgeCompleted: { backgroundColor: '#EAF8F1' },
   progressCount: { color: BLUE, fontSize: 18, fontWeight: '900' },
+  progressCountCompleted: { color: GREEN },
   progressTrack: { height: 8, borderRadius: 4, backgroundColor: '#EAF0F7', marginTop: 13, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 4, backgroundColor: GREEN },
   weekHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, paddingTop: 14, borderTopWidth: 1, borderTopColor: BORDER },
@@ -909,4 +1281,5 @@ const styles = StyleSheet.create({
   shortcutCopy: { flex: 1, minWidth: 0 },
   shortcutTitle: { color: INK, fontSize: 13, fontWeight: '900' },
   shortcutSubtitle: { color: MUTED, fontSize: 10, marginTop: 2 },
+  revealCircle: { position: 'absolute', width: 72, height: 72, borderRadius: 36, zIndex: 100, elevation: 20 },
 });
