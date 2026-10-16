@@ -1,7 +1,7 @@
 import { useAudioPlayer } from 'expo-audio';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { AlertCircle, Bookmark, BookOpen, CheckCircle2, ChevronLeft, Eye, Languages, MessageCircle, MessageSquare, Mic, RefreshCw, Save, Volume2 } from 'lucide-react-native';
+import { AlertCircle, Bookmark, CheckCircle2, ChevronLeft, Languages, MessageCircle, Mic, RefreshCw, Save, Volume2 } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { createHighFreqWord, createSentence, fetchLearningRecord, invokeEdgeFunction, updateLearningRecord } from '@/lib/api';
@@ -42,9 +42,18 @@ function normalizeGeneratedResult(value: unknown) {
 }
 
 const LAYER_CONFIG = [
-  { key: 'i_see',   label: '看场景', en: 'See',   Icon: Eye,           headerBg: YELLOW,    headerText: '#1C1C1E', bodyBg: '#FFFDF0' },
-  { key: 'i_think', label: '学表达', en: 'Learn', Icon: BookOpen,      headerBg: BLUE_DARK, headerText: WHITE,     bodyBg: '#F0F5FB' },
-  { key: 'i_say',   label: '开口说', en: 'Speak', Icon: MessageSquare, headerBg: '#FF6B35', headerText: WHITE,     bodyBg: '#FFF5F0' },
+  {
+    key: 'i_see', step: '01', label: '看见场景', en: 'SEE',
+    accentColor: '#F6C945', numberBg: '#FFF2BE', numberText: '#9A6A00',
+  },
+  {
+    key: 'i_think', step: '02', label: '学会表达', en: 'LEARN',
+    accentColor: '#2F80ED', numberBg: '#DCEBFF', numberText: '#1268EE',
+  },
+  {
+    key: 'i_say', step: '03', label: '现在开口', en: 'SPEAK',
+    accentColor: '#FF6B2C', numberBg: '#FFE2D3', numberText: '#D94C0F',
+  },
 ] as const;
 
 export default function RecordDetailScreen() {
@@ -339,31 +348,47 @@ export default function RecordDetailScreen() {
 
           {LAYER_CONFIG.map(cfg => {
             const text = record[cfg.key];
+            const isSpeaking = speakingKey === cfg.key;
             if (!text) return null;
             return (
-              <View key={cfg.key} style={{ borderRadius: 20, overflow: 'hidden', shadowColor: cfg.headerBg, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 14 }}>
-                <View style={{ backgroundColor: cfg.headerBg, paddingHorizontal: 16, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <cfg.Icon size={16} color={cfg.headerText} />
-                    <Text style={{ color: cfg.headerText, fontSize: 15, fontWeight: '800' }}>{cfg.label}</Text>
-                    <View style={{ backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 }}>
-                      <Text style={{ color: cfg.headerText, fontSize: 10, fontWeight: '700' }}>{cfg.en}</Text>
+              <View key={cfg.key} style={{
+                position: 'relative', borderRadius: 14, overflow: 'hidden',
+                backgroundColor: WHITE, borderWidth: 1, borderColor: '#E2E8F0',
+                shadowColor: '#29496E', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.09, shadowRadius: 12,
+              }}>
+                <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 5, backgroundColor: cfg.accentColor }} />
+                <View style={{ paddingLeft: 19, paddingRight: 16, paddingTop: 16, paddingBottom: 15 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: cfg.numberBg, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ color: cfg.numberText, fontSize: 15, fontWeight: '900' }}>{cfg.step}</Text>
                     </View>
+                    <Text style={{ marginLeft: 10, color: '#10213D', fontSize: 17, fontWeight: '900' }}>{cfg.label}</Text>
+                    <Text style={{ marginLeft: 10, color: '#8B98AA', fontSize: 12, fontWeight: '800' }}>{cfg.en}</Text>
+                    <View style={{ flex: 1 }} />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`${isSpeaking ? '停止' : '朗读'}${cfg.label}英文句子`}
+                      onPress={() => handlePlay(text, cfg.key)}
+                      className="active:opacity-70"
+                      style={{
+                        width: 40, height: 40, borderRadius: 20,
+                        backgroundColor: isSpeaking ? cfg.numberBg : '#F2F5F9',
+                        alignItems: 'center', justifyContent: 'center',
+                      }}>
+                      <Volume2 size={19} color={isSpeaking ? cfg.numberText : '#11284A'} />
+                    </Pressable>
                   </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`${speakingKey === cfg.key ? '停止' : '朗读'}${cfg.label}英文句子`}
-                    onPress={() => handlePlay(text, cfg.key)}
-                    className="active:opacity-70"
-                    style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
-                    <Volume2 size={15} color={cfg.headerText} />
-                  </Pressable>
-                </View>
-                <View style={{ backgroundColor: cfg.bodyBg, paddingHorizontal: 16, paddingVertical: 14 }}>
-                  <Text style={{ fontSize: 15, color: '#1E293B', lineHeight: 24, fontWeight: '500' }}>{text}</Text>
-                  {speakingKey === cfg.key && (
-                    <Text style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>朗读中，点击扬声器停止</Text>
+
+                  <Text style={{ marginTop: 15, fontSize: 17, lineHeight: 28, color: '#10213D', fontWeight: '700' }}>{text}</Text>
+                  {isSpeaking && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 }}>
+                      {[0, 1, 2].map(index => (
+                        <View key={index} style={{ width: 4, height: 4 + index * 3, borderRadius: 2, backgroundColor: cfg.accentColor, opacity: 0.85 }} />
+                      ))}
+                      <Text style={{ fontSize: 11, color: '#94A3B8', marginLeft: 2 }}>朗读中，点击停止</Text>
+                    </View>
                   )}
+
                   <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                     <Pressable
                       onPress={() => handleTranslate(cfg.key, text)}
@@ -371,18 +396,28 @@ export default function RecordDetailScreen() {
                       className="active:opacity-70"
                       style={{
                         flexDirection: 'row', alignItems: 'center', gap: 5,
-                        backgroundColor: translations[cfg.key] && translations[cfg.key] !== '__hidden__' ? cfg.headerBg + '22' : '#F1F5F9',
-                        borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6,
-                        borderWidth: 1, borderColor: '#E2E8F0',
+                        backgroundColor: translations[cfg.key] && translations[cfg.key] !== '__hidden__'
+                          ? cfg.numberBg : '#F3F5F8',
+                        minWidth: 72, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 8,
+                        borderWidth: 1,
+                        borderColor: translations[cfg.key] && translations[cfg.key] !== '__hidden__'
+                          ? cfg.accentColor : '#EDF0F4',
                       }}>
                       {translatingKey === cfg.key
-                        ? <ActivityIndicator size={12} color={BLUE} />
-                        : <Languages size={13} color="#64748B" />
+                        ? <ActivityIndicator size={13} color={cfg.numberText} />
+                        : <Languages size={13} color={
+                            translations[cfg.key] && translations[cfg.key] !== '__hidden__'
+                              ? cfg.numberText : '#526176'
+                          } />
                       }
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>
+                      <Text style={{
+                        fontSize: 12, fontWeight: '700',
+                        color: translations[cfg.key] && translations[cfg.key] !== '__hidden__'
+                          ? cfg.numberText : '#526176',
+                      }}>
                         {translatingKey === cfg.key ? '翻译中…'
-                          : translations[cfg.key] && translations[cfg.key] !== '__hidden__' ? '隐藏译文'
-                          : '查看中文'}
+                          : translations[cfg.key] && translations[cfg.key] !== '__hidden__' ? '隐藏中文'
+                          : '中文'}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -392,21 +427,23 @@ export default function RecordDetailScreen() {
                       disabled={regeneratingKey !== null || regeneratingAll}
                       className="active:opacity-70"
                       style={{
-                        minWidth: 86, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-                        backgroundColor: '#F1F5F9', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6,
-                        borderWidth: 1, borderColor: '#E2E8F0',
+                        minWidth: 82, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+                        backgroundColor: '#F3F5F8', borderRadius: 10, paddingHorizontal: 11, paddingVertical: 8,
+                        borderWidth: 1, borderColor: '#EDF0F4',
                         opacity: regeneratingAll || (regeneratingKey && regeneratingKey !== cfg.key) ? 0.5 : 1,
                       }}>
                       {regeneratingKey === cfg.key
-                        ? <ActivityIndicator size={12} color={BLUE} />
-                        : <RefreshCw size={13} color="#64748B" />
+                        ? <ActivityIndicator size={13} color={cfg.numberText} />
+                        : <RefreshCw size={13} color="#526176" />
                       }
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#526176' }}>
                         {regeneratingKey === cfg.key ? '生成中…' : '换一句'}
                       </Text>
                     </Pressable>
-                    <View style={{ marginLeft: 'auto', height: 32, flexDirection: 'row', alignItems: 'center', backgroundColor: '#E2E8F0', borderRadius: 999, padding: 3, gap: 2 }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B', paddingHorizontal: 5 }}>语速</Text>
+                    <View style={{
+                      marginLeft: 'auto', height: 36, flexDirection: 'row', alignItems: 'center',
+                      backgroundColor: '#F3F5F8', borderRadius: 10, padding: 3, gap: 2,
+                    }}>
                       {([0.8, 1] as const).map((rate) => {
                         const active = speechRates[cfg.key] === rate;
                         return (
@@ -416,8 +453,11 @@ export default function RecordDetailScreen() {
                             accessibilityLabel={`${rate}倍语速`}
                             accessibilityState={{ selected: active }}
                             onPress={() => handleSpeechRate(cfg.key, rate)}
-                            style={{ minWidth: 42, height: 26, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: active ? WHITE : 'transparent' }}>
-                            <Text style={{ fontSize: 11, fontWeight: '800', color: active ? BLUE_DARK : '#64748B' }}>{rate.toFixed(1)}×</Text>
+                            style={{
+                              minWidth: 48, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+                              backgroundColor: active ? '#DCEBFF' : 'transparent',
+                            }}>
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: active ? '#1268EE' : '#667085' }}>{rate.toFixed(1)}×</Text>
                           </Pressable>
                         );
                       })}
@@ -425,7 +465,7 @@ export default function RecordDetailScreen() {
                   </View>
 
                   {translations[cfg.key] && translations[cfg.key] !== '__hidden__' && (
-                    <View style={{ marginTop: 10, backgroundColor: WHITE, borderRadius: 12, padding: 12, borderLeftWidth: 3, borderLeftColor: cfg.headerBg }}>
+                    <View style={{ marginTop: 11, backgroundColor: '#F8FAFC', borderRadius: 10, padding: 12, borderLeftWidth: 3, borderLeftColor: cfg.accentColor }}>
                       <Text style={{ fontSize: 12, color: '#94A3B8', fontWeight: '600', marginBottom: 4 }}>中文译文</Text>
                       <Text style={{ fontSize: 14, color: '#1E293B', lineHeight: 22 }}>{translations[cfg.key]}</Text>
                     </View>
