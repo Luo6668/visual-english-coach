@@ -1,3 +1,4 @@
+/* global require */
 import { fetch as expoFetch } from 'expo/fetch';
 import {
   AudioQuality,
@@ -65,6 +66,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import { MotionPressable } from '@/components/motion-pressable';
+import { PremiumHomeBoard } from '@/components/premium-home-board';
 import { addXp, fetchLearningRecords, fetchXpData, invokeEdgeFunction } from '@/lib/api';
 import { arrayBufferToBase64, audioBlobTo16kWav, startWebAudioRecording } from '@/lib/audioCapture';
 import { setPendingUri } from '@/lib/imageStore';
@@ -523,6 +525,7 @@ export default function HomeScreen() {
   const recorder = useAudioRecorder(RECORDING_OPTIONS);
 
   const [sceneInputMode, setSceneInputMode] = useState<InputMode | null>(null);
+  const [homeInteractionLocked, setHomeInteractionLocked] = useState(false);
   const [sceneInputText, setSceneInputText] = useState('');
   const [coachInput, setCoachInput] = useState('');
   const [coachInputFocused, setCoachInputFocused] = useState(false);
@@ -540,6 +543,7 @@ export default function HomeScreen() {
   const revealActionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revealCleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webRecorderRef = useRef<MediaRecorder | null>(null);
+  const scrollOffsetRef = useRef(0);
   const progressValue = useSharedValue(0);
   const revealProgress = useSharedValue(0);
   const scrollY = useSharedValue(0);
@@ -725,14 +729,14 @@ export default function HomeScreen() {
     router.push('/(app)/(tabs)/ai-coach' as any);
   };
 
-  const togglePreviewSpeech = () => {
+  const togglePreviewSpeech = (phrase = COACH_EXPRESSION) => {
     if (previewSpeaking) {
       stopLocalSpeech();
       setPreviewSpeaking(false);
       return;
     }
     setPreviewSpeaking(true);
-    void speakWithTTS(COACH_EXPRESSION, player, invokeEdgeFunction, () => setPreviewSpeaking(false));
+    void speakWithTTS(phrase, player, invokeEdgeFunction, () => setPreviewSpeaking(false));
   };
 
   const today = useMemo(() => new Date(), [records]);
@@ -749,8 +753,21 @@ export default function HomeScreen() {
     width: `${Math.max(0, Math.min(progressValue.value, 1)) * 100}%`,
   }));
 
-  const handleScroll = useAnimatedScrollHandler(event => {
-    scrollY.value = event.contentOffset.y;
+  const syncScrollOffset = useCallback((value: number) => {
+    scrollOffsetRef.current = value;
+  }, []);
+
+  const handleScroll = useAnimatedScrollHandler({
+    onScroll: event => {
+      scrollY.value = event.contentOffset.y;
+      runOnJS(syncScrollOffset)(event.contentOffset.y);
+    },
+    onEndDrag: event => {
+      runOnJS(syncScrollOffset)(event.contentOffset.y);
+    },
+    onMomentumEnd: event => {
+      runOnJS(syncScrollOffset)(event.contentOffset.y);
+    },
   });
 
   const heroImageAnimatedStyle = useAnimatedStyle(() => ({
@@ -839,6 +856,53 @@ export default function HomeScreen() {
   ];
   const activeInputMode = inputModes.find(({ key }) => key === sceneInputMode);
   const coachSuggestions = ['咖啡馆怎么自然点单？', '帮我纠正一句英语', '练习机场英语对话'];
+
+  return (
+    <View style={styles.screen}>
+      <StatusBar style="dark" backgroundColor={WHITE} />
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={!homeInteractionLocked}
+        contentContainerStyle={{ alignItems: 'center', backgroundColor: WHITE }}
+        keyboardShouldPersistTaps="handled"
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+      >
+        <PremiumHomeBoard
+          topInset={Math.max(insets.top, 0)}
+          streakDays={streakDays}
+          todayCount={todayCount}
+          records={records}
+          loading={loading}
+          sceneText={sceneInputText}
+          recState={recState}
+          recSeconds={recSeconds}
+          recError={recError}
+          onSceneTextChange={(value) => {
+            setSceneInputMode('text');
+            setSceneInputText(value);
+          }}
+          onCamera={() => void handleCamera()}
+          onGallery={() => void handleGallery()}
+          onSubmitText={submitSceneText}
+          onRecord={() => {
+            setSceneInputMode('voice');
+            void (recState === 'recording' ? stopRecording() : startRecording());
+          }}
+          onOpenCoach={openCoach}
+          onOpenLearning={() => router.push('/(app)/(tabs)/learning' as any)}
+          onOpenRecord={(record) => router.push(`/(app)/record/${record.id}` as any)}
+          onOpenGrowth={() => router.push('/(app)/(tabs)/growth' as any)}
+          onSpeakWord={togglePreviewSpeech}
+          onInteractionLockChange={setHomeInteractionLocked}
+          getScrollOffset={() => scrollOffsetRef.current}
+        />
+      </Animated.ScrollView>
+    </View>
+  );
+
+  /* The previous homepage remains below as a rollback reference while the new
+     presentation reuses the same handlers and data above. */
 
   return (
     <View style={styles.screen}>
@@ -1223,7 +1287,7 @@ export default function HomeScreen() {
                   <View style={styles.replyStatusDot} />
                   <Text style={styles.replyLabel}>AI 教练推荐</Text>
                 </View>
-                <MotionPressable onPress={togglePreviewSpeech} style={styles.readButton}>
+                <MotionPressable onPress={() => togglePreviewSpeech()} style={styles.readButton}>
                   {previewSpeaking ? <Square size={12} color={BLUE} fill={BLUE} /> : <Volume2 size={15} color={BLUE} />}
                   <Text style={styles.readButtonText}>{previewSpeaking ? '停止' : '朗读'}</Text>
                 </MotionPressable>
@@ -1285,7 +1349,7 @@ export default function HomeScreen() {
           pointerEvents="none"
           style={[
             styles.revealCircle,
-            { left: reveal.x - 36, top: reveal.y - 36, backgroundColor: reveal.color },
+            { left: reveal!.x - 36, top: reveal!.y - 36, backgroundColor: reveal!.color },
             revealAnimatedStyle,
           ]}
         />
