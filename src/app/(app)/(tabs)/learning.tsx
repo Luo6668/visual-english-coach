@@ -143,9 +143,11 @@ export default function LearningScreen() {
   const renderCard = ({ item, index }: { item: ContentRow; index: number }) => {
     if (activeTab === 'favorites') {
       const phrase = item.i_say || item.i_think || item.i_see;
+      const speechKey = `favorite-${item.id}`;
       return (
         <View style={styles.favoriteCard}>
-          <MotionPressable accessibilityRole="button" accessibilityLabel={`继续学习 ${item.scene_name}`} onPress={() => router.push(`/(app)/record/${item.id}` as any)} hoverTilt={1.5} style={styles.favoriteMain}>
+          <View pointerEvents="none" style={styles.cardTopShine} />
+          <MotionPressable accessibilityRole="button" accessibilityLabel={`继续学习 ${item.scene_name}`} onPress={() => router.push(`/(app)/record/${item.id}` as any)} hoverTilt={2} hoverLift={3} hoverScale={1.01} style={styles.favoriteMain}>
             <View style={styles.favoriteImageWrap}>
               <Image source={validImageSource(item.scene_image)} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={220} />
               <LinearGradient colors={['transparent', 'rgba(4,19,39,0.62)']} style={StyleSheet.absoluteFillObject} />
@@ -154,7 +156,12 @@ export default function LearningScreen() {
             <View style={styles.favoriteCopy}>
               <View style={styles.eyebrowRow}><MapPin size={13} color={BLUE} strokeWidth={2.4} /><Text numberOfLines={1} style={styles.eyebrowText}>{item.scene_name || '场景表达'}</Text></View>
               <Text numberOfLines={compact ? 3 : 2} style={styles.favoritePhrase}>{phrase}</Text>
-              <View style={styles.cardActionLine}><Text style={styles.cardActionText}>继续练习</Text><ArrowRight size={14} color={BLUE} strokeWidth={2.4} /></View>
+              <View style={styles.favoriteActions}>
+                <MotionPressable accessibilityRole="button" accessibilityLabel={speakingKey === speechKey ? '停止朗读收藏表达' : '朗读收藏表达'} onPress={(event) => { event.stopPropagation(); speak(speechKey, phrase); }} pressedScale={0.9} style={[styles.miniSound, speakingKey === speechKey && styles.iconActionActive]}>
+                  <Volume2 size={14} color={speakingKey === speechKey ? WHITE : BLUE} />
+                </MotionPressable>
+                <View style={styles.cardActionLine}><Text style={styles.cardActionText}>继续练习</Text><ArrowRight size={14} color={BLUE} strokeWidth={2.4} /></View>
+              </View>
             </View>
           </MotionPressable>
           <MotionPressable accessibilityRole="button" accessibilityLabel={`取消收藏 ${item.scene_name}`} onPress={() => void handleRemoveFavorite(String(item.id))} disabled={updatingFavoriteId !== null} pressedScale={0.9} style={styles.favoriteButton}>
@@ -166,15 +173,22 @@ export default function LearningScreen() {
 
     if (activeTab === 'scenes') {
       const count = Number(item.practice_count || 1);
+      const relatedRecord = records.find(record => record.scene_name === item.scene_name);
+      const expression = relatedRecord?.i_say || relatedRecord?.i_see || '进入场景，用英语完成一次真实对话';
       return (
-        <MotionPressable accessibilityRole="button" accessibilityLabel={`进入${item.scene_name}场景对话`} onPress={() => router.push({ pathname: '/(app)/dialogue', params: { scene: item.scene_name } } as any)} hoverTilt={1.5} style={styles.sceneCard}>
-          <View style={styles.sceneImageWrap}>
-            <Image source={validImageSource(item.scene_image)} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={220} />
-            <LinearGradient colors={['rgba(7,24,49,0.05)', 'rgba(7,24,49,0.72)']} style={StyleSheet.absoluteFillObject} />
-            <View style={styles.practiceBadge}><Text style={styles.practiceBadgeText}>练习 {count} 次</Text></View>
+        <MotionPressable accessibilityRole="button" accessibilityLabel={`进入${item.scene_name}场景对话`} onPress={() => router.push({ pathname: '/(app)/dialogue', params: { scene: item.scene_name } } as any)} pressedScale={0.985} hoverTilt={2.6} hoverLift={4} hoverScale={1.012} style={styles.sceneCard}>
+          <Image source={validImageSource(item.scene_image)} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={260} />
+          <LinearGradient colors={['rgba(4,20,39,0.04)', 'rgba(5,24,47,0.22)', 'rgba(4,18,38,0.9)']} locations={[0, 0.42, 1]} style={StyleSheet.absoluteFillObject} />
+          <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0.42)', 'rgba(255,255,255,0)']} start={{ x: 0.1, y: 0 }} end={{ x: 0.8, y: 0.55 }} style={styles.sceneRefraction} />
+          <View style={styles.sceneTopRow}>
+            <View style={styles.practiceBadge}><View style={styles.liveDot} /><Text style={styles.practiceBadgeText}>已练习 {count} 次</Text></View>
+            <View style={styles.sceneDateBadge}><Text style={styles.sceneDateText}>{formatDate(item.last_practiced_at)}</Text></View>
           </View>
-          <View style={styles.sceneCopy}><Text numberOfLines={1} style={styles.sceneTitle}>{item.scene_name}</Text><Text numberOfLines={1} style={styles.sceneMeta}>{formatDate(item.last_practiced_at)}更新</Text></View>
-          <View style={styles.roundArrow}><ChevronRight size={17} color={BLUE_DARK} strokeWidth={2.4} /></View>
+          <View style={styles.sceneBottom}>
+            <View style={styles.sceneCopy}><Text numberOfLines={1} style={styles.sceneTitle}>{item.scene_name}</Text><Text numberOfLines={2} style={styles.sceneExpression}>{expression}</Text></View>
+            <View style={styles.sceneAction}><Text style={styles.sceneActionText}>继续对话</Text><ArrowRight size={15} color={WHITE} strokeWidth={2.5} /></View>
+          </View>
+          <View pointerEvents="none" style={styles.sceneInnerBorder} />
         </MotionPressable>
       );
     }
@@ -182,19 +196,20 @@ export default function LearningScreen() {
     if (activeTab === 'sentences') {
       const speechKey = `sentence-${item.id}`;
       return (
-        <View style={styles.sentenceCard}>
+        <MotionPressable accessibilityRole="button" accessibilityLabel={`练习句子 ${item.sentence}`} onPress={() => router.push({ pathname: '/(app)/shadowing', params: { sentence: item.sentence } } as any)} hoverTilt={1.2} hoverLift={2.5} style={styles.sentenceCard}>
+          <View pointerEvents="none" style={styles.cardTopShine} />
           <View style={styles.sentenceIndex}><Text style={styles.sentenceIndexText}>{String(index + 1).padStart(2, '0')}</Text></View>
           <Text style={styles.sentenceText}>{item.sentence}</Text>
           {item.translation ? <Text style={styles.translationText}>{item.translation}</Text> : null}
           <View style={styles.sentenceActions}>
-            <MotionPressable accessibilityRole="button" accessibilityLabel={speakingKey === speechKey ? '停止朗读' : '朗读句子'} onPress={() => speak(speechKey, item.sentence)} pressedScale={0.92} style={[styles.iconAction, speakingKey === speechKey && styles.iconActionActive]}>
+            <MotionPressable accessibilityRole="button" accessibilityLabel={speakingKey === speechKey ? '停止朗读' : '朗读句子'} onPress={(event) => { event.stopPropagation(); speak(speechKey, item.sentence); }} pressedScale={0.92} style={[styles.iconAction, speakingKey === speechKey && styles.iconActionActive]}>
               <Volume2 size={18} color={speakingKey === speechKey ? WHITE : BLUE} fill={speakingKey === speechKey ? WHITE : 'transparent'} />
             </MotionPressable>
             <MotionPressable accessibilityRole="button" accessibilityLabel="进入跟读练习" onPress={() => router.push({ pathname: '/(app)/shadowing', params: { sentence: item.sentence } } as any)} style={styles.primaryAction}>
               <Mic2 size={16} color={WHITE} /><Text style={styles.primaryActionText}>跟读这一句</Text>
             </MotionPressable>
           </View>
-        </View>
+        </MotionPressable>
       );
     }
 
@@ -204,6 +219,7 @@ export default function LearningScreen() {
       return (
         <MotionPressable accessibilityRole="button" accessibilityLabel={`查看单词 ${item.word}`} onPress={() => router.push({ pathname: '/(app)/word-detail', params: { word: item.word } } as any)} hoverTilt={1.2} style={styles.wordCard}>
           <LinearGradient colors={index % 2 ? ['rgba(239,249,255,0.94)', 'rgba(255,255,255,0.88)'] : ['rgba(255,249,231,0.92)', 'rgba(255,255,255,0.9)']} style={StyleSheet.absoluteFillObject} />
+          <View pointerEvents="none" style={styles.cardTopShine} />
           <View style={styles.wordTopRow}>
             <View style={styles.wordLetter}><Text style={styles.wordLetterText}>{item.word?.[0]?.toUpperCase()}</Text></View>
             <MotionPressable accessibilityRole="button" accessibilityLabel={speakingKey === speechKey ? '停止朗读' : `朗读 ${item.word}`} onPress={(event) => { event.stopPropagation(); speak(speechKey, item.word); }} pressedScale={0.9} style={[styles.wordSound, speakingKey === speechKey && styles.iconActionActive]}>
@@ -223,6 +239,7 @@ export default function LearningScreen() {
     return (
       <MotionPressable accessibilityRole="button" accessibilityLabel="打开英语日记" onPress={() => router.push('/(app)/diary' as any)} hoverTilt={1.2} style={styles.diaryCard}>
         <LinearGradient colors={item.diary_type === 'weekly' ? ['#FFF7D8', '#FFFDF5'] : ['#E9F5FF', '#FCFEFF']} style={StyleSheet.absoluteFillObject} />
+        <View pointerEvents="none" style={styles.cardTopShine} />
         <View style={styles.diaryRail} />
         <View style={styles.diaryHeader}>
           <View style={styles.diaryBadge}><CalendarDays size={13} color={item.diary_type === 'weekly' ? '#9A6500' : BLUE_DARK} /><Text style={[styles.diaryBadgeText, item.diary_type === 'weekly' && { color: '#9A6500' }]}>{item.diary_type === 'weekly' ? 'WEEKLY STORY' : 'DAILY NOTE'}</Text></View>
@@ -303,20 +320,20 @@ const glassWeb = Platform.OS === 'web' ? ({ backdropFilter: 'blur(22px) saturate
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: BG, alignItems: 'center' },
   listContent: { alignSelf: 'center', paddingHorizontal: 16 },
-  hero: { marginHorizontal: -16, paddingHorizontal: 20, paddingBottom: 22, overflow: 'hidden', borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
+  hero: { marginHorizontal: -16, paddingHorizontal: 20, paddingBottom: 17, overflow: 'hidden', borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
   heroGlow: { position: 'absolute', right: -70, top: 18, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(79,181,255,0.16)' },
   heroTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 },
   kicker: { color: BLUE, fontSize: 10, lineHeight: 13, fontWeight: '900', letterSpacing: 1.3 },
-  pageTitle: { color: INK, fontSize: 31, lineHeight: 38, fontWeight: '900', marginTop: 5, letterSpacing: 0 },
+  pageTitle: { color: INK, fontSize: 29, lineHeight: 35, fontWeight: '900', marginTop: 4, letterSpacing: 0 },
   pageSubtitle: { color: MUTED, fontSize: 13, lineHeight: 19, marginTop: 4 },
   refreshButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.74)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.94)', shadowColor: '#2B6DAE', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.12, shadowRadius: 18, ...glassWeb },
-  statsPanel: { marginTop: 22, height: 77, paddingHorizontal: 8, borderRadius: 24, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.66)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.96)', shadowColor: '#2D6FA7', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 28, ...glassWeb },
+  statsPanel: { marginTop: 17, height: 67, paddingHorizontal: 8, borderRadius: 22, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.66)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.96)', shadowColor: '#2D6FA7', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 28, ...glassWeb },
   statCell: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   statValue: { color: INK, fontSize: 21, lineHeight: 25, fontWeight: '900' },
   statLabel: { color: MUTED, fontSize: 11, marginTop: 3, fontWeight: '700' },
   statDivider: { width: 1, height: 29, backgroundColor: 'rgba(134,164,198,0.24)' },
-  recentCard: { marginTop: 12, minHeight: 76, padding: 8, paddingRight: 12, flexDirection: 'row', alignItems: 'center', borderRadius: 22, gap: 12, backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', ...glassWeb },
-  recentImage: { width: 60, height: 60, borderRadius: 16, backgroundColor: BLUE_SOFT },
+  recentCard: { marginTop: 10, minHeight: 68, padding: 7, paddingRight: 11, flexDirection: 'row', alignItems: 'center', borderRadius: 20, gap: 11, backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', ...glassWeb },
+  recentImage: { width: 54, height: 54, borderRadius: 15, backgroundColor: BLUE_SOFT },
   recentCopy: { flex: 1, minWidth: 0 },
   liveRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#28B463' },
@@ -325,8 +342,8 @@ const styles = StyleSheet.create({
   recentPhrase: { color: MUTED, fontSize: 11, marginTop: 3 },
   roundArrow: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.86)', borderWidth: 1, borderColor: 'rgba(122,174,230,0.24)', shadowColor: '#2A69A8', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.12, shadowRadius: 10 },
   tabShell: { marginHorizontal: -16, paddingHorizontal: 16, backgroundColor: BG },
-  tabsRow: { flexDirection: 'row', gap: 7, paddingTop: 15, paddingBottom: 7 },
-  tabButton: { flex: 1, minWidth: 0, height: 47, borderRadius: 17, alignItems: 'center', justifyContent: 'center', gap: 2, backgroundColor: 'rgba(255,255,255,0.68)', borderWidth: 1, borderColor: 'rgba(148,174,204,0.18)' },
+  tabsRow: { flexDirection: 'row', gap: 7, paddingTop: 12, paddingBottom: 5 },
+  tabButton: { flex: 1, minWidth: 0, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center', gap: 1, backgroundColor: 'rgba(255,255,255,0.68)', borderWidth: 1, borderColor: 'rgba(148,174,204,0.18)' },
   tabButtonActive: { backgroundColor: BLUE, borderColor: '#5AA5FF', shadowColor: BLUE, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.24, shadowRadius: 14 },
   tabText: { color: MUTED, fontSize: 11, fontWeight: '800' },
   tabTextActive: { color: WHITE },
@@ -334,7 +351,7 @@ const styles = StyleSheet.create({
   tabCountActive: { backgroundColor: 'rgba(255,255,255,0.22)' },
   tabCountText: { color: '#6C7C91', fontSize: 8, fontWeight: '900' },
   tabCountTextActive: { color: WHITE },
-  contentIntro: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 21, marginBottom: 12 },
+  contentIntro: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 17, marginBottom: 10 },
   sectionTitle: { color: INK, fontSize: 20, lineHeight: 25, fontWeight: '900' },
   sectionSubtitle: { color: MUTED, fontSize: 12, marginTop: 3 },
   createButton: { height: 38, borderRadius: 19, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: BLUE },
@@ -344,6 +361,7 @@ const styles = StyleSheet.create({
   clearButton: { width: 27, height: 27, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EDF2F7' },
   inlineError: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 11, marginBottom: 12, borderRadius: 14, backgroundColor: '#FFF0F0', borderWidth: 1, borderColor: '#F4B5B5' },
   inlineErrorText: { flex: 1, color: '#A23232', fontSize: 12 },
+  cardTopShine: { position: 'absolute', left: 18, right: 18, top: 1, height: 1, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.94)', zIndex: 4 },
   favoriteCard: { minHeight: 130, flexDirection: 'row', overflow: 'hidden', borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.84)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.98)', shadowColor: '#244F7A', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 22, ...glassWeb },
   favoriteMain: { flex: 1, minWidth: 0, padding: 10, paddingRight: 2, flexDirection: 'row', alignItems: 'stretch', gap: 13 },
   favoriteImageWrap: { width: 104, minHeight: 108, borderRadius: 18, overflow: 'hidden', backgroundColor: BLUE_SOFT },
@@ -352,16 +370,25 @@ const styles = StyleSheet.create({
   eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   eyebrowText: { flex: 1, color: BLUE_DARK, fontSize: 11, fontWeight: '800' },
   favoritePhrase: { color: INK, fontSize: 14, lineHeight: 20, fontWeight: '700', marginTop: 8 },
-  cardActionLine: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 'auto', paddingTop: 8 },
+  favoriteActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 'auto', paddingTop: 7 },
+  miniSound: { width: 29, height: 29, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: BLUE_SOFT, borderWidth: 1, borderColor: '#D3E6FC' },
+  cardActionLine: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   cardActionText: { color: BLUE, fontSize: 12, fontWeight: '900' },
   favoriteButton: { width: 46, alignItems: 'center', justifyContent: 'center', borderLeftWidth: 1, borderLeftColor: 'rgba(136,166,198,0.18)' },
-  sceneCard: { minHeight: 96, padding: 8, paddingRight: 12, flexDirection: 'row', alignItems: 'center', gap: 13, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.84)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.98)', shadowColor: '#244F7A', shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.09, shadowRadius: 19, ...glassWeb },
-  sceneImageWrap: { width: 112, height: 80, borderRadius: 18, overflow: 'hidden', backgroundColor: BLUE_SOFT },
-  practiceBadge: { position: 'absolute', left: 8, bottom: 7, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 4, backgroundColor: 'rgba(8,31,60,0.68)' },
-  practiceBadgeText: { color: WHITE, fontSize: 9, fontWeight: '800' },
+  sceneCard: { height: 174, padding: 15, justifyContent: 'space-between', overflow: 'hidden', borderRadius: 26, backgroundColor: '#173A5F', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', shadowColor: '#163E68', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.2, shadowRadius: 24, ...glassWeb },
+  sceneRefraction: { position: 'absolute', left: -30, top: -48, width: 230, height: 160, borderRadius: 110, transform: [{ rotate: '-18deg' }] },
+  sceneTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  practiceBadge: { height: 29, borderRadius: 15, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(4,22,43,0.58)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.24)', ...glassWeb },
+  practiceBadgeText: { color: WHITE, fontSize: 10, fontWeight: '800' },
+  sceneDateBadge: { height: 29, borderRadius: 15, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', ...glassWeb },
+  sceneDateText: { color: WHITE, fontSize: 10, fontWeight: '800' },
+  sceneBottom: { flexDirection: 'row', alignItems: 'flex-end', gap: 12 },
   sceneCopy: { flex: 1, minWidth: 0 },
-  sceneTitle: { color: INK, fontSize: 16, fontWeight: '900' },
-  sceneMeta: { color: MUTED, fontSize: 11, marginTop: 5 },
+  sceneTitle: { color: WHITE, fontSize: 22, lineHeight: 27, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 8 },
+  sceneExpression: { color: 'rgba(255,255,255,0.84)', fontSize: 11, lineHeight: 16, marginTop: 5, maxWidth: 270, textShadowColor: 'rgba(0,0,0,0.3)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 5 },
+  sceneAction: { height: 36, borderRadius: 18, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(18,119,240,0.9)', borderWidth: 1, borderColor: 'rgba(183,224,255,0.82)', shadowColor: '#008CFF', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.4, shadowRadius: 12 },
+  sceneActionText: { color: WHITE, fontSize: 11, fontWeight: '900' },
+  sceneInnerBorder: { ...StyleSheet.absoluteFillObject, borderRadius: 26, borderWidth: 1, borderColor: 'rgba(255,255,255,0.26)' },
   sentenceCard: { borderRadius: 24, padding: 18, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.86)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.98)', shadowColor: '#244F7A', shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.09, shadowRadius: 19, ...glassWeb },
   sentenceIndex: { position: 'absolute', right: 15, top: 13 },
   sentenceIndexText: { color: '#D9E7F7', fontSize: 25, fontWeight: '900' },
