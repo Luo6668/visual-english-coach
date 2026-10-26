@@ -178,13 +178,26 @@ function Glass({
   children,
   style,
   tint = ['rgba(255,255,255,0.93)', 'rgba(239,248,255,0.76)', 'rgba(255,255,255,0.88)'],
+  level = 'interactive',
 }: {
   children: ReactNode;
   style?: any;
   tint?: readonly [string, string, ...string[]];
+  level?: 'primary' | 'interactive' | 'utility';
 }) {
+  const filter = level === 'primary'
+    ? 'blur(24px) saturate(1.45)'
+    : level === 'utility'
+      ? 'blur(14px) saturate(1.16)'
+      : 'blur(20px) saturate(1.3)';
   return (
-    <View style={[styles.glassShell, webGlass('blur(20px) saturate(1.3)'), style]}>
+    <View style={[
+      styles.glassShell,
+      level === 'primary' ? styles.glassPrimary : null,
+      level === 'utility' ? styles.glassUtility : null,
+      webGlass(filter),
+      style,
+    ]}>
       <LinearGradient colors={tint as any} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
       <LinearGradient
         pointerEvents="none"
@@ -347,13 +360,14 @@ function GoalRing({ u, count }: { u: number; count: number }) {
 }
 
 function CardHeading({ title, subtitle, u }: { title: string; subtitle: string; u: number }) {
+  const textScale = Math.max(u, 0.56);
   return (
     <View style={[styles.cardHeading, { left: 20 * u, right: 16 * u, top: 13 * u }]}>
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={styles.headingLine}>
-          <Text style={[styles.cardTitle, { fontSize: 25 * u, lineHeight: 31 * u }]}>{title}</Text>
+          <Text numberOfLines={1} style={[styles.cardTitle, { fontSize: 25 * textScale, lineHeight: 31 * textScale }]}>{title}</Text>
         </View>
-        <Text style={[styles.cardSubtitle, { fontSize: 17 * u, lineHeight: 23 * u }]}>{subtitle}</Text>
+        <Text numberOfLines={1} style={[styles.cardSubtitle, { fontSize: 17 * textScale, lineHeight: 23 * textScale }]}>{subtitle}</Text>
       </View>
       <View style={[styles.headingArrow, { width: 33 * u, height: 33 * u, borderRadius: 17 * u }]}> 
         <ChevronRight size={20 * u} color={INK} strokeWidth={2.2} />
@@ -425,7 +439,7 @@ function LessonStack({ u, latest, loading, onOpenRecord, onOpenLearning }: {
   const lessons = useMemo<LessonVisual[]>(() => [
     {
       key: latest?.id ?? 'coffee',
-      image: ASSETS.latteDetail,
+      image: latest?.scene_image ? { uri: latest.scene_image } : ASSETS.latteDetail,
       kicker: '第 3 课',
       title: '继续学习',
       scene: latest?.scene_name || '咖啡馆点单',
@@ -849,7 +863,11 @@ export function PremiumHomeBoard(props: Props) {
   const latest = props.records[0];
   const isRecording = props.recState === 'recording';
   const busy = props.recState === 'requesting' || props.recState === 'transcribing';
-  const boardHeight = 1678 * u;
+  const smallScreen = width < 600;
+  const utilityStartOffset = smallScreen ? 12 : 0;
+  const utilitySecondRowOffset = smallScreen ? 24 : 0;
+  const journeyOffset = smallScreen ? 36 : 0;
+  const boardHeight = 1678 * u + journeyOffset;
   const fs = (value: number) => value * u;
   const openOverlay = useCallback((next: Omit<SpatialOverlayState, 'scrollOffset'>) => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -937,7 +955,7 @@ export function PremiumHomeBoard(props: Props) {
           <CoachOrb u={u} state={props.recState} onPress={() => openOverlay({ kind: 'coach', scene: SCENES[0], origin: { x: 580, y: 101, width: 244, height: 630 } })} />
           <View style={{ position: 'absolute', left: 29 * u, top: 286 * u, width: 187 * u }}><Waveform u={u} active={isRecording} /></View>
           <Text style={[styles.listening, { top: 357 * u, fontSize: fs(18) }]}> 
-            {busy ? '正在识别...' : isRecording ? `${String(Math.floor(props.recSeconds / 60)).padStart(2, '0')}:${String(props.recSeconds % 60).padStart(2, '0')}` : '正在倾听...'}
+            {busy ? '正在识别...' : isRecording ? `正在倾听 ${String(Math.floor(props.recSeconds / 60)).padStart(2, '0')}:${String(props.recSeconds % 60).padStart(2, '0')}` : '点击开始对话'}
           </Text>
           <MotionPressable
             onPress={props.onRecord}
@@ -972,15 +990,15 @@ export function PremiumHomeBoard(props: Props) {
         </Glass>
       </Animated.View>
 
-      <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(210).duration(450)} style={[styles.album, { left: 32 * u, top: 1068 * u, width: 410 * u, height: 225 * u, borderRadius: 28 * u }]}> 
-        <Glass style={StyleSheet.absoluteFillObject}>
+      <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(210).duration(450)} style={[styles.album, { left: 32 * u, top: 1068 * u + utilityStartOffset, width: 410 * u, height: 225 * u, borderRadius: 28 * u }]}>
+        <Glass level="utility" style={StyleSheet.absoluteFillObject}>
           <CardHeading u={u} title="相册场景" subtitle="从照片中练习英语表达" />
           <PhotoDeck u={u} onPreview={(index) => openOverlay({ kind: 'album', scene: ALBUM_SCENES[index], origin: { x: 52, y: 1146, width: 154, height: 112 } })} />
         </Glass>
       </Animated.View>
 
-      <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(240).duration(450)} style={[styles.writing, { left: 455 * u, top: 1068 * u, width: 369 * u, height: 225 * u, borderRadius: 28 * u }]}> 
-        <Glass style={StyleSheet.absoluteFillObject} tint={['rgba(255,255,255,0.94)', 'rgba(235,243,255,0.82)', 'rgba(255,255,255,0.92)']}>
+      <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(240).duration(450)} style={[styles.writing, { left: 455 * u, top: 1068 * u + utilityStartOffset, width: 369 * u, height: 225 * u, borderRadius: 28 * u }]}>
+        <Glass level="utility" style={StyleSheet.absoluteFillObject} tint={['rgba(255,255,255,0.94)', 'rgba(235,243,255,0.82)', 'rgba(255,255,255,0.92)']}>
           <CardHeading u={u} title="文字练习" subtitle="用文字创建你想练习的场景" />
           <View style={[styles.writingBox, { left: 19 * u, right: 17 * u, bottom: 17 * u, height: 106 * u, borderRadius: 25 * u, paddingLeft: 18 * u, paddingRight: 74 * u }]}>
             <TextInput
@@ -999,15 +1017,15 @@ export function PremiumHomeBoard(props: Props) {
         </Glass>
       </Animated.View>
 
-      <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(270).duration(450)} style={[styles.vocab, { left: 32 * u, top: 1305 * u, width: 394 * u, height: 225 * u, borderRadius: 28 * u }]}> 
-        <Glass style={StyleSheet.absoluteFillObject} tint={['rgba(255,255,255,0.96)', 'rgba(255,249,229,0.72)', 'rgba(225,243,255,0.82)']}>
+      <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(270).duration(450)} style={[styles.vocab, { left: 32 * u, top: 1305 * u + utilitySecondRowOffset, width: 394 * u, height: 225 * u, borderRadius: 28 * u }]}>
+        <Glass level="utility" style={StyleSheet.absoluteFillObject} tint={['rgba(255,255,255,0.96)', 'rgba(255,249,229,0.72)', 'rgba(225,243,255,0.82)']}>
           <CardHeading u={u} title="重点词汇" subtitle="场景高频词 · 翻卡记忆" />
           <VocabularyDeck u={u} onSpeak={props.onSpeakWord} />
         </Glass>
       </Animated.View>
 
-      <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(300).duration(450)} style={[styles.recommend, { left: 437 * u, top: 1305 * u, width: 387 * u, height: 225 * u, borderRadius: 28 * u }]}> 
-        <Glass style={StyleSheet.absoluteFillObject}>
+      <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(300).duration(450)} style={[styles.recommend, { left: 437 * u, top: 1305 * u + utilitySecondRowOffset, width: 387 * u, height: 225 * u, borderRadius: 28 * u }]}>
+        <Glass level="utility" style={StyleSheet.absoluteFillObject}>
           <CardHeading u={u} title="场景推荐" subtitle="更多真实场景，拓展你的表达" />
           <View style={[styles.sceneRow, { left: 14 * u, right: 14 * u, bottom: 14 * u, height: 124 * u, gap: 8 * u }]}>
             {SCENES.map((scene, index) => (
@@ -1022,8 +1040,8 @@ export function PremiumHomeBoard(props: Props) {
         </Glass>
       </Animated.View>
 
-      <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(340).duration(450)} style={[styles.journey, { left: 31 * u, top: 1542 * u, width: 793 * u, height: 108 * u, borderRadius: 29 * u }]}> 
-        <Glass style={StyleSheet.absoluteFillObject} tint={['rgba(255,255,255,0.94)', 'rgba(228,245,255,0.76)', 'rgba(255,244,238,0.72)']}>
+      <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(340).duration(450)} style={[styles.journey, { left: 31 * u, top: 1542 * u + journeyOffset, width: 793 * u, height: 108 * u, borderRadius: 29 * u }]}>
+        <Glass level="utility" style={StyleSheet.absoluteFillObject} tint={['rgba(255,255,255,0.94)', 'rgba(228,245,255,0.76)', 'rgba(255,244,238,0.72)']}>
           <View style={{ position: 'absolute', left: 23 * u, top: 18 * u }}><Text style={[styles.journeyTitle, { fontSize: fs(25) }]}>学习轨迹</Text><Text style={[styles.journeySubtitle, { fontSize: fs(17), marginTop: 5 * u }]}>从生活场景走向更广阔的世界</Text></View>
           <View style={[styles.track, { right: 28 * u, top: 14 * u, width: 453 * u, height: 87 * u }]}>
             <Svg style={StyleSheet.absoluteFillObject} viewBox="0 0 453 87"><Path d="M30 45 C90 21 130 60 191 42 S300 42 420 44" fill="none" stroke="#BBC7D7" strokeWidth="5" strokeLinecap="round" /><Path d="M30 45 C90 21 130 60 191 42" fill="none" stroke={BLUE} strokeWidth="5" strokeLinecap="round" /></Svg>
@@ -1091,6 +1109,8 @@ const styles = StyleSheet.create({
   locationText: { flex: 1, color: '#fff', fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.42)', textShadowRadius: 5 },
   cameraLabel: { color: '#fff', fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 5 },
   glassShell: { position: 'relative', overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(154,205,244,0.72)', shadowColor: '#2C679D', shadowOffset: { width: 0, height: 15 }, shadowOpacity: 0.2, shadowRadius: 30, elevation: 8 },
+  glassPrimary: { borderColor: 'rgba(175,223,255,0.86)', shadowOpacity: 0.25, shadowRadius: 34, elevation: 10 },
+  glassUtility: { borderColor: 'rgba(183,213,236,0.58)', shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.11, shadowRadius: 18, elevation: 4 },
   glassReflection: { ...StyleSheet.absoluteFillObject, opacity: 0.8 },
   glassTopEdge: { position: 'absolute', left: '4%', right: '5%', top: 1, height: 2, borderRadius: 999 },
   glassInnerEdge: { ...StyleSheet.absoluteFillObject, borderWidth: 1, borderColor: 'rgba(255,255,255,0.48)', borderRadius: 27 },

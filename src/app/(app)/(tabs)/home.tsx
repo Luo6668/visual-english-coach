@@ -863,7 +863,11 @@ export default function HomeScreen() {
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         scrollEnabled={!homeInteractionLocked}
-        contentContainerStyle={{ alignItems: 'center', backgroundColor: WHITE }}
+        contentContainerStyle={{
+          alignItems: 'center',
+          backgroundColor: WHITE,
+          paddingBottom: Math.max(insets.bottom + 82, 96),
+        }}
         keyboardShouldPersistTaps="handled"
         onScroll={handleScroll}
         scrollEventThrottle={16}
