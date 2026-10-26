@@ -1,13 +1,14 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useAudioPlayer } from 'expo-audio';
 import { useFocusEffect, useRouter } from 'expo-router';
-import * as Speech from 'expo-speech';
 import { AlertCircle, AlignLeft, ArrowRight, BookMarked, Bookmark, CalendarDays, ChevronRight, MapPin, Mic2, RefreshCw, Search, Sparkles, Star, Volume2, X } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Platform, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MotionPressable } from '@/components/motion-pressable';
-import { fetchDiaries, fetchLearningRecords, fetchScenes, fetchSentences, fetchWords, updateLearningRecord } from '@/lib/api';
+import { fetchDiaries, fetchLearningRecords, fetchScenes, fetchSentences, fetchWords, invokeEdgeFunction, updateLearningRecord } from '@/lib/api';
+import { speakWithTTS, stopLocalSpeech } from '@/lib/speech';
 
 const BLUE = '#1677F0';
 const BLUE_DARK = '#0B4FAD';
@@ -58,6 +59,7 @@ function getSearchText(tab: TabKey, item: ContentRow) {
 
 export default function LearningScreen() {
   const router = useRouter();
+  const player = useAudioPlayer();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const contentWidth = Math.min(width, 850);
@@ -100,7 +102,7 @@ export default function LearningScreen() {
 
   useFocusEffect(useCallback(() => {
     void loadData();
-    return () => Speech.stop();
+    return () => stopLocalSpeech();
   }, [loadData]));
 
   const favorites = useMemo(() => records.filter(record => Boolean(record.is_favorited)), [records]);
@@ -129,13 +131,13 @@ export default function LearningScreen() {
   const speak = (key: string, text?: string) => {
     if (!text) return;
     if (speakingKey === key) {
-      Speech.stop();
+      stopLocalSpeech();
       setSpeakingKey(null);
       return;
     }
-    Speech.stop();
+    stopLocalSpeech();
     setSpeakingKey(key);
-    Speech.speak(text, { language: 'en-US', rate: 0.88, onDone: () => setSpeakingKey(null), onStopped: () => setSpeakingKey(null), onError: () => setSpeakingKey(null) });
+    void speakWithTTS(text, player, invokeEdgeFunction, () => setSpeakingKey(null));
   };
 
   const renderCard = ({ item, index }: { item: ContentRow; index: number }) => {
