@@ -67,7 +67,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import { MotionPressable } from '@/components/motion-pressable';
 import { PremiumHomeBoard } from '@/components/premium-home-board';
-import { addXp, fetchLearningRecords, fetchXpData, invokeEdgeFunction } from '@/lib/api';
+import {
+  addXp,
+  fetchDailyStats,
+  fetchHighFreqWords,
+  fetchLearningRecords,
+  fetchScenes,
+  fetchWords,
+  fetchXpData,
+  invokeEdgeFunction,
+} from '@/lib/api';
 import { arrayBufferToBase64, audioBlobTo16kWav, startWebAudioRecording } from '@/lib/audioCapture';
 import { setPendingUri } from '@/lib/imageStore';
 import { speakWithTTS, stopLocalSpeech } from '@/lib/speech';
@@ -109,8 +118,52 @@ interface LearningRecord {
   scene_name: string;
   scene_image?: string;
   i_see?: string;
+  i_think?: string;
+  i_say?: string;
+  words?: string[];
   created_at: string;
   input_type?: string;
+}
+
+interface LearnedScene {
+  id: string;
+  scene_name: string;
+  scene_image?: string;
+  practice_count?: number;
+  last_practiced_at?: string;
+}
+
+interface LearnedWord {
+  id: string;
+  word: string;
+  phonetic?: string;
+  meaning?: string;
+  example_sentences?: string[];
+  learned_at?: string;
+}
+
+interface HighFreqWord {
+  id: string;
+  word: string;
+  count?: number;
+  study_date?: string;
+}
+
+interface XpStats {
+  total_xp: number;
+  current_level: number;
+  streak_days: number;
+  total_scenes?: number;
+  total_words?: number;
+  total_dialogues?: number;
+}
+
+interface DailyStats {
+  scene_count?: number;
+  word_count?: number;
+  shadowing_count?: number;
+  dialogue_count?: number;
+  study_minutes?: number;
 }
 
 function parseRecordDate(value: string): Date {
@@ -530,6 +583,15 @@ export default function HomeScreen() {
   const [coachInput, setCoachInput] = useState('');
   const [coachInputFocused, setCoachInputFocused] = useState(false);
   const [records, setRecords] = useState<LearningRecord[]>([]);
+  const [learnedScenes, setLearnedScenes] = useState<LearnedScene[]>([]);
+  const [learnedWords, setLearnedWords] = useState<LearnedWord[]>([]);
+  const [highFreqWords, setHighFreqWords] = useState<HighFreqWord[]>([]);
+  const [xpStats, setXpStats] = useState<XpStats>({
+    total_xp: 0,
+    current_level: 1,
+    streak_days: 0,
+  });
+  const [dailyStats, setDailyStats] = useState<DailyStats>({});
   const [streakDays, setStreakDays] = useState(0);
   const [loading, setLoading] = useState(true);
   const [failedRecordImageId, setFailedRecordImageId] = useState<string | null>(null);
@@ -557,8 +619,12 @@ export default function HomeScreen() {
       void (async () => {
         setLoading(true);
         await addXp('daily_checkin').catch(() => {});
-        const [recordsResult, xpResult] = await Promise.allSettled([
+        const [recordsResult, scenesResult, wordsResult, highFreqResult, dailyResult, xpResult] = await Promise.allSettled([
           fetchLearningRecords(),
+          fetchScenes(),
+          fetchWords(),
+          fetchHighFreqWords(),
+          fetchDailyStats(),
           fetchXpData(),
         ]);
         if (!active) return;
@@ -569,8 +635,21 @@ export default function HomeScreen() {
           setRecords(sorted);
           setFailedRecordImageId(null);
         }
+        if (scenesResult.status === 'fulfilled') setLearnedScenes(scenesResult.value);
+        if (wordsResult.status === 'fulfilled') setLearnedWords(wordsResult.value);
+        if (highFreqResult.status === 'fulfilled') setHighFreqWords(highFreqResult.value);
+        if (dailyResult.status === 'fulfilled') setDailyStats(dailyResult.value ?? {});
         if (xpResult.status === 'fulfilled') {
-          setStreakDays(Number(xpResult.value.stats?.streak_days ?? 0));
+          const nextStats = xpResult.value.stats ?? {};
+          setXpStats({
+            total_xp: Number(nextStats.total_xp ?? 0),
+            current_level: Number(nextStats.current_level ?? nextStats.level ?? 1),
+            streak_days: Number(nextStats.streak_days ?? 0),
+            total_scenes: Number(nextStats.total_scenes ?? 0),
+            total_words: Number(nextStats.total_words ?? 0),
+            total_dialogues: Number(nextStats.total_dialogues ?? 0),
+          });
+          setStreakDays(Number(nextStats.streak_days ?? 0));
         }
         setLoading(false);
       })();
@@ -876,7 +955,13 @@ export default function HomeScreen() {
           topInset={Math.max(insets.top, 0)}
           streakDays={streakDays}
           todayCount={todayCount}
+          weekCompleted={weekCompleted}
           records={records}
+          scenes={learnedScenes}
+          words={learnedWords}
+          highFreqWords={highFreqWords}
+          xpStats={xpStats}
+          dailyStats={dailyStats}
           loading={loading}
           sceneText={sceneInputText}
           recState={recState}

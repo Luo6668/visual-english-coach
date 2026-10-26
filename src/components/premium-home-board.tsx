@@ -43,6 +43,7 @@ import Animated, {
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, RadialGradient, Stop } from 'react-native-svg';
 import { MotionPressable } from '@/components/motion-pressable';
 import { IOS_MOTION, resistedOffset } from '@/lib/ios-motion';
+import { ALL_SCENES, type SceneNode } from '@/lib/sceneMapData';
 
 const BLUE = '#087CFF';
 const BLUE_DARK = '#075EE8';
@@ -58,13 +59,64 @@ type RecordItem = {
   scene_name: string;
   scene_image?: string;
   i_see?: string;
+  i_think?: string;
+  i_say?: string;
+  words?: string[];
+  created_at?: string;
+};
+
+type LearnedScene = {
+  id: string;
+  scene_name: string;
+  scene_image?: string;
+  practice_count?: number;
+  last_practiced_at?: string;
+};
+
+type LearnedWord = {
+  id: string;
+  word: string;
+  phonetic?: string;
+  meaning?: string;
+  example_sentences?: string[];
+  learned_at?: string;
+};
+
+type HighFreqWord = {
+  id: string;
+  word: string;
+  count?: number;
+  study_date?: string;
+};
+
+type XpStats = {
+  total_xp: number;
+  current_level: number;
+  streak_days: number;
+  total_scenes?: number;
+  total_words?: number;
+  total_dialogues?: number;
+};
+
+type DailyStats = {
+  scene_count?: number;
+  word_count?: number;
+  shadowing_count?: number;
+  dialogue_count?: number;
+  study_minutes?: number;
 };
 
 type Props = {
   topInset: number;
   streakDays: number;
   todayCount: number;
+  weekCompleted: number;
   records: RecordItem[];
+  scenes: LearnedScene[];
+  words: LearnedWord[];
+  highFreqWords: HighFreqWord[];
+  xpStats: XpStats;
+  dailyStats: DailyStats;
   loading: boolean;
   sceneText: string;
   recState: 'idle' | 'requesting' | 'recording' | 'transcribing';
@@ -92,6 +144,9 @@ type SceneCard = {
   prompt: string;
   description: string;
   phrases: readonly [string, string][];
+  practiceCount?: number;
+  record?: RecordItem;
+  isRecommendation?: boolean;
 };
 
 type SpatialOverlayKind = 'scene' | 'hero' | 'coach' | 'album';
@@ -103,11 +158,15 @@ type SpatialOverlayState = {
   scrollOffset: number;
 };
 
-const WORDS = [
-  { english: 'latte', chinese: '拿铁', pronunciation: '/ˈlɑːteɪ/', example: 'Could I have a latte, please?' },
-  { english: 'espresso', chinese: '浓缩咖啡', pronunciation: '/eˈspresəʊ/', example: 'One espresso, please.' },
-  { english: 'receipt', chinese: '收据', pronunciation: '/rɪˈsiːt/', example: 'Could I have the receipt?' },
-] as const;
+type VocabularyItem = {
+  key: string;
+  english: string;
+  chinese: string;
+  pronunciation: string;
+  example: string;
+  count?: number;
+  empty?: boolean;
+};
 
 const ASSETS = {
   hero: require('../../assets/home-premium/hero-photo.png'),
@@ -160,19 +219,71 @@ const SCENES: readonly SceneCard[] = [
   },
 ];
 
-const ALBUM_SCENES: readonly SceneCard[] = [
-  SCENES[0],
-  {
-    key: 'city-walk',
-    source: ASSETS.city,
-    title: '城市漫游',
-    subtitle: '问路与探索',
-    prompt: '练习城市问路英语',
-    description: '围绕城市地标、方向与交通方式，练习清晰自然的问路表达。',
-    phrases: [['How do I get downtown?', '去市中心怎么走？'], ['Is it within walking distance?', '走路可以到吗？']],
-  },
-  { ...SCENES[1], source: ASSETS.plane },
-];
+function hasUsableImage(value?: string) {
+  return Boolean(value && !value.startsWith('blob:'));
+}
+
+function findCurriculumScene(name: string): SceneNode | undefined {
+  const normalized = name.toLowerCase();
+  return ALL_SCENES.find(scene => (
+    normalized.includes(scene.nameZh.toLowerCase())
+    || normalized.includes(scene.nameEn.toLowerCase())
+    || scene.nameZh.includes(name)
+  ));
+}
+
+function fallbackSceneAsset(name: string) {
+  if (/机场|登机|airport|flight|海岛|旅行/i.test(name)) return ASSETS.sceneAirport;
+  if (/酒店|住宿|hotel|bedroom|卧室/i.test(name)) return ASSETS.sceneHotel;
+  if (/城市|地铁|问路|city|subway/i.test(name)) return ASSETS.city;
+  return ASSETS.sceneCoffee;
+}
+
+function curriculumPhrases(scene?: SceneNode): readonly [string, string][] {
+  if (scene?.vocab?.length) {
+    return scene.vocab.slice(0, 2).map(item => [item.word, item.meaning] as [string, string]);
+  }
+  return [
+    ['Could you help me practise this scene?', '请帮我练习这个场景。'],
+    ['What should I say next?', '接下来我该怎么说？'],
+  ];
+}
+
+function sceneCardFromLearned(scene: LearnedScene): SceneCard {
+  const curriculum = findCurriculumScene(scene.scene_name);
+  return {
+    key: scene.id,
+    source: hasUsableImage(scene.scene_image) ? { uri: scene.scene_image } : fallbackSceneAsset(scene.scene_name),
+    title: scene.scene_name,
+    subtitle: `已练习 ${Number(scene.practice_count ?? 0)} 次`,
+    prompt: `练习${scene.scene_name}场景英语`,
+    description: curriculum?.description ?? `继续围绕“${scene.scene_name}”练习真实、自然的英语表达。`,
+    phrases: curriculumPhrases(curriculum),
+    practiceCount: Number(scene.practice_count ?? 0),
+  };
+}
+
+function sceneCardFromRecord(record: RecordItem): SceneCard {
+  const curriculum = findCurriculumScene(record.scene_name);
+  const recordWords = record.words?.slice(0, 2).map(word => [word, `来自“${record.scene_name}”的重点词`] as [string, string]);
+  return {
+    key: record.id,
+    source: hasUsableImage(record.scene_image) ? { uri: record.scene_image } : fallbackSceneAsset(record.scene_name),
+    title: record.scene_name,
+    subtitle: '最近学习',
+    prompt: `继续练习${record.scene_name}场景英语`,
+    description: record.i_see || record.i_think || curriculum?.description || `继续复习“${record.scene_name}”里的表达。`,
+    phrases: recordWords?.length ? recordWords : curriculumPhrases(curriculum),
+    record,
+  };
+}
+
+function recordDateLabel(value?: string) {
+  if (!value) return '最近学习';
+  const parsed = new Date(value.includes('T') ? value : value.replace(' ', 'T'));
+  if (Number.isNaN(parsed.getTime())) return '最近学习';
+  return `${parsed.getMonth() + 1}月${parsed.getDate()}日学习`;
+}
 
 function Glass({
   children,
@@ -289,13 +400,18 @@ function MicGlassControl({ u, active }: { u: number; active: boolean }) {
   );
 }
 
-function GoalRing({ u, count }: { u: number; count: number }) {
+function GoalRing({ u, stats }: { u: number; stats: DailyStats }) {
   const reduceMotion = useReducedMotion();
-  const displayCount = Math.min(count || 2, 3);
+  const goals = [
+    { label: '场景练习', done: Number(stats.scene_count ?? 0) > 0 },
+    { label: '语音对话', done: Number(stats.dialogue_count ?? 0) + Number(stats.shadowing_count ?? 0) > 0 },
+    { label: '学习词汇', done: Number(stats.word_count ?? 0) > 0 },
+  ];
+  const displayCount = goals.filter(goal => goal.done).length;
   const radius = 86 * u;
   const size = 204 * u;
   const circumference = 2 * Math.PI * radius;
-  const progress = Math.max(0.08, Math.min(displayCount / 3, 1));
+  const progress = Math.min(displayCount / 3, 1);
   const progressValue = useSharedValue(reduceMotion ? progress : 0);
   const flash = useSharedValue(0);
 
@@ -345,12 +461,12 @@ function GoalRing({ u, count }: { u: number; count: number }) {
       <View style={styles.goalRingCopy}>
         <Text style={[styles.goalNumber, { fontSize: 37 * u, lineHeight: 45 * u }]}>{displayCount}/3</Text>
         <View style={{ gap: 4 * u }}>
-          {['场景练习', '语音对话', '学习词汇'].map((label, index) => (
-            <View key={label} style={[styles.goalLine, { gap: 6 * u }]}>
-              <View style={[styles.goalCheck, { width: 18 * u, height: 18 * u, borderRadius: 9 * u }, index < displayCount ? styles.goalCheckDone : null]}>
-                {index < displayCount ? <Check size={12 * u} color="#fff" strokeWidth={3} /> : null}
+          {goals.map(goal => (
+            <View key={goal.label} style={[styles.goalLine, { gap: 6 * u }]}>
+              <View style={[styles.goalCheck, { width: 18 * u, height: 18 * u, borderRadius: 9 * u }, goal.done ? styles.goalCheckDone : null]}>
+                {goal.done ? <Check size={12 * u} color="#fff" strokeWidth={3} /> : null}
               </View>
-              <Text style={[styles.goalLabel, { fontSize: 16 * u, lineHeight: 20 * u }, index < displayCount ? styles.goalLabelDone : null]}>{label}</Text>
+              <Text style={[styles.goalLabel, { fontSize: 16 * u, lineHeight: 20 * u }, goal.done ? styles.goalLabelDone : null]}>{goal.label}</Text>
             </View>
           ))}
         </View>
@@ -420,12 +536,13 @@ type LessonVisual = {
   scene: string;
   description: string;
   progress: number;
+  status: string;
   record?: RecordItem;
 };
 
-function LessonStack({ u, latest, loading, onOpenRecord, onOpenLearning }: {
+function LessonStack({ u, records, loading, onOpenRecord, onOpenLearning }: {
   u: number;
-  latest?: RecordItem;
+  records: RecordItem[];
   loading: boolean;
   onOpenRecord: (record: RecordItem) => void;
   onOpenLearning: () => void;
@@ -436,20 +553,25 @@ function LessonStack({ u, latest, loading, onOpenRecord, onOpenLearning }: {
   const startX = useSharedValue(0);
   const locked = useSharedValue(false);
   const cardWidth = 438 * u;
-  const lessons = useMemo<LessonVisual[]>(() => [
-    {
-      key: latest?.id ?? 'coffee',
-      image: latest?.scene_image ? { uri: latest.scene_image } : ASSETS.latteDetail,
-      kicker: '第 3 课',
-      title: '继续学习',
-      scene: latest?.scene_name || '咖啡馆点单',
-      description: latest?.i_see || '学习如何在咖啡馆自信点单\n并进行简单交流',
-      progress: 3,
-      record: latest,
-    },
-    { key: 'city', image: ASSETS.lessonCity, kicker: '旅行英语', title: '城市漫游', scene: '问路与交通', description: '练习询问方向、换乘方式\n和城市中的自然交流', progress: 4 },
-    { key: 'airport', image: ASSETS.lessonAirport, kicker: '出行英语', title: '机场出发', scene: '值机与登机', description: '练习值机、托运行李\n并顺利找到登机口', progress: 2 },
-  ], [latest]);
+  const lessons = useMemo<LessonVisual[]>(() => {
+    const realLessons = records.slice(0, 3).map((record, index) => ({
+      key: record.id,
+      image: hasUsableImage(record.scene_image) ? { uri: record.scene_image } : fallbackSceneAsset(record.scene_name),
+      kicker: recordDateLabel(record.created_at),
+      title: index === 0 ? '继续学习' : '复习场景',
+      scene: record.scene_name,
+      description: record.i_see || record.i_think || record.i_say || '打开这条学习记录继续复习',
+      progress: 1,
+      status: '已学习',
+      record,
+    }));
+    const recommendations: LessonVisual[] = [
+      { key: 'recommend-city', image: ASSETS.lessonCity, kicker: '推荐练习', title: '城市漫游', scene: '问路与交通', description: '还没有更多学习记录\n可以从推荐课程开始', progress: 0, status: '推荐' },
+      { key: 'recommend-airport', image: ASSETS.lessonAirport, kicker: '推荐练习', title: '机场出发', scene: '值机与登机', description: '完成练习后这里会自动更新\n为你的真实学习记录', progress: 0, status: '推荐' },
+      { key: 'recommend-coffee', image: ASSETS.latteDetail, kicker: '推荐练习', title: '咖啡馆点单', scene: '日常表达', description: '从一个真实生活场景开始\n建立自己的学习记录', progress: 0, status: '推荐' },
+    ];
+    return [...realLessons, ...recommendations].slice(0, 3);
+  }, [records]);
 
   const commitSwipe = useCallback((direction: 1 | -1) => {
     setActiveIndex(current => (current + direction + lessons.length) % lessons.length);
@@ -594,7 +716,7 @@ function LessonStack({ u, latest, loading, onOpenRecord, onOpenLearning }: {
             <View style={[styles.playOrb, { width: 72 * u, height: 72 * u, borderRadius: 36 * u }]}><LinearGradient colors={['#43DBFF', '#087CFF', '#0752DF']} style={[StyleSheet.absoluteFillObject, { borderRadius: 36 * u }]} /><Svg width={31 * u} height={34 * u} viewBox="0 0 31 34" style={{ zIndex: 3, marginLeft: 4 * u }}><Path d="M4 2.8C4 1.1 5.9.1 7.3 1l20.2 13.9c1.3.9 1.3 2.8 0 3.7L7.3 32.5C5.9 33.4 4 32.4 4 30.7V2.8Z" fill="#FFFFFF" /></Svg></View>
             <Text style={[styles.continueText, { fontSize: 24 * u }]}>继续学习</Text><ChevronRight size={25 * u} color={BLUE_DARK} />
           </View>
-          <View pointerEvents="none" style={{ position: 'absolute', right: 25 * u, bottom: 24 * u, width: 105 * u, alignItems: 'flex-end' }}><Text style={[styles.lessonCount, { fontSize: 21 * u }]}>{active.progress}/8</Text><View style={[styles.lessonProgressTrack, { width: 100 * u, height: 9 * u, borderRadius: 5 * u, marginTop: 7 * u }]}><View style={{ width: `${active.progress / 8 * 100}%`, height: '100%', borderRadius: 5 * u, backgroundColor: BLUE }} /></View></View>
+          <View pointerEvents="none" style={{ position: 'absolute', right: 25 * u, bottom: 24 * u, width: 105 * u, alignItems: 'flex-end' }}><Text style={[styles.lessonCount, { fontSize: 18 * u }]}>{active.status}</Text><View style={[styles.lessonProgressTrack, { width: 100 * u, height: 9 * u, borderRadius: 5 * u, marginTop: 7 * u }]}><View style={{ width: `${active.progress * 100}%`, height: '100%', borderRadius: 5 * u, backgroundColor: BLUE }} /></View></View>
           {loading ? <ActivityIndicator color={BLUE} style={styles.lessonLoader} /> : null}
         </Animated.View>
       </GestureDetector>
@@ -603,20 +725,24 @@ function LessonStack({ u, latest, loading, onOpenRecord, onOpenLearning }: {
   );
 }
 
-function VocabularyDeck({ u, onSpeak }: { u: number; onSpeak: (word?: string) => void }) {
+function VocabularyDeck({ u, items, onSpeak }: { u: number; items: VocabularyItem[]; onSpeak: (word?: string) => void }) {
   const reduceMotion = useReducedMotion();
   const [index, setIndex] = useState(0);
   const flip = useSharedValue(0);
   const swipeX = useSharedValue(0);
   const flipTarget = useSharedValue(0);
-  const word = WORDS[index];
+  const word = items[index] ?? items[0];
+
+  useEffect(() => {
+    if (index >= items.length) setIndex(0);
+  }, [index, items.length]);
 
   const changeWord = useCallback((direction: 1 | -1) => {
-    setIndex(current => (current + direction + WORDS.length) % WORDS.length);
+    setIndex(current => (current + direction + items.length) % items.length);
     swipeX.value = 0;
     flip.value = 0;
     flipTarget.value = 0;
-  }, [flip, flipTarget, swipeX]);
+  }, [flip, flipTarget, items.length, swipeX]);
 
   const tap = useMemo(() => Gesture.Tap().maxDistance(8).onEnd((_event, success) => {
     if (!success) return;
@@ -670,7 +796,7 @@ function VocabularyDeck({ u, onSpeak }: { u: number; onSpeak: (word?: string) =>
     <>
       <View style={[styles.wordBack, { right: 21 * u, bottom: 16 * u, width: 216 * u, height: 121 * u, borderRadius: 14 * u, transform: [{ rotate: '-3deg' }] }]}>
         <LinearGradient colors={['#F7FBFF', '#AEDDFF']} style={StyleSheet.absoluteFillObject} />
-        <Text style={[styles.wordChinese, { fontSize: 21 * u, right: 32 * u, top: 25 * u }]}>{WORDS[(index + 1) % WORDS.length].chinese}</Text>
+        <Text style={[styles.wordChinese, { fontSize: 21 * u, right: 32 * u, top: 25 * u }]}>{items[(index + 1) % items.length]?.chinese}</Text>
         <Image source={ASSETS.latte} style={{ position: 'absolute', right: 40 * u, bottom: 16 * u, width: 45 * u, height: 38 * u }} contentFit="contain" />
       </View>
       <GestureDetector gesture={gesture}>
@@ -687,19 +813,32 @@ function VocabularyDeck({ u, onSpeak }: { u: number; onSpeak: (word?: string) =>
           <Animated.View pointerEvents="none" style={[styles.wordEdgeFlash, { left: 3 * u, right: 3 * u, top: 1 * u, height: 3 * u, borderRadius: 3 * u }, edgeStyle]} />
         </Animated.View>
       </GestureDetector>
-      <MotionPressable onPress={() => onSpeak(word.english)} haptic={false} style={[styles.wordSpeakButton, { left: 171 * u, bottom: 31 * u, width: 38 * u, height: 38 * u, borderRadius: 19 * u }]} accessibilityRole="button" accessibilityLabel={`播放 ${word.english} 发音`}>
+      <MotionPressable disabled={word.empty} onPress={() => onSpeak(word.english)} haptic={false} style={[styles.wordSpeakButton, { left: 171 * u, bottom: 31 * u, width: 38 * u, height: 38 * u, borderRadius: 19 * u, opacity: word.empty ? 0.45 : 1 }]} accessibilityRole="button" accessibilityLabel={`播放 ${word.english} 发音`}>
         <Volume2 size={21 * u} color="#5F7390" />
       </MotionPressable>
     </>
   );
 }
 
-function PhotoDeck({ u, onPreview }: { u: number; onPreview: (index: number) => void }) {
+function PhotoDeck({ u, items, onPreview }: { u: number; items: SceneCard[]; onPreview: (item: SceneCard, index: number) => void }) {
   const reduceMotion = useReducedMotion();
   const [selected, setSelected] = useState(0);
   const dragX = useSharedValue(0);
-  const sources = [ASSETS.coffee, ASSETS.city, ASSETS.plane];
-  const shift = useCallback((direction: 1 | -1) => setSelected(current => (current + direction + sources.length) % sources.length), [sources.length]);
+  const displayItems = items.length ? items.slice(0, 3) : [{
+    key: 'empty-album',
+    source: ASSETS.coffee,
+    title: '暂无场景照片',
+    subtitle: '拍照识别后自动出现',
+    prompt: '',
+    description: '完成一次拍照识别后，这里会显示你的真实场景照片。',
+    phrases: [] as [string, string][],
+    isRecommendation: true,
+  }];
+  const shift = useCallback((direction: 1 | -1) => setSelected(current => (current + direction + displayItems.length) % displayItems.length), [displayItems.length]);
+
+  useEffect(() => {
+    if (selected >= displayItems.length) setSelected(0);
+  }, [displayItems.length, selected]);
   const pan = useMemo(() => Gesture.Pan().activeOffsetX([-10, 10]).failOffsetY([-18, 18]).onBegin(() => {
     cancelAnimation(dragX);
   }).onUpdate(event => {
@@ -721,21 +860,22 @@ function PhotoDeck({ u, onPreview }: { u: number; onPreview: (index: number) => 
     <>
       <GestureDetector gesture={pan}>
         <Animated.View style={[styles.albumPhotos, Platform.OS === 'web' ? ({ touchAction: 'pan-y', transformStyle: 'preserve-3d' } as any) : null, { left: 20 * u, right: 18 * u, top: 83 * u, height: 119 * u }, deckStyle]}> 
-          {sources.map((source, index) => {
-            const distance = (index - selected + sources.length) % sources.length;
+          {displayItems.map((item, index) => {
+            const distance = (index - selected + displayItems.length) % displayItems.length;
             const left = [0, 126, 250][distance];
             return (
-              <Animated.View key={index} layout={reduceMotion ? undefined : LinearTransition.springify().damping(IOS_MOTION.springs.cardPromote.damping).stiffness(IOS_MOTION.springs.cardPromote.stiffness)} style={[styles.albumPhotoButton, { left: left * u, width: (distance === 2 ? 116 : 154) * u, height: (distance === 0 ? 112 : 106) * u, borderRadius: 15 * u, zIndex: distance === 0 ? 4 : 3 - distance, transform: [{ translateY: (distance === 0 ? -5 : distance * 2) * u }, { rotate: `${distance === 0 ? -6 : distance === 1 ? -1.5 : 5}deg` }, { scale: distance === 0 ? 1.04 : 0.96 }] }]}> 
-                <MotionPressable accessibilityRole="button" accessibilityLabel={`${['咖啡馆', '城市', '机场'][index]}照片${selected === index ? '，再次点击展开' : ''}`} onPress={() => selected === index ? onPreview(index) : setSelected(index)} pressedScale={0.97} style={StyleSheet.absoluteFillObject}>
-                  <Image source={source} style={[StyleSheet.absoluteFillObject, styles.albumPhoto, selected === index && styles.albumPhotoActive, { borderRadius: 15 * u }]} contentFit="cover" />
+              <Animated.View key={item.key} layout={reduceMotion ? undefined : LinearTransition.springify().damping(IOS_MOTION.springs.cardPromote.damping).stiffness(IOS_MOTION.springs.cardPromote.stiffness)} style={[styles.albumPhotoButton, { left: left * u, width: (distance === 2 ? 116 : 154) * u, height: (distance === 0 ? 112 : 106) * u, borderRadius: 15 * u, zIndex: distance === 0 ? 4 : 3 - distance, transform: [{ translateY: (distance === 0 ? -5 : distance * 2) * u }, { rotate: `${distance === 0 ? -6 : distance === 1 ? -1.5 : 5}deg` }, { scale: distance === 0 ? 1.04 : 0.96 }] }]}>
+                <MotionPressable accessibilityRole="button" accessibilityLabel={`${item.title}照片${selected === index ? '，再次点击展开' : ''}`} onPress={() => selected === index ? onPreview(item, index) : setSelected(index)} pressedScale={0.97} style={StyleSheet.absoluteFillObject}>
+                  <Image source={item.source} style={[StyleSheet.absoluteFillObject, styles.albumPhoto, selected === index && styles.albumPhotoActive, { borderRadius: 15 * u }]} contentFit="cover" />
+                  {item.isRecommendation ? <View style={styles.albumEmptyScrim}><Text style={styles.albumEmptyText}>{item.title}</Text></View> : null}
                 </MotionPressable>
               </Animated.View>
             );
           })}
         </Animated.View>
       </GestureDetector>
-      <View style={[styles.dots, { bottom: 6 * u, left: 160 * u, gap: 7 * u }]}>{sources.map((_, index) => <View key={index} style={{ width: (selected === index ? 22 : 8) * u, height: 7 * u, borderRadius: 4 * u, backgroundColor: selected === index ? BLUE : '#CBD7E6' }} />)}</View>
-      <Pressable accessibilityRole="button" accessibilityLabel="切换相册场景" onPress={() => shift(1)} style={[styles.cardNext, { right: 0, bottom: 9 * u, width: 48 * u, height: 48 * u, borderRadius: 24 * u }]}><ChevronRight size={28 * u} color={INK} /></Pressable>
+      <View style={[styles.dots, { bottom: 6 * u, left: 160 * u, gap: 7 * u }]}>{displayItems.map((item, index) => <View key={item.key} style={{ width: (selected === index ? 22 : 8) * u, height: 7 * u, borderRadius: 4 * u, backgroundColor: selected === index ? BLUE : '#CBD7E6' }} />)}</View>
+      <Pressable disabled={displayItems.length < 2} accessibilityRole="button" accessibilityLabel="切换相册场景" onPress={() => shift(1)} style={[styles.cardNext, { right: 0, bottom: 9 * u, width: 48 * u, height: 48 * u, borderRadius: 24 * u, opacity: displayItems.length < 2 ? 0.45 : 1 }]}><ChevronRight size={28 * u} color={INK} /></Pressable>
     </>
   );
 }
@@ -812,7 +952,7 @@ function SpatialOverlay({ overlay, u, recState, recSeconds, sceneText, onRecord,
       <Pressable onPress={close} style={StyleSheet.absoluteFillObject} accessibilityLabel="关闭详情" />
       <Animated.View style={[styles.overlayPanel, Platform.OS === 'web' ? ({ transformStyle: 'preserve-3d', WebkitBackfaceVisibility: 'hidden', isolation: 'isolate' } as any) : null, { left: target.x * u, top: target.y * u, width: target.width * u, height: target.height * u }, panelStyle]}>
         <Animated.View pointerEvents="none" style={[styles.overlayImageClip, imageStyle]}>
-          <Image source={isHero ? ASSETS.hero : isCoach ? ASSETS.orb : overlay.scene.source} style={styles.overlayImage} contentFit={isCoach ? 'contain' : 'cover'} />
+          <Image source={isCoach ? ASSETS.orb : overlay.scene.source} style={styles.overlayImage} contentFit={isCoach ? 'contain' : 'cover'} />
           <LinearGradient colors={['rgba(255,255,255,0.34)', 'rgba(255,255,255,0)', 'rgba(87,191,255,0.14)']} locations={[0, 0.34, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
         </Animated.View>
         <LinearGradient colors={isCoach ? ['rgba(222,244,255,0.1)', 'rgba(234,248,255,0.82)', 'rgba(255,255,255,0.98)'] : ['rgba(0,0,0,0.08)', 'rgba(4,13,28,0.42)', 'rgba(250,253,255,0.98)']} locations={[0, 0.48, 0.76]} style={StyleSheet.absoluteFillObject} />
@@ -821,7 +961,7 @@ function SpatialOverlay({ overlay, u, recState, recSeconds, sceneText, onRecord,
         </MotionPressable>
         <Animated.View style={[styles.overlayCopy, { left: 34 * u, right: 34 * u, top: (isCoach ? 420 : 455) * u }, detailStyle]}>
           <Text style={[styles.overlayEyebrow, { fontSize: 15 * u }]}>{isCoach ? 'AI CONVERSATION' : isHero ? 'IMMERSIVE SCENE' : 'SCENE PRACTICE'}</Text>
-          <Text style={[styles.overlayTitle, { fontSize: 42 * u, lineHeight: 52 * u }]}>{isCoach ? 'AI 教练对话空间' : isHero ? '咖啡馆场景探索' : overlay.scene.title}</Text>
+          <Text style={[styles.overlayTitle, { fontSize: 42 * u, lineHeight: 52 * u }]}>{isCoach ? 'AI 教练对话空间' : isHero ? `${overlay.scene.title}场景探索` : overlay.scene.title}</Text>
           <Text style={[styles.overlayDescription, { fontSize: 20 * u, lineHeight: 30 * u }]}>{isCoach ? (sceneText || (recState === 'recording' ? `正在录音 ${recSeconds}s，松开后识别内容` : '点击下方麦克风开始真实语音对话，识别结果会在这里出现。')) : overlay.scene.description}</Text>
           {isCoach ? (
             <View style={[styles.coachOverlayActions, { marginTop: 24 * u, gap: 15 * u }]}>
@@ -839,7 +979,7 @@ function SpatialOverlay({ overlay, u, recState, recSeconds, sceneText, onRecord,
             </View>
           )}
         </Animated.View>
-        {isHero ? (
+        {isHero && /咖啡|coffee/i.test(overlay.scene.title) ? (
           <View pointerEvents="box-none" style={StyleSheet.absoluteFillObject}>
             {[[275, 255, 'latte'], [116, 320, 'espresso'], [615, 245, 'menu']].map(([x, y, label], index) => (
               <MotionPressable key={String(label)} onPress={() => setHotspot(index)} style={[styles.hotspot, { left: Number(x) * u, top: Number(y) * u, width: 34 * u, height: 34 * u, borderRadius: 17 * u }]} accessibilityLabel={`查看 ${label}`}><View style={[styles.hotspotCore, { width: 10 * u, height: 10 * u, borderRadius: 5 * u }]} /></MotionPressable>
@@ -861,6 +1001,78 @@ export function PremiumHomeBoard(props: Props) {
   const [trackInfo, setTrackInfo] = useState<string | null>(null);
   const focusReturnRef = useRef<{ focus?: () => void } | null>(null);
   const latest = props.records[0];
+  const sceneCards = useMemo(() => {
+    const learned = props.scenes.slice(0, 3).map(sceneCardFromLearned);
+    const seenTitles = new Set(learned.map(scene => scene.title));
+    const recommendations = SCENES
+      .filter(scene => !seenTitles.has(scene.title))
+      .map(scene => ({ ...scene, subtitle: '推荐练习', isRecommendation: true }));
+    return [...learned, ...recommendations].slice(0, 3);
+  }, [props.scenes]);
+  const heroScene = useMemo(
+    () => latest ? sceneCardFromRecord(latest) : sceneCards[0] ?? SCENES[0],
+    [latest, sceneCards],
+  );
+  const albumScenes = useMemo(
+    () => props.records.filter(record => hasUsableImage(record.scene_image)).slice(0, 3).map(sceneCardFromRecord),
+    [props.records],
+  );
+  const vocabularyItems = useMemo<VocabularyItem[]>(() => {
+    const learnedByWord = new Map(props.words.map(item => [item.word.toLowerCase(), item]));
+    const prioritized = props.highFreqWords.map(frequent => {
+      const learned = learnedByWord.get(frequent.word.toLowerCase());
+      return {
+        key: learned?.id ?? frequent.id,
+        english: frequent.word,
+        chinese: learned?.meaning || `今日出现 ${Number(frequent.count ?? 0)} 次`,
+        pronunciation: learned?.phonetic || '今日高频词',
+        example: learned?.example_sentences?.[0] || '打开词汇详情继续补充释义和例句。',
+        count: Number(frequent.count ?? 0),
+      };
+    });
+    const remaining = props.words
+      .filter(item => !props.highFreqWords.some(frequent => frequent.word.toLowerCase() === item.word.toLowerCase()))
+      .map(item => ({
+        key: item.id,
+        english: item.word,
+        chinese: item.meaning || '已收藏词汇',
+        pronunciation: item.phonetic || '点击播放发音',
+        example: item.example_sentences?.[0] || '暂无例句',
+      }));
+    const combined = [...prioritized, ...remaining].slice(0, 8);
+    return combined.length ? combined : [{
+      key: 'empty-vocabulary',
+      english: '暂无词汇',
+      chinese: '完成一次场景学习后自动更新',
+      pronunciation: '这里不会显示虚构数据',
+      example: '识别场景或收藏单词后，词汇卡组会出现在这里。',
+      empty: true,
+    }];
+  }, [props.highFreqWords, props.words]);
+  const heroWords = useMemo(
+    () => latest?.words?.slice(0, 5) ?? heroScene.phrases.map(([word]) => word).slice(0, 5),
+    [heroScene.phrases, latest?.words],
+  );
+  const journeyStages = useMemo(() => {
+    const travelPattern = /机场|酒店|海岛|旅行|地铁|airport|hotel|travel|island|subway/i;
+    const workPattern = /工作|办公室|会议|面试|商务|office|meeting|interview|business/i;
+    const travelCount = props.records.filter(record => travelPattern.test(record.scene_name)).length;
+    const workCount = props.records.filter(record => workPattern.test(record.scene_name)).length;
+    const dailyCount = Math.max(0, props.records.length - travelCount - workCount);
+    const counts = [dailyCount, travelCount, workCount];
+    const firstIncomplete = counts.findIndex(count => count === 0);
+    const currentIndex = firstIncomplete === -1 ? 2 : firstIncomplete;
+    return [
+      { label: '日常', count: dailyCount, source: ASSETS.trackCheck },
+      { label: '旅行', count: travelCount, source: ASSETS.trackPlane },
+      { label: '工作', count: workCount, source: ASSETS.trackWork },
+    ].map((stage, index) => ({
+      ...stage,
+      completed: stage.count > 0,
+      current: index === currentIndex,
+      locked: index > 0 && counts[index - 1] === 0,
+    }));
+  }, [props.records]);
   const isRecording = props.recState === 'recording';
   const busy = props.recState === 'requesting' || props.recState === 'transcribing';
   const smallScreen = width < 600;
@@ -896,18 +1108,18 @@ export function PremiumHomeBoard(props: Props) {
         <MotionPressable onPress={props.onOpenGrowth} style={[styles.streak, { height: 54 * u, borderRadius: 28 * u, paddingHorizontal: 20 * u, gap: 8 * u }]}>
           <Flame size={25 * u} color="#FF6B16" fill="#FF6B16" />
           <Text style={[styles.streakText, { fontSize: fs(20) }]}>连续学习</Text>
-          <Text style={[styles.streakDays, { fontSize: fs(31) }]}>{props.streakDays || 7}</Text>
+          <Text style={[styles.streakDays, { fontSize: fs(31) }]}>{props.streakDays}</Text>
           <Text style={[styles.streakText, { fontSize: fs(20) }]}>天</Text>
           <ChevronRight size={20 * u} color="#52647C" />
         </MotionPressable>
       </Animated.View>
 
       <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(50).duration(420)} style={[styles.hero, { left: 27 * u, top: 95 * u, width: 540 * u, height: 600 * u, borderRadius: 32 * u }]}>
-        <Image source={ASSETS.hero} style={{ position: 'absolute', left: 0, right: 0, top: -25 * u, width: 540 * u, height: 625 * u }} contentFit="fill" transition={180} />
+        <Image source={heroScene.source} style={{ position: 'absolute', left: 0, right: 0, top: -25 * u, width: 540 * u, height: 625 * u }} contentFit="cover" transition={180} />
         <LinearGradient colors={['rgba(4,11,19,0.08)', 'rgba(4,11,19,0.02)', 'rgba(4,11,19,0.18)']} style={StyleSheet.absoluteFillObject} />
         <View style={{ position: 'absolute', left: 39 * u, top: 54 * u }}>
-          <Text style={[styles.heroTitle, { fontSize: fs(45), lineHeight: fs(54) }]}>实时场景</Text>
-          <Text style={[styles.heroSubtitle, { fontSize: fs(21), lineHeight: fs(30) }]}>在真实场景中练习地道表达</Text>
+          <Text style={[styles.heroTitle, { fontSize: fs(45), lineHeight: fs(54) }]}>{latest ? '最近场景' : '实时场景'}</Text>
+          <Text style={[styles.heroSubtitle, { fontSize: fs(21), lineHeight: fs(30) }]} numberOfLines={1}>{latest ? heroScene.title : '在真实场景中练习地道表达'}</Text>
         </View>
         <LinearGradient
           pointerEvents="none"
@@ -918,26 +1130,26 @@ export function PremiumHomeBoard(props: Props) {
           style={{ position: 'absolute', left: 31 * u, top: 148 * u, width: 205 * u, height: 235 * u, borderRadius: 18 * u }}
         />
         <View style={{ position: 'absolute', left: 41 * u, top: 159 * u, width: 148 * u }}>
-          <Text style={[styles.menuTitle, { fontSize: fs(31), lineHeight: fs(37) }]}>COFFEE</Text>
+          <Text style={[styles.menuTitle, { fontSize: fs(23), lineHeight: fs(31) }]}>KEY WORDS</Text>
           <View style={{ height: 2 * u, backgroundColor: 'rgba(255,255,255,0.88)', marginVertical: 4 * u }} />
-          {[['Espresso','3.0'],['Americano','3.5'],['Latte','4.0'],['Cappuccino','4.0'],['Mocha','4.5']].map(([name, price]) => (
+          {heroWords.map((name, index) => (
             <View key={name} style={styles.menuLine}>
               <Text style={[styles.menuText, { fontSize: fs(17), lineHeight: fs(24) }]}>{name}</Text>
-              <Text style={[styles.menuText, { fontSize: fs(17), lineHeight: fs(24) }]}>{price}</Text>
+              <Text style={[styles.menuText, { fontSize: fs(15), lineHeight: fs(24), opacity: 0.76 }]}>{String(index + 1).padStart(2, '0')}</Text>
             </View>
           ))}
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="进入咖啡馆沉浸式场景"
-          onPress={() => openOverlay({ kind: 'hero', scene: SCENES[0], origin: { x: 27, y: 95, width: 540, height: 600 } })}
+          accessibilityLabel={`进入${heroScene.title}沉浸式场景`}
+          onPress={() => openOverlay({ kind: 'hero', scene: heroScene, origin: { x: 27, y: 95, width: 540, height: 600 } })}
           style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 430 * u }}
         />
-        <MotionPressable onPress={() => props.onOpenCoach('我想练习咖啡馆点单')} hoverTilt={1.8} accessibilityRole="button" accessibilityLabel="进入咖啡馆点单场景" style={[styles.locationPill, { left: 21 * u, bottom: 62 * u, width: 282 * u, height: 76 * u, borderRadius: 39 * u, gap: 11 * u, paddingHorizontal: 20 * u }]}>
+        <MotionPressable onPress={() => props.onOpenCoach(heroScene.prompt)} hoverTilt={1.8} accessibilityRole="button" accessibilityLabel={`进入${heroScene.title}练习`} style={[styles.locationPill, { left: 21 * u, bottom: 62 * u, width: 282 * u, height: 76 * u, borderRadius: 39 * u, gap: 11 * u, paddingHorizontal: 20 * u }]}>
           <LinearGradient colors={['rgba(244,253,255,0.72)', 'rgba(174,220,255,0.16)', 'rgba(255,255,255,0.38)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFillObject,{borderRadius:39*u}]} />
           <LinearGradient colors={['rgba(255,255,255,0.92)', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ position: 'absolute', left: 15 * u, right: 22 * u, top: 3 * u, height: 2 * u }} />
           <Image source={ASSETS.locationPin} style={{ width: 29 * u, height: 34 * u }} contentFit="contain" />
-          <Text style={[styles.locationText, { fontSize: fs(23) }]}>咖啡馆点单</Text><ChevronRight size={27 * u} color="#fff" />
+          <Text style={[styles.locationText, { fontSize: fs(23) }]} numberOfLines={1}>{heroScene.title}</Text><ChevronRight size={27 * u} color="#fff" />
         </MotionPressable>
         <MotionPressable onPress={props.onCamera} hoverTilt={2.8} accessibilityRole="button" accessibilityLabel="拍照识别" style={[styles.heroCameraHit, { right: 19 * u, bottom: 20 * u, width: 150 * u, height: 170 * u, borderRadius: 75 * u }]}>
           <Image source={ASSETS.cameraOrbit} style={{ width: 146 * u, height: 135 * u }} contentFit="contain" />
@@ -952,7 +1164,7 @@ export function PremiumHomeBoard(props: Props) {
             <ChevronRight size={24 * u} color={INK} />
           </Pressable>
           <Text style={[styles.coachSubtitle, { left: 23 * u, top: 70 * u, fontSize: fs(18) }]}>语音对话 · 即时反馈</Text>
-          <CoachOrb u={u} state={props.recState} onPress={() => openOverlay({ kind: 'coach', scene: SCENES[0], origin: { x: 580, y: 101, width: 244, height: 630 } })} />
+          <CoachOrb u={u} state={props.recState} onPress={() => openOverlay({ kind: 'coach', scene: heroScene, origin: { x: 580, y: 101, width: 244, height: 630 } })} />
           <View style={{ position: 'absolute', left: 29 * u, top: 286 * u, width: 187 * u }}><Waveform u={u} active={isRecording} /></View>
           <Text style={[styles.listening, { top: 357 * u, fontSize: fs(18) }]}> 
             {busy ? '正在识别...' : isRecording ? `正在倾听 ${String(Math.floor(props.recSeconds / 60)).padStart(2, '0')}:${String(props.recSeconds % 60).padStart(2, '0')}` : '点击开始对话'}
@@ -973,7 +1185,7 @@ export function PremiumHomeBoard(props: Props) {
       </Animated.View>
 
       <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(130).duration(470)} style={[styles.lesson, { left: 26 * u, top: 650 * u, width: 545 * u, height: 426 * u }]}>
-        <LessonStack u={u} latest={latest} loading={props.loading} onOpenRecord={props.onOpenRecord} onOpenLearning={props.onOpenLearning} />
+        <LessonStack u={u} records={props.records} loading={props.loading} onOpenRecord={props.onOpenRecord} onOpenLearning={props.onOpenLearning} />
       </Animated.View>
 
       <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(170).duration(470)} style={[styles.goal, { left: 578 * u, top: 750 * u, width: 245 * u, height: 323 * u, borderRadius: 28 * u }]}>
@@ -982,7 +1194,7 @@ export function PremiumHomeBoard(props: Props) {
             <Text style={[styles.goalTitle, { fontSize: fs(25) }]}>今日目标</Text>
             <View style={[styles.goalChevron, { width: 31 * u, height: 31 * u, borderRadius: 16 * u }]}><ChevronDown size={19 * u} color={INK} /></View>
           </Pressable>
-          <View style={{ position: 'absolute', left: 21 * u, top: 47 * u }}><GoalRing u={u} count={props.todayCount} /></View>
+          <View style={{ position: 'absolute', left: 21 * u, top: 47 * u }}><GoalRing u={u} stats={props.dailyStats} /></View>
           <MotionPressable onPress={props.onOpenGrowth} style={[styles.goalButton, { left: 9 * u, right: 9 * u, bottom: 9 * u, height: 49 * u, borderRadius: 26 * u }]}>
             <LinearGradient colors={['#1CC8FF', BLUE, '#0067F3']} style={[StyleSheet.absoluteFillObject, { borderRadius: 26 * u }]} />
             <Text style={[styles.goalButtonText, { fontSize: fs(20) }]}>继续完成</Text><ChevronRight size={21 * u} color="#fff" />
@@ -992,8 +1204,14 @@ export function PremiumHomeBoard(props: Props) {
 
       <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(210).duration(450)} style={[styles.album, { left: 32 * u, top: 1068 * u + utilityStartOffset, width: 410 * u, height: 225 * u, borderRadius: 28 * u }]}>
         <Glass level="utility" style={StyleSheet.absoluteFillObject}>
-          <CardHeading u={u} title="相册场景" subtitle="从照片中练习英语表达" />
-          <PhotoDeck u={u} onPreview={(index) => openOverlay({ kind: 'album', scene: ALBUM_SCENES[index], origin: { x: 52, y: 1146, width: 154, height: 112 } })} />
+          <CardHeading u={u} title="相册场景" subtitle={albumScenes.length ? `${albumScenes.length} 个真实照片场景` : '拍照识别后自动更新'} />
+          <PhotoDeck u={u} items={albumScenes} onPreview={(scene) => {
+            if (scene.isRecommendation) {
+              props.onGallery();
+              return;
+            }
+            openOverlay({ kind: 'album', scene, origin: { x: 52, y: 1146, width: 154, height: 112 } });
+          }} />
         </Glass>
       </Animated.View>
 
@@ -1004,7 +1222,7 @@ export function PremiumHomeBoard(props: Props) {
             <TextInput
               value={props.sceneText}
               onChangeText={props.onSceneTextChange}
-              placeholder={'我想在咖啡馆点一杯拿铁，\n可以怎么说？'}
+              placeholder={`我想练习${heroScene.title}，\n可以怎么说？`}
               placeholderTextColor="#29446E"
               multiline
               style={[styles.writingInput, { fontSize: fs(19), lineHeight: fs(29) }]}
@@ -1019,8 +1237,8 @@ export function PremiumHomeBoard(props: Props) {
 
       <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(270).duration(450)} style={[styles.vocab, { left: 32 * u, top: 1305 * u + utilitySecondRowOffset, width: 394 * u, height: 225 * u, borderRadius: 28 * u }]}>
         <Glass level="utility" style={StyleSheet.absoluteFillObject} tint={['rgba(255,255,255,0.96)', 'rgba(255,249,229,0.72)', 'rgba(225,243,255,0.82)']}>
-          <CardHeading u={u} title="重点词汇" subtitle="场景高频词 · 翻卡记忆" />
-          <VocabularyDeck u={u} onSpeak={props.onSpeakWord} />
+          <CardHeading u={u} title="重点词汇" subtitle={props.highFreqWords.length ? `今日高频 ${props.highFreqWords.length} 词 · 翻卡记忆` : `已收藏 ${props.words.length} 词 · 翻卡记忆`} />
+          <VocabularyDeck u={u} items={vocabularyItems} onSpeak={props.onSpeakWord} />
         </Glass>
       </Animated.View>
 
@@ -1028,7 +1246,7 @@ export function PremiumHomeBoard(props: Props) {
         <Glass level="utility" style={StyleSheet.absoluteFillObject}>
           <CardHeading u={u} title="场景推荐" subtitle="更多真实场景，拓展你的表达" />
           <View style={[styles.sceneRow, { left: 14 * u, right: 14 * u, bottom: 14 * u, height: 124 * u, gap: 8 * u }]}>
-            {SCENES.map((scene, index) => (
+            {sceneCards.map((scene, index) => (
               <MotionPressable key={scene.key} accessibilityRole="button" accessibilityLabel={`展开${scene.title}场景练习`} onPress={() => openOverlay({ kind: 'scene', scene, origin: { x: 451 + index * 119, y: 1392, width: 112, height: 124 } })} style={[styles.sceneTile, { flex: 1, borderRadius: 15 * u }, index === 0 && styles.sceneTileActive]}>
                 <Image source={scene.source} style={StyleSheet.absoluteFillObject} contentFit="cover" />
                 <LinearGradient colors={['transparent', 'rgba(4,12,25,0.84)']} style={StyleSheet.absoluteFillObject} />
@@ -1044,18 +1262,14 @@ export function PremiumHomeBoard(props: Props) {
         <Glass level="utility" style={StyleSheet.absoluteFillObject} tint={['rgba(255,255,255,0.94)', 'rgba(228,245,255,0.76)', 'rgba(255,244,238,0.72)']}>
           <View style={{ position: 'absolute', left: 23 * u, top: 18 * u }}><Text style={[styles.journeyTitle, { fontSize: fs(25) }]}>学习轨迹</Text><Text style={[styles.journeySubtitle, { fontSize: fs(17), marginTop: 5 * u }]}>从生活场景走向更广阔的世界</Text></View>
           <View style={[styles.track, { right: 28 * u, top: 14 * u, width: 453 * u, height: 87 * u }]}>
-            <Svg style={StyleSheet.absoluteFillObject} viewBox="0 0 453 87"><Path d="M30 45 C90 21 130 60 191 42 S300 42 420 44" fill="none" stroke="#BBC7D7" strokeWidth="5" strokeLinecap="round" /><Path d="M30 45 C90 21 130 60 191 42" fill="none" stroke={BLUE} strokeWidth="5" strokeLinecap="round" /></Svg>
-            {[
-              [31, ASSETS.trackCheck, '日常', false, false],
-              [191, ASSETS.trackPlane, '旅行', true, false],
-              [310, ASSETS.trackWork, '工作', false, true],
-            ].map(([left, source, label, current, locked]) => (
-              <MotionPressable key={String(label)} disabled={Boolean(locked)} onPress={() => setTrackInfo(String(label))} pressedScale={0.9} style={{ position: 'absolute', left: Number(left) * u - 22 * u, top: 20 * u, width: 48 * u, alignItems: 'center' }}>
-                {current ? <Text style={[styles.nowPill, { top: -25 * u, fontSize: fs(13), paddingHorizontal: 9 * u, borderRadius: 12 * u }]}>正在学习</Text> : null}
-                <View style={[styles.trackNode, { width: 43 * u, height: 43 * u, borderRadius: 22 * u }, current && styles.trackNodeCurrent, locked && styles.trackNodeLocked]}>
-                  <Image source={source} style={{ width: 34 * u, height: 34 * u, opacity: locked ? 0.72 : 1 }} contentFit="contain" tintColor={locked ? '#FFFFFF' : undefined} />
+            <Svg style={StyleSheet.absoluteFillObject} viewBox="0 0 453 87"><Path d="M30 45 C90 21 130 60 191 42 S300 42 420 44" fill="none" stroke="#BBC7D7" strokeWidth="5" strokeLinecap="round" /><Path d={journeyStages[2].completed ? 'M30 45 C90 21 130 60 191 42 S300 42 420 44' : journeyStages[1].completed ? 'M30 45 C90 21 130 60 191 42 S260 42 310 43' : journeyStages[0].completed ? 'M30 45 C90 21 130 60 191 42' : 'M30 45 L30 45'} fill="none" stroke={BLUE} strokeWidth="5" strokeLinecap="round" /></Svg>
+            {journeyStages.map((stage, index) => (
+              <MotionPressable key={stage.label} disabled={stage.locked} onPress={() => setTrackInfo(stage.label)} pressedScale={0.9} style={{ position: 'absolute', left: [31, 191, 310][index] * u - 22 * u, top: 20 * u, width: 48 * u, alignItems: 'center' }}>
+                {stage.current ? <Text style={[styles.nowPill, { top: -25 * u, fontSize: fs(13), paddingHorizontal: 9 * u, borderRadius: 12 * u }]}>正在学习</Text> : null}
+                <View style={[styles.trackNode, { width: 43 * u, height: 43 * u, borderRadius: 22 * u }, stage.current && styles.trackNodeCurrent, stage.locked && styles.trackNodeLocked]}>
+                  <Image source={stage.source} style={{ width: 34 * u, height: 34 * u, opacity: stage.locked ? 0.72 : 1 }} contentFit="contain" tintColor={stage.locked ? '#FFFFFF' : undefined} />
                 </View>
-                <Text style={[styles.trackLabel, { fontSize: fs(15), marginTop: 2 * u }, current && styles.trackLabelActive]}>{String(label)}</Text>
+                <Text style={[styles.trackLabel, { fontSize: fs(15), marginTop: 2 * u }, stage.current && styles.trackLabelActive]}>{stage.label}</Text>
               </MotionPressable>
             ))}
             <Pressable onPress={props.onOpenLearning} style={{ position: 'absolute', right: 0, top: 20 * u, width: 50 * u, alignItems: 'center' }}><View style={[styles.moreNode, { width: 43 * u, height: 43 * u, borderRadius: 22 * u }]}><Text style={{ color: '#fff', fontSize: fs(20), letterSpacing: 1 }}>•••</Text></View><Text style={[styles.trackLabel, { fontSize: fs(15), marginTop: 2 * u }]}>更多</Text></Pressable>
@@ -1066,7 +1280,7 @@ export function PremiumHomeBoard(props: Props) {
         <Animated.View entering={reduceMotion ? undefined : FadeInDown.duration(240)} exiting={FadeOut.duration(160)} style={[styles.trackInfoCard, { left: 435 * u, top: 1450 * u, width: 330 * u, minHeight: 102 * u, borderRadius: 24 * u, padding: 16 * u }]}>
           <LinearGradient colors={['rgba(255,255,255,0.96)', 'rgba(223,243,255,0.88)']} style={StyleSheet.absoluteFillObject} />
           <Text style={[styles.trackInfoTitle, { fontSize: fs(20) }]}>{trackInfo}阶段</Text>
-          <Text style={[styles.trackInfoText, { fontSize: fs(15), lineHeight: fs(21) }]}>{trackInfo === '旅行' ? '继续完成机场与酒店场景，解锁工作英语。' : '日常场景已完成，可随时复习。'}</Text>
+          <Text style={[styles.trackInfoText, { fontSize: fs(15), lineHeight: fs(21) }]}>{`${journeyStages.find(stage => stage.label === trackInfo)?.count ?? 0} 条真实学习记录 · 本周学习 ${props.weekCompleted} 天 · Lv.${props.xpStats.current_level}`}</Text>
           <Pressable onPress={() => setTrackInfo(null)} style={styles.trackInfoClose}><CircleX size={20 * u} color={MUTED} /></Pressable>
         </Animated.View>
       ) : null}
@@ -1170,6 +1384,8 @@ const styles = StyleSheet.create({
   albumPhotoButton: { position: 'absolute' },
   albumPhoto: { borderWidth: 2.5, borderColor: 'rgba(255,255,255,0.96)', shadowColor: '#1E578D', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.34, shadowRadius: 12, elevation: 6 },
   albumPhotoActive: { borderColor: '#1095FF', shadowColor: '#008CFF', shadowOpacity: 0.56, shadowRadius: 14 },
+  albumEmptyScrim: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, backgroundColor: 'rgba(235,246,255,0.76)' },
+  albumEmptyText: { color: '#29446E', fontSize: 12, lineHeight: 16, fontWeight: '800', textAlign: 'center' },
   dots: { position: 'absolute', flexDirection: 'row', alignItems: 'center' },
   cardNext: { position: 'absolute', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowColor: '#34597F', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.18, shadowRadius: 10, elevation: 5 },
   writingBox: { position: 'absolute', backgroundColor: 'rgba(255,255,255,0.7)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.94)', shadowColor: '#315B88', shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 4, justifyContent: 'center', ...webGlass('blur(16px) saturate(1.3)') },
