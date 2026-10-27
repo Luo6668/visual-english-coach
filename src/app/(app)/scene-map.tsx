@@ -4,7 +4,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   ArrowRight,
-  ArrowUpRight,
+  Bot,
   BriefcaseBusiness,
   Building2,
   Check,
@@ -21,15 +21,19 @@ import {
   RefreshCw,
   ShoppingCart,
   Sparkles,
+  Target,
   TrainFront,
   TrendingUp,
   Utensils,
   Users,
+  UserRound,
   Volume2,
 } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   RefreshControl,
   ScrollView,
@@ -124,77 +128,54 @@ function statusColor(status: SceneStatus) {
   return COLORS.subtle;
 }
 
-function MapNode({
+const DECK_CARD_WIDTH = 158;
+const DECK_CARD_GAP = 10;
+
+function SceneDeckCard({
   scene,
   progress,
   index,
   selected,
-  isLast,
   onPress,
 }: {
   scene: SceneNode;
   progress?: SceneProgress;
   index: number;
   selected: boolean;
-  isLast: boolean;
   onPress: () => void;
 }) {
   const status = sceneStatus(progress);
-  const color = statusColor(status);
   const rounds = progress?.dialogue_rounds ?? 0;
   const progressValue = Math.min(rounds / Math.max(scene.requiredRounds, 1), 1);
   const Icon = SCENE_ICONS[scene.id] ?? MapIcon;
-  const isLeft = index % 2 === 0;
 
   return (
-    <View style={styles.mapNodeRow}>
-      {!isLast ? (
-        <View
-          pointerEvents="none"
-          style={[
-            styles.pathConnector,
-            isLeft ? styles.pathConnectorRight : styles.pathConnectorLeft,
-            status !== 'locked' && { backgroundColor: `${color}80` },
-          ]}
-        />
-      ) : null}
-      <View style={[styles.nodeAnchor, isLeft ? styles.nodeAnchorLeft : styles.nodeAnchorRight]}>
-        <MotionPressable
-          onPress={onPress}
-          pressedScale={0.92}
-          hoverScale={1.025}
-          hoverLift={4}
-          hoverTilt={2.2}
-          accessibilityRole="button"
-          accessibilityLabel={`${scene.nameZh}，${statusLabel(status)}，${rounds}/${scene.requiredRounds} 轮`}
-          style={[styles.nodeButton, selected && styles.nodeButtonSelected, status === 'completed' && styles.nodeButtonCompleted]}
-        >
-          <Image source={sceneImage(scene.id)} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={220} cachePolicy="memory-disk" recyclingKey={`map-${scene.id}`} />
-          <LinearGradient
-            colors={selected
-              ? ['rgba(9,92,216,0.08)', 'rgba(3,72,179,0.68)']
-              : status === 'completed'
-                ? ['rgba(15,96,64,0.02)', 'rgba(10,91,57,0.55)']
-                : ['rgba(240,247,253,0.12)', 'rgba(19,39,62,0.5)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFillObject}
-          />
-          <View pointerEvents="none" style={styles.nodeShine} />
-          <View style={[styles.nodeIconPlate, selected && styles.nodeIconPlateSelected]}><Icon size={22} color="#FFFFFF" strokeWidth={2.2} /></View>
-          {status === 'completed' ? <View style={styles.nodeCheck}><Check size={12} color="#FFFFFF" strokeWidth={3} /></View> : null}
-          {status === 'locked' ? <View style={styles.nodeLock}><LockKeyhole size={11} color={COLORS.subtle} /></View> : null}
-        </MotionPressable>
-        <View style={[styles.nodeLabelWrap, isLeft ? styles.nodeLabelLeft : styles.nodeLabelRight]}>
-          <Text style={[styles.nodeIndex, selected && styles.nodeIndexSelected]}>{String(index + 1).padStart(2, '0')}</Text>
-          <Text style={[styles.nodeTitle, selected && styles.nodeTitleSelected]}>{scene.nameZh}</Text>
-          <Text style={styles.nodeEnglish}>{scene.nameEn}</Text>
-          <View style={styles.nodeMiniProgress}>
-            <View style={[styles.nodeMiniProgressFill, { width: `${Math.max(progressValue * 100, status === 'locked' ? 0 : 8)}%`, backgroundColor: color }]} />
-          </View>
+    <MotionPressable
+      onPress={onPress}
+      pressedScale={0.965}
+      hoverScale={1.018}
+      hoverLift={5}
+      hoverTilt={2.2}
+      accessibilityRole="button"
+      accessibilityLabel={`${scene.nameZh}，${statusLabel(status)}，${rounds}/${scene.requiredRounds} 轮`}
+      style={[styles.deckCard, selected && styles.deckCardSelected]}
+    >
+      <Image source={sceneImage(scene.id)} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={220} cachePolicy="memory-disk" recyclingKey={`deck-${scene.id}`} />
+      <LinearGradient colors={['rgba(4,16,32,0.02)', 'rgba(4,16,32,0.24)', 'rgba(4,16,32,0.88)']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFillObject} />
+      <View pointerEvents="none" style={styles.deckCardShine} />
+      <View style={styles.deckCardTop}>
+        <View style={styles.deckIndexPill}><Text style={styles.deckIndexText}>{String(index + 1).padStart(2, '0')}</Text></View>
+        <View style={[styles.deckStatusIcon, { backgroundColor: status === 'completed' ? COLORS.green : selected ? COLORS.blue : 'rgba(7,22,39,0.38)' }]}>
+          {status === 'completed' ? <Check size={13} color="#FFFFFF" strokeWidth={3} /> : status === 'locked' ? <LockKeyhole size={12} color="#FFFFFF" /> : <Icon size={13} color="#FFFFFF" />}
         </View>
       </View>
-    </View>
+      <View style={styles.deckCardCopy}>
+        <View style={styles.deckIcon}><Icon size={17} color="#FFFFFF" strokeWidth={2.2} /></View>
+        <Text style={styles.deckTitle}>{scene.nameZh}</Text>
+        <Text style={styles.deckEnglish}>{scene.nameEn}</Text>
+        <View style={styles.deckProgressRow}><View style={styles.deckProgressTrack}><View style={[styles.deckProgressFill, { width: `${Math.max(progressValue * 100, status === 'locked' ? 0 : 7)}%`, backgroundColor: statusColor(status) }]} /></View><Text style={styles.deckProgressText}>{rounds}/{scene.requiredRounds}</Text></View>
+      </View>
+    </MotionPressable>
   );
 }
 
@@ -243,11 +224,11 @@ export default function SceneMapScreen() {
   const selectedRounds = selectedProgress?.dialogue_rounds ?? 0;
   const selectedPercent = Math.min(Math.round((selectedRounds / Math.max(selectedScene.requiredRounds, 1)) * 100), 100);
   const SelectedIcon = SCENE_ICONS[selectedScene.id] ?? MapIcon;
+  const selectedCategoryIndex = Math.max(categoryScenes.findIndex((scene) => scene.id === selectedScene.id), 0);
 
   const completedCount = ALL_SCENES.filter((scene) => progressMap[scene.id]?.status === 'completed').length;
   const inProgressCount = ALL_SCENES.filter((scene) => progressMap[scene.id]?.status === 'in_progress').length;
   const exploredCount = completedCount + inProgressCount;
-  const categoryCompleted = categoryScenes.filter((scene) => progressMap[scene.id]?.status === 'completed').length;
   const overallProgress = completedCount / Math.max(ALL_SCENES.length, 1);
 
   const selectCategory = (category: Category) => {
@@ -257,6 +238,12 @@ export default function SceneMapScreen() {
       ?? scenes.find((scene) => progressMap[scene.id]?.status !== 'completed')
       ?? scenes[0];
     setSelectedSceneId(next.id);
+  };
+
+  const handleDeckMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const nextIndex = Math.max(0, Math.min(Math.round(event.nativeEvent.contentOffset.x / (DECK_CARD_WIDTH + DECK_CARD_GAP)), categoryScenes.length - 1));
+    const nextScene = categoryScenes[nextIndex];
+    if (nextScene && nextScene.id !== selectedSceneId) setSelectedSceneId(nextScene.id);
   };
 
   return (
@@ -330,6 +317,27 @@ export default function SceneMapScreen() {
                 })}
               </View>
 
+              <View style={styles.galleryCard}>
+                <View pointerEvents="none" style={styles.galleryGlow} />
+                <View style={styles.galleryHeader}>
+                  <View><Text style={styles.galleryEyebrow}>{activeCategory === 'daily' ? 'LIFE SCENES' : 'CAREER SCENES'}</Text><Text style={styles.galleryTitle}>场景画廊</Text><Text style={styles.gallerySubtitle}>左右滑动，选择下一段真实对话</Text></View>
+                  <View style={styles.galleryCounter}><Text style={styles.galleryCounterCurrent}>{String(selectedCategoryIndex + 1).padStart(2, '0')}</Text><Text style={styles.galleryCounterTotal}> / {String(categoryScenes.length).padStart(2, '0')}</Text></View>
+                </View>
+                <ScrollView
+                  key={activeCategory}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  decelerationRate="fast"
+                  snapToInterval={DECK_CARD_WIDTH + DECK_CARD_GAP}
+                  snapToAlignment="start"
+                  onMomentumScrollEnd={handleDeckMomentumEnd}
+                  contentContainerStyle={styles.deckContent}
+                >
+                  {categoryScenes.map((scene, index) => <SceneDeckCard key={scene.id} scene={scene} progress={progressMap[scene.id]} index={index} selected={scene.id === selectedScene.id} onPress={() => setSelectedSceneId(scene.id)} />)}
+                </ScrollView>
+                <View style={styles.deckDots}>{categoryScenes.map((scene) => <View key={`dot-${scene.id}`} style={[styles.deckDot, scene.id === selectedScene.id && styles.deckDotActive]} />)}</View>
+              </View>
+
               <Animated.View key={selectedScene.id} entering={FadeInDown.duration(280)} style={styles.selectedCard}>
                 <View style={styles.selectedMedia}>
                   <Image source={sceneImage(selectedScene.id)} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={240} cachePolicy="memory-disk" recyclingKey={`feature-${selectedScene.id}`} />
@@ -346,6 +354,8 @@ export default function SceneMapScreen() {
                 </View>
                 <View style={styles.selectedBody}>
                   <Text style={styles.selectedDescription} numberOfLines={2}>{selectedScene.description}</Text>
+                  <View style={styles.challengeCard}><View style={styles.challengeIcon}><Target size={16} color={COLORS.blue} /></View><View style={styles.challengeCopy}><Text style={styles.challengeLabel}>本场目标</Text><Text style={styles.challengeText} numberOfLines={1}>{selectedScene.dialogueGoal}</Text></View></View>
+                  <View style={styles.roleRow}><View style={styles.rolePill}><Bot size={13} color={COLORS.blue} /><Text style={styles.roleLabel}>AI · {selectedScene.aiRole}</Text></View><View style={styles.rolePill}><UserRound size={13} color={COLORS.green} /><Text style={styles.roleLabel}>你 · {selectedScene.userRole}</Text></View></View>
                   <View style={styles.vocabRow}>
                     {selectedScene.vocab.slice(0, 2).map((item, index) => <View key={item.word} style={styles.vocabChip}>{index === 0 ? <Volume2 size={12} color={COLORS.blue} /> : null}<Text style={styles.vocabChipText} numberOfLines={1}>{item.word}</Text></View>)}
                   </View>
@@ -359,25 +369,6 @@ export default function SceneMapScreen() {
                   </MotionPressable>
                 </View>
               </Animated.View>
-
-              <View style={styles.routeCard}>
-                <View pointerEvents="none" style={styles.routeBackdrop}><View style={styles.routeContourLarge} /><View style={styles.routeContourSmall} /><View style={styles.routeCompassLine} /></View>
-                <View style={styles.routeHeader}>
-                  <View><Text style={styles.routeEyebrow}>{activeCategory === 'daily' ? 'DAILY ROUTE' : 'CAREER ROUTE'}</Text><Text style={styles.routeTitle}>{activeCategory === 'daily' ? '生活表达路线' : '职场沟通路线'}</Text><Text style={styles.routeSubtitle}>点击节点查看任务，再进入场景练习</Text></View>
-                  <View style={styles.routeProgressBadge}><Text style={styles.routeProgressValue}>{categoryCompleted}/{categoryScenes.length}</Text><Text style={styles.routeProgressLabel}>完成</Text></View>
-                </View>
-                <View style={styles.routeLegend}><View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.green }]} /><Text style={styles.legendText}>已完成</Text></View><View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.blue }]} /><Text style={styles.legendText}>进行中</Text></View><View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.subtle }]} /><Text style={styles.legendText}>待探索</Text></View></View>
-                <Animated.View key={`spotlight-${selectedScene.id}`} entering={FadeInDown.duration(220)} style={styles.routeSpotlight}>
-                  <Image source={sceneImage(selectedScene.id)} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={180} cachePolicy="memory-disk" recyclingKey={`spotlight-${selectedScene.id}`} />
-                  <LinearGradient colors={['rgba(4,18,35,0.12)', 'rgba(4,18,35,0.82)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFillObject} />
-                  <View style={styles.spotlightCopy}><Text style={styles.spotlightEyebrow}>当前站 · {statusLabel(selectedStatus)}</Text><Text style={styles.spotlightTitle}>{selectedScene.nameZh}</Text><Text style={styles.spotlightGoal} numberOfLines={1}>{selectedScene.dialogueGoal}</Text></View>
-                  <MotionPressable onPress={() => router.push(`/(app)/scene-detail?sceneId=${selectedScene.id}` as any)} pressedScale={0.9} hoverScale={1.04} accessibilityRole="button" accessibilityLabel={`进入${selectedScene.nameZh}场景`} style={styles.spotlightAction}><ArrowUpRight size={20} color="#FFFFFF" /></MotionPressable>
-                </Animated.View>
-                <View style={styles.mapRoute}>
-                  {categoryScenes.map((scene, index) => <MapNode key={scene.id} scene={scene} progress={progressMap[scene.id]} index={index} selected={scene.id === selectedScene.id} isLast={index === categoryScenes.length - 1} onPress={() => setSelectedSceneId(scene.id)} />)}
-                </View>
-                <View style={styles.routeFinish}><View style={styles.finishLine} /><View style={styles.finishOrb}><Check size={19} color="#FFFFFF" strokeWidth={3} /></View><Text style={styles.finishTitle}>完成整条路线</Text><Text style={styles.finishSubtitle}>把场景词汇真正变成你的表达</Text></View>
-              </View>
             </>
           )}
         </View>
@@ -433,6 +424,34 @@ const styles = StyleSheet.create({
   categoryTabTitleActive: { color: '#FFFFFF' },
   categoryTabMeta: { color: COLORS.subtle, fontSize: 8.5, lineHeight: 12, fontWeight: '700' },
   categoryTabMetaActive: { color: 'rgba(255,255,255,0.72)' },
+  galleryCard: { overflow: 'hidden', paddingTop: 15, paddingBottom: 12, borderRadius: 25, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: COLORS.border, shadowColor: '#326B9E', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 22, elevation: 4, ...GLASS_WEB },
+  galleryGlow: { position: 'absolute', width: 210, height: 210, borderRadius: 105, top: -138, right: -55, backgroundColor: 'rgba(40,163,255,0.13)' },
+  galleryHeader: { paddingHorizontal: 15, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
+  galleryEyebrow: { color: COLORS.blue, fontSize: 8.5, lineHeight: 11, fontWeight: '900', letterSpacing: 1.15 },
+  galleryTitle: { marginTop: 2, color: COLORS.text, fontSize: 20, lineHeight: 24, fontWeight: '900' },
+  gallerySubtitle: { marginTop: 2, color: COLORS.muted, fontSize: 9.5, lineHeight: 14, fontWeight: '600' },
+  galleryCounter: { flexDirection: 'row', alignItems: 'baseline', paddingBottom: 2 },
+  galleryCounterCurrent: { color: COLORS.blue, fontSize: 21, lineHeight: 24, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  galleryCounterTotal: { color: COLORS.subtle, fontSize: 10, lineHeight: 14, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  deckContent: { gap: DECK_CARD_GAP, paddingHorizontal: 15, paddingTop: 13, paddingBottom: 11 },
+  deckCard: { width: DECK_CARD_WIDTH, height: 192, overflow: 'hidden', borderRadius: 22, backgroundColor: '#DCEAF5', borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)', shadowColor: '#24577E', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.19, shadowRadius: 15, elevation: 4 },
+  deckCardSelected: { borderWidth: 2, borderColor: 'rgba(88,201,255,0.96)', shadowColor: COLORS.blue, shadowOpacity: 0.42, shadowRadius: 18, elevation: 7 },
+  deckCardShine: { position: 'absolute', left: 17, right: 17, top: 3, height: 2, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.76)' },
+  deckCardTop: { position: 'absolute', left: 10, right: 10, top: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  deckIndexPill: { minWidth: 30, height: 24, paddingHorizontal: 7, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(247,251,255,0.82)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.86)', ...GLASS_WEB },
+  deckIndexText: { color: COLORS.text, fontSize: 8.5, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  deckStatusIcon: { width: 27, height: 27, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.68)', ...GLASS_WEB },
+  deckCardCopy: { position: 'absolute', left: 12, right: 12, bottom: 12 },
+  deckIcon: { width: 30, height: 30, marginBottom: 7, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.17)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.48)', ...GLASS_WEB },
+  deckTitle: { color: '#FFFFFF', fontSize: 17, lineHeight: 21, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.25)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
+  deckEnglish: { color: 'rgba(255,255,255,0.72)', fontSize: 8.5, lineHeight: 12, fontWeight: '700' },
+  deckProgressRow: { marginTop: 9, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  deckProgressTrack: { flex: 1, height: 4, overflow: 'hidden', borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.26)' },
+  deckProgressFill: { height: '100%', borderRadius: 2 },
+  deckProgressText: { color: 'rgba(255,255,255,0.8)', fontSize: 8, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  deckDots: { minHeight: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  deckDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(117,149,180,0.3)' },
+  deckDotActive: { width: 18, backgroundColor: COLORS.blue },
   selectedCard: { overflow: 'hidden', borderRadius: 25, borderWidth: 1.2, borderColor: COLORS.border, backgroundColor: 'rgba(255,255,255,0.76)', shadowColor: '#2D6EAA', shadowOffset: { width: 0, height: 11 }, shadowOpacity: 0.18, shadowRadius: 26, elevation: 6, ...GLASS_WEB },
   selectedMedia: { height: 176, overflow: 'hidden', backgroundColor: '#DCEBFA' },
   mediaTopShine: { position: 'absolute', left: 30, right: 30, top: 3, height: 2, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.72)' },
@@ -448,6 +467,14 @@ const styles = StyleSheet.create({
   selectedBody: { padding: 15 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   selectedDescription: { color: COLORS.muted, fontSize: 11, lineHeight: 17, fontWeight: '600' },
+  challengeCard: { minHeight: 48, marginTop: 11, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 16, backgroundColor: 'rgba(235,246,255,0.78)', borderWidth: 1, borderColor: 'rgba(167,210,242,0.62)' },
+  challengeIcon: { width: 29, height: 29, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', shadowColor: COLORS.blue, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 2 },
+  challengeCopy: { flex: 1, minWidth: 0 },
+  challengeLabel: { color: COLORS.blue, fontSize: 8, lineHeight: 11, fontWeight: '900' },
+  challengeText: { marginTop: 1, color: COLORS.text, fontSize: 9.5, lineHeight: 13, fontWeight: '800' },
+  roleRow: { marginTop: 8, flexDirection: 'row', gap: 7 },
+  rolePill: { flex: 1, minWidth: 0, height: 31, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.78)', borderWidth: 1, borderColor: 'rgba(177,210,236,0.64)' },
+  roleLabel: { flex: 1, color: COLORS.muted, fontSize: 8.5, lineHeight: 11, fontWeight: '700' },
   vocabRow: { marginTop: 11, flexDirection: 'row', gap: 7 },
   vocabChip: { minWidth: 0, maxWidth: '55%', minHeight: 29, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 14, backgroundColor: 'rgba(231,244,255,0.86)', borderWidth: 1, borderColor: 'rgba(165,210,244,0.62)' },
   vocabChipText: { flexShrink: 1, color: COLORS.blueDark, fontSize: 9, lineHeight: 12, fontWeight: '800' },
@@ -458,57 +485,4 @@ const styles = StyleSheet.create({
   selectedProgressFill: { height: '100%', borderRadius: 99 },
   primaryButton: { height: 48, marginTop: 14, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 24, shadowColor: COLORS.blue, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.28, shadowRadius: 13, elevation: 5 },
   primaryButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
-  routeCard: { overflow: 'hidden', borderRadius: 26, padding: 16, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: COLORS.border, shadowColor: '#326B9E', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 4, ...GLASS_WEB },
-  routeBackdrop: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
-  routeContourLarge: { position: 'absolute', width: 360, height: 360, borderRadius: 180, top: 220, left: -210, borderWidth: 1, borderColor: 'rgba(38,159,222,0.11)' },
-  routeContourSmall: { position: 'absolute', width: 230, height: 230, borderRadius: 115, top: 570, right: -130, borderWidth: 1, borderColor: 'rgba(33,181,132,0.12)' },
-  routeCompassLine: { position: 'absolute', width: 760, height: 1, top: 760, left: -170, backgroundColor: 'rgba(49,130,193,0.08)', transform: [{ rotate: '-54deg' }] },
-  routeHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
-  routeEyebrow: { color: COLORS.blue, fontSize: 8.5, lineHeight: 12, fontWeight: '900', letterSpacing: 1.2 },
-  routeTitle: { marginTop: 2, color: COLORS.text, fontSize: 19, lineHeight: 24, fontWeight: '900' },
-  routeSubtitle: { marginTop: 2, color: COLORS.muted, fontSize: 9.5, lineHeight: 14, fontWeight: '600' },
-  routeProgressBadge: { minWidth: 54, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 16, backgroundColor: '#E9F5FF' },
-  routeProgressValue: { color: COLORS.blue, fontSize: 14, lineHeight: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  routeProgressLabel: { color: COLORS.muted, fontSize: 8.5, lineHeight: 11, fontWeight: '700' },
-  routeLegend: { marginTop: 14, flexDirection: 'row', gap: 13 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  legendDot: { width: 6, height: 6, borderRadius: 3 },
-  legendText: { color: COLORS.muted, fontSize: 8.5, fontWeight: '700' },
-  routeSpotlight: { height: 108, marginTop: 14, overflow: 'hidden', flexDirection: 'row', alignItems: 'flex-end', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)', shadowColor: '#194F7D', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 18, elevation: 4 },
-  spotlightCopy: { flex: 1, minWidth: 0, paddingHorizontal: 14, paddingBottom: 13 },
-  spotlightEyebrow: { color: '#73C9FF', fontSize: 8, lineHeight: 11, fontWeight: '900', letterSpacing: 0.65 },
-  spotlightTitle: { marginTop: 2, color: '#FFFFFF', fontSize: 19, lineHeight: 23, fontWeight: '900' },
-  spotlightGoal: { marginTop: 2, color: 'rgba(255,255,255,0.74)', fontSize: 9, lineHeight: 13, fontWeight: '600' },
-  spotlightAction: { width: 42, height: 42, marginRight: 12, marginBottom: 12, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(25,132,246,0.88)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.65)', shadowColor: COLORS.blue, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.38, shadowRadius: 10, elevation: 5, ...GLASS_WEB },
-  mapRoute: { marginTop: 12, paddingBottom: 6 },
-  mapNodeRow: { position: 'relative', height: 126 },
-  pathConnector: { position: 'absolute', top: 91, width: '54%', height: 4, borderRadius: 2, backgroundColor: 'rgba(150,181,208,0.3)' },
-  pathConnectorRight: { left: '23%', transform: [{ rotate: '19deg' }] },
-  pathConnectorLeft: { right: '23%', transform: [{ rotate: '-19deg' }] },
-  nodeAnchor: { position: 'absolute', top: 17, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  nodeAnchorLeft: { left: 4 },
-  nodeAnchorRight: { right: 4, flexDirection: 'row-reverse' },
-  nodeButton: { width: 72, height: 72, overflow: 'hidden', borderRadius: 25, alignItems: 'center', justifyContent: 'center', borderWidth: 1.2, borderColor: 'rgba(180,211,236,0.82)', shadowColor: '#457AA8', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 4 },
-  nodeButtonSelected: { width: 78, height: 78, borderRadius: 28, borderWidth: 2, borderColor: 'rgba(224,253,255,0.98)', shadowColor: '#087CF5', shadowOpacity: 0.5, shadowRadius: 19, elevation: 7 },
-  nodeButtonCompleted: { borderColor: 'rgba(87,207,147,0.6)' },
-  nodeShine: { position: 'absolute', left: 12, right: 12, top: 3, height: 2, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.9)' },
-  nodeIconPlate: { width: 36, height: 36, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(7,24,44,0.26)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.48)', ...GLASS_WEB },
-  nodeIconPlateSelected: { backgroundColor: 'rgba(5,99,230,0.48)', borderColor: 'rgba(255,255,255,0.78)' },
-  nodeCheck: { position: 'absolute', right: 6, bottom: 6, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.green, borderWidth: 2, borderColor: '#FFFFFF' },
-  nodeLock: { position: 'absolute', right: 7, bottom: 7, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.9)', borderWidth: 1, borderColor: 'rgba(173,194,213,0.65)' },
-  nodeLabelWrap: { width: 110 },
-  nodeLabelLeft: { alignItems: 'flex-start' },
-  nodeLabelRight: { alignItems: 'flex-end' },
-  nodeIndex: { color: COLORS.subtle, fontSize: 8, lineHeight: 11, fontWeight: '900', letterSpacing: 0.8 },
-  nodeIndexSelected: { color: COLORS.blue },
-  nodeTitle: { marginTop: 1, color: COLORS.text, fontSize: 14, lineHeight: 18, fontWeight: '900' },
-  nodeTitleSelected: { color: COLORS.blueDark },
-  nodeEnglish: { color: COLORS.muted, fontSize: 8.5, lineHeight: 12, fontWeight: '600' },
-  nodeMiniProgress: { width: 72, height: 4, marginTop: 6, overflow: 'hidden', borderRadius: 2, backgroundColor: 'rgba(137,168,198,0.18)' },
-  nodeMiniProgressFill: { height: '100%', borderRadius: 2 },
-  routeFinish: { alignItems: 'center', paddingTop: 2, paddingBottom: 4 },
-  finishLine: { width: 1, height: 20, backgroundColor: 'rgba(92,183,150,0.45)' },
-  finishOrb: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.green, borderWidth: 4, borderColor: '#E9FFF4', shadowColor: COLORS.green, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 4 },
-  finishTitle: { marginTop: 7, color: COLORS.text, fontSize: 12, lineHeight: 16, fontWeight: '900' },
-  finishSubtitle: { marginTop: 1, color: COLORS.muted, fontSize: 9, lineHeight: 13, fontWeight: '600' },
 });
