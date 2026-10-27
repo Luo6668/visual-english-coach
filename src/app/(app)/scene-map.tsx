@@ -1,8 +1,10 @@
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   ArrowRight,
+  ArrowUpRight,
   BriefcaseBusiness,
   Building2,
   Check,
@@ -23,6 +25,7 @@ import {
   TrendingUp,
   Utensils,
   Users,
+  Volume2,
 } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 import {
@@ -39,6 +42,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MotionPressable } from '@/components/motion-pressable';
 import { fetchSceneMapProgress } from '@/lib/api';
 import { ALL_SCENES, DAILY_SCENES, type SceneNode, WORKPLACE_SCENES } from '@/lib/sceneMapData';
+
+declare const require: (assetPath: string) => number;
 
 const GLASS_WEB = Platform.OS === 'web'
   ? ({ backdropFilter: 'blur(24px) saturate(1.5)', WebkitBackdropFilter: 'blur(24px) saturate(1.5)', isolation: 'isolate' } as any)
@@ -81,6 +86,27 @@ const SCENE_ICONS: Record<string, any> = {
   negotiation: HandCoins,
   email: Mail,
 };
+
+const SCENE_IMAGES: Record<string, any> = {
+  'coffee-shop': require('../../../assets/home-cafe-hero.png'),
+  airport: require('../../../assets/home-premium/lesson-airport.png'),
+  hotel: require('../../../assets/growth-hotel-scene.png'),
+  restaurant: { uri: 'https://miaoda-site-img.cdn.bcebos.com/images/baidu_image_search_157d6c03-4833-4540-8013-efe631da980e.jpg' },
+  supermarket: { uri: 'https://miaoda-site-img.cdn.bcebos.com/images/baidu_image_search_786fd9c5-ee8d-4f3e-9abf-2f648de066e3.jpg' },
+  hospital: { uri: 'https://miaoda-site-img.cdn.bcebos.com/images/baidu_image_search_e1c389d1-40c1-4c63-ad3a-87b734c0181c.jpg' },
+  subway: { uri: 'https://miaoda-site-img.cdn.bcebos.com/images/baidu_image_search_ec179956-2989-4b6a-b22e-ac2751144890.jpg' },
+  library: { uri: 'https://miaoda-site-img.cdn.bcebos.com/images/baidu_image_search_379064ef-c703-4476-9801-6b5cc609e85e.jpg' },
+  meeting: { uri: 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?auto=format&fit=crop&w=900&q=82' },
+  interview: { uri: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=900&q=82' },
+  negotiation: { uri: 'https://images.unsplash.com/photo-1556761175-b413da4baf72?auto=format&fit=crop&w=900&q=82' },
+  email: { uri: 'https://images.unsplash.com/photo-1553877522-43269d4ea984?auto=format&fit=crop&w=900&q=82' },
+};
+
+const FALLBACK_SCENE_IMAGE = require('../../../assets/home-premium/hero-photo.png');
+
+function sceneImage(sceneId: string) {
+  return SCENE_IMAGES[sceneId] ?? FALLBACK_SCENE_IMAGE;
+}
 
 function sceneStatus(progress?: SceneProgress): SceneStatus {
   return progress?.status ?? 'locked';
@@ -143,18 +169,19 @@ function MapNode({
           accessibilityLabel={`${scene.nameZh}，${statusLabel(status)}，${rounds}/${scene.requiredRounds} 轮`}
           style={[styles.nodeButton, selected && styles.nodeButtonSelected, status === 'completed' && styles.nodeButtonCompleted]}
         >
+          <Image source={sceneImage(scene.id)} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={220} cachePolicy="memory-disk" recyclingKey={`map-${scene.id}`} />
           <LinearGradient
             colors={selected
-              ? ['#B8F3FF', '#2AB8FF', '#0877F3', '#0755D7']
+              ? ['rgba(9,92,216,0.08)', 'rgba(3,72,179,0.68)']
               : status === 'completed'
-                ? ['#F3FFF9', '#D8F9E7']
-                : ['rgba(255,255,255,0.96)', 'rgba(229,241,251,0.86)']}
+                ? ['rgba(15,96,64,0.02)', 'rgba(10,91,57,0.55)']
+                : ['rgba(240,247,253,0.12)', 'rgba(19,39,62,0.5)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFillObject}
           />
           <View pointerEvents="none" style={styles.nodeShine} />
-          <Icon size={29} color={selected ? '#FFFFFF' : color} strokeWidth={2.1} />
+          <View style={[styles.nodeIconPlate, selected && styles.nodeIconPlateSelected]}><Icon size={22} color="#FFFFFF" strokeWidth={2.2} /></View>
           {status === 'completed' ? <View style={styles.nodeCheck}><Check size={12} color="#FFFFFF" strokeWidth={3} /></View> : null}
           {status === 'locked' ? <View style={styles.nodeLock}><LockKeyhole size={11} color={COLORS.subtle} /></View> : null}
         </MotionPressable>
@@ -235,8 +262,13 @@ export default function SceneMapScreen() {
   return (
     <View style={styles.screen}>
       <StatusBar style="dark" backgroundColor={COLORS.background} />
+      <LinearGradient pointerEvents="none" colors={['#EEF7FF', '#F7FBFF', '#F4FAF8']} locations={[0, 0.46, 1]} style={StyleSheet.absoluteFillObject} />
       <View pointerEvents="none" style={styles.ambientBlue} />
       <View pointerEvents="none" style={styles.ambientGreen} />
+      <View pointerEvents="none" style={styles.backgroundGrid}>
+        {[0, 1, 2, 3, 4].map((index) => <View key={`v-${index}`} style={[styles.backgroundGridLineVertical, { left: `${12 + index * 22}%` }]} />)}
+        {[0, 1, 2, 3, 4, 5, 6].map((index) => <View key={`h-${index}`} style={[styles.backgroundGridLineHorizontal, { top: 220 + index * 180 }]} />)}
+      </View>
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadProgress(true)} tintColor={COLORS.blue} colors={[COLORS.blue]} />}
@@ -298,31 +330,49 @@ export default function SceneMapScreen() {
                 })}
               </View>
 
-              <Animated.View key={selectedScene.id} entering={FadeInDown.duration(260)} style={styles.selectedCard}>
-                <LinearGradient colors={selectedStatus === 'completed' ? ['#ECFFF5', '#E6F5FF'] : selectedStatus === 'in_progress' ? ['#E2F6FF', '#EDF3FF'] : ['#F8FBFF', '#ECF3F9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
-                <View pointerEvents="none" style={styles.cardShine} />
-                <View style={styles.selectedHeader}>
-                  <View style={[styles.selectedIcon, { backgroundColor: `${statusColor(selectedStatus)}16` }]}><SelectedIcon size={28} color={statusColor(selectedStatus)} /></View>
-                  <View style={styles.selectedTitleCopy}><View style={styles.selectedStatusRow}><View style={[styles.statusDot, { backgroundColor: statusColor(selectedStatus) }]} /><Text style={[styles.selectedStatus, { color: statusColor(selectedStatus) }]}>{statusLabel(selectedStatus)}</Text></View><Text style={styles.selectedTitle}>{selectedScene.nameZh}</Text><Text style={styles.selectedEnglish}>{selectedScene.nameEn}</Text></View>
-                  <Text style={styles.selectedIndex}>{String(categoryScenes.findIndex((scene) => scene.id === selectedScene.id) + 1).padStart(2, '0')}</Text>
+              <Animated.View key={selectedScene.id} entering={FadeInDown.duration(280)} style={styles.selectedCard}>
+                <View style={styles.selectedMedia}>
+                  <Image source={sceneImage(selectedScene.id)} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={240} cachePolicy="memory-disk" recyclingKey={`feature-${selectedScene.id}`} />
+                  <LinearGradient colors={['rgba(5,15,30,0.05)', 'rgba(4,20,42,0.26)', 'rgba(4,17,35,0.88)']} locations={[0, 0.46, 1]} style={StyleSheet.absoluteFillObject} />
+                  <View pointerEvents="none" style={styles.mediaTopShine} />
+                  <View style={styles.mediaTopRow}>
+                    <View style={styles.mediaStatusPill}><View style={[styles.statusDot, { backgroundColor: statusColor(selectedStatus) }]} /><Text style={styles.mediaStatusText}>{statusLabel(selectedStatus)}</Text></View>
+                    <Text style={styles.mediaIndex}>{String(categoryScenes.findIndex((scene) => scene.id === selectedScene.id) + 1).padStart(2, '0')}</Text>
+                  </View>
+                  <View style={styles.mediaTitleRow}>
+                    <View style={styles.mediaIcon}><SelectedIcon size={24} color="#FFFFFF" /></View>
+                    <View style={styles.mediaTitleCopy}><Text style={styles.mediaTitle}>{selectedScene.nameZh}</Text><Text style={styles.mediaEnglish}>{selectedScene.nameEn.toUpperCase()}</Text></View>
+                  </View>
                 </View>
-                <Text style={styles.selectedDescription} numberOfLines={2}>{selectedScene.description}</Text>
-                <View style={styles.selectedProgressRow}><Text style={styles.selectedProgressLabel}>对话进度</Text><Text style={[styles.selectedProgressValue, { color: statusColor(selectedStatus) }]}>{selectedRounds} / {selectedScene.requiredRounds} 轮</Text></View>
-                <View style={styles.selectedProgressTrack}><View style={[styles.selectedProgressFill, { width: `${selectedPercent}%`, backgroundColor: statusColor(selectedStatus) }]} /></View>
-                <MotionPressable onPress={() => router.push(`/(app)/scene-detail?sceneId=${selectedScene.id}` as any)} pressedScale={0.975} hoverLift={2} accessibilityRole="button" accessibilityLabel={`${selectedStatus === 'locked' ? '开始探索' : selectedStatus === 'completed' ? '再次练习' : '继续练习'}${selectedScene.nameZh}`} style={styles.primaryButton}>
-                  <LinearGradient colors={['#31D1FF', COLORS.blue, COLORS.blueDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
-                  {selectedStatus === 'locked' ? <Sparkles size={18} color="#FFFFFF" /> : <MessageCircleMore size={18} color="#FFFFFF" />}
-                  <Text style={styles.primaryButtonText}>{selectedStatus === 'locked' ? '开始探索' : selectedStatus === 'completed' ? '再次练习' : '继续练习'}</Text>
-                  <ArrowRight size={18} color="#FFFFFF" />
-                </MotionPressable>
+                <View style={styles.selectedBody}>
+                  <Text style={styles.selectedDescription} numberOfLines={2}>{selectedScene.description}</Text>
+                  <View style={styles.vocabRow}>
+                    {selectedScene.vocab.slice(0, 2).map((item, index) => <View key={item.word} style={styles.vocabChip}>{index === 0 ? <Volume2 size={12} color={COLORS.blue} /> : null}<Text style={styles.vocabChipText} numberOfLines={1}>{item.word}</Text></View>)}
+                  </View>
+                  <View style={styles.selectedProgressRow}><Text style={styles.selectedProgressLabel}>对话进度</Text><Text style={[styles.selectedProgressValue, { color: statusColor(selectedStatus) }]}>{selectedRounds} / {selectedScene.requiredRounds} 轮</Text></View>
+                  <View style={styles.selectedProgressTrack}><View style={[styles.selectedProgressFill, { width: `${selectedPercent}%`, backgroundColor: statusColor(selectedStatus) }]} /></View>
+                  <MotionPressable onPress={() => router.push(`/(app)/scene-detail?sceneId=${selectedScene.id}` as any)} pressedScale={0.975} hoverLift={2} accessibilityRole="button" accessibilityLabel={`${selectedStatus === 'locked' ? '开始探索' : selectedStatus === 'completed' ? '再次练习' : '继续练习'}${selectedScene.nameZh}`} style={styles.primaryButton}>
+                    <LinearGradient colors={['#31D1FF', COLORS.blue, COLORS.blueDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
+                    {selectedStatus === 'locked' ? <Sparkles size={18} color="#FFFFFF" /> : <MessageCircleMore size={18} color="#FFFFFF" />}
+                    <Text style={styles.primaryButtonText}>{selectedStatus === 'locked' ? '开始探索' : selectedStatus === 'completed' ? '再次练习' : '继续练习'}</Text>
+                    <ArrowRight size={18} color="#FFFFFF" />
+                  </MotionPressable>
+                </View>
               </Animated.View>
 
               <View style={styles.routeCard}>
+                <View pointerEvents="none" style={styles.routeBackdrop}><View style={styles.routeContourLarge} /><View style={styles.routeContourSmall} /><View style={styles.routeCompassLine} /></View>
                 <View style={styles.routeHeader}>
                   <View><Text style={styles.routeEyebrow}>{activeCategory === 'daily' ? 'DAILY ROUTE' : 'CAREER ROUTE'}</Text><Text style={styles.routeTitle}>{activeCategory === 'daily' ? '生活表达路线' : '职场沟通路线'}</Text><Text style={styles.routeSubtitle}>点击节点查看任务，再进入场景练习</Text></View>
                   <View style={styles.routeProgressBadge}><Text style={styles.routeProgressValue}>{categoryCompleted}/{categoryScenes.length}</Text><Text style={styles.routeProgressLabel}>完成</Text></View>
                 </View>
                 <View style={styles.routeLegend}><View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.green }]} /><Text style={styles.legendText}>已完成</Text></View><View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.blue }]} /><Text style={styles.legendText}>进行中</Text></View><View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.subtle }]} /><Text style={styles.legendText}>待探索</Text></View></View>
+                <Animated.View key={`spotlight-${selectedScene.id}`} entering={FadeInDown.duration(220)} style={styles.routeSpotlight}>
+                  <Image source={sceneImage(selectedScene.id)} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={180} cachePolicy="memory-disk" recyclingKey={`spotlight-${selectedScene.id}`} />
+                  <LinearGradient colors={['rgba(4,18,35,0.12)', 'rgba(4,18,35,0.82)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFillObject} />
+                  <View style={styles.spotlightCopy}><Text style={styles.spotlightEyebrow}>当前站 · {statusLabel(selectedStatus)}</Text><Text style={styles.spotlightTitle}>{selectedScene.nameZh}</Text><Text style={styles.spotlightGoal} numberOfLines={1}>{selectedScene.dialogueGoal}</Text></View>
+                  <MotionPressable onPress={() => router.push(`/(app)/scene-detail?sceneId=${selectedScene.id}` as any)} pressedScale={0.9} hoverScale={1.04} accessibilityRole="button" accessibilityLabel={`进入${selectedScene.nameZh}场景`} style={styles.spotlightAction}><ArrowUpRight size={20} color="#FFFFFF" /></MotionPressable>
+                </Animated.View>
                 <View style={styles.mapRoute}>
                   {categoryScenes.map((scene, index) => <MapNode key={scene.id} scene={scene} progress={progressMap[scene.id]} index={index} selected={scene.id === selectedScene.id} isLast={index === categoryScenes.length - 1} onPress={() => setSelectedSceneId(scene.id)} />)}
                 </View>
@@ -340,6 +390,9 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
   ambientBlue: { position: 'absolute', width: 340, height: 340, borderRadius: 170, top: -160, right: -140, backgroundColor: 'rgba(74,184,255,0.14)' },
   ambientGreen: { position: 'absolute', width: 300, height: 300, borderRadius: 150, top: 760, left: -190, backgroundColor: 'rgba(46,202,147,0.1)' },
+  backgroundGrid: { ...StyleSheet.absoluteFillObject, opacity: 0.32 },
+  backgroundGridLineVertical: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: 'rgba(93,151,198,0.1)', transform: [{ rotate: '9deg' }] },
+  backgroundGridLineHorizontal: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: 'rgba(93,151,198,0.09)', transform: [{ rotate: '-3deg' }] },
   scrollContent: { paddingBottom: 42 },
   pageContent: { width: '100%', maxWidth: 620, alignSelf: 'center', paddingHorizontal: 16, gap: 14 },
   header: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -380,17 +433,24 @@ const styles = StyleSheet.create({
   categoryTabTitleActive: { color: '#FFFFFF' },
   categoryTabMeta: { color: COLORS.subtle, fontSize: 8.5, lineHeight: 12, fontWeight: '700' },
   categoryTabMetaActive: { color: 'rgba(255,255,255,0.72)' },
-  selectedCard: { overflow: 'hidden', borderRadius: 25, borderWidth: 1.2, borderColor: COLORS.border, padding: 15, shadowColor: '#2D6EAA', shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.14, shadowRadius: 22, elevation: 5, ...GLASS_WEB },
-  selectedHeader: { flexDirection: 'row', alignItems: 'center', gap: 11 },
-  selectedIcon: { width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.86)' },
-  selectedTitleCopy: { flex: 1, minWidth: 0 },
-  selectedStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  selectedCard: { overflow: 'hidden', borderRadius: 25, borderWidth: 1.2, borderColor: COLORS.border, backgroundColor: 'rgba(255,255,255,0.76)', shadowColor: '#2D6EAA', shadowOffset: { width: 0, height: 11 }, shadowOpacity: 0.18, shadowRadius: 26, elevation: 6, ...GLASS_WEB },
+  selectedMedia: { height: 176, overflow: 'hidden', backgroundColor: '#DCEBFA' },
+  mediaTopShine: { position: 'absolute', left: 30, right: 30, top: 3, height: 2, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.72)' },
+  mediaTopRow: { position: 'absolute', left: 14, right: 14, top: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  mediaStatusPill: { minHeight: 27, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 14, backgroundColor: 'rgba(248,252,255,0.86)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.92)', ...GLASS_WEB },
+  mediaStatusText: { color: COLORS.text, fontSize: 9, lineHeight: 12, fontWeight: '900' },
+  mediaIndex: { color: 'rgba(255,255,255,0.88)', fontSize: 28, lineHeight: 32, fontWeight: '900', fontVariant: ['tabular-nums'], textShadowColor: 'rgba(0,0,0,0.28)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8 },
+  mediaTitleRow: { position: 'absolute', left: 15, right: 15, bottom: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  mediaIcon: { width: 42, height: 42, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.17)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.58)', ...GLASS_WEB },
+  mediaTitleCopy: { flex: 1, minWidth: 0 },
+  mediaTitle: { color: '#FFFFFF', fontSize: 24, lineHeight: 28, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.28)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8 },
+  mediaEnglish: { marginTop: 1, color: 'rgba(255,255,255,0.8)', fontSize: 9, lineHeight: 13, fontWeight: '800', letterSpacing: 1.2 },
+  selectedBody: { padding: 15 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
-  selectedStatus: { fontSize: 9, lineHeight: 12, fontWeight: '900' },
-  selectedTitle: { marginTop: 1, color: COLORS.text, fontSize: 20, lineHeight: 24, fontWeight: '900' },
-  selectedEnglish: { color: COLORS.muted, fontSize: 10, lineHeight: 14, fontWeight: '700' },
-  selectedIndex: { color: 'rgba(82,112,145,0.22)', fontSize: 35, lineHeight: 38, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  selectedDescription: { marginTop: 11, color: COLORS.muted, fontSize: 11, lineHeight: 17, fontWeight: '600' },
+  selectedDescription: { color: COLORS.muted, fontSize: 11, lineHeight: 17, fontWeight: '600' },
+  vocabRow: { marginTop: 11, flexDirection: 'row', gap: 7 },
+  vocabChip: { minWidth: 0, maxWidth: '55%', minHeight: 29, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 14, backgroundColor: 'rgba(231,244,255,0.86)', borderWidth: 1, borderColor: 'rgba(165,210,244,0.62)' },
+  vocabChipText: { flexShrink: 1, color: COLORS.blueDark, fontSize: 9, lineHeight: 12, fontWeight: '800' },
   selectedProgressRow: { marginTop: 12, flexDirection: 'row', justifyContent: 'space-between' },
   selectedProgressLabel: { color: COLORS.muted, fontSize: 9, fontWeight: '700' },
   selectedProgressValue: { fontSize: 10, fontWeight: '900', fontVariant: ['tabular-nums'] },
@@ -398,7 +458,11 @@ const styles = StyleSheet.create({
   selectedProgressFill: { height: '100%', borderRadius: 99 },
   primaryButton: { height: 48, marginTop: 14, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 24, shadowColor: COLORS.blue, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.28, shadowRadius: 13, elevation: 5 },
   primaryButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
-  routeCard: { overflow: 'hidden', borderRadius: 26, padding: 16, backgroundColor: 'rgba(255,255,255,0.7)', borderWidth: 1, borderColor: COLORS.border, shadowColor: '#326B9E', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.1, shadowRadius: 22, elevation: 4, ...GLASS_WEB },
+  routeCard: { overflow: 'hidden', borderRadius: 26, padding: 16, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: COLORS.border, shadowColor: '#326B9E', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 4, ...GLASS_WEB },
+  routeBackdrop: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
+  routeContourLarge: { position: 'absolute', width: 360, height: 360, borderRadius: 180, top: 220, left: -210, borderWidth: 1, borderColor: 'rgba(38,159,222,0.11)' },
+  routeContourSmall: { position: 'absolute', width: 230, height: 230, borderRadius: 115, top: 570, right: -130, borderWidth: 1, borderColor: 'rgba(33,181,132,0.12)' },
+  routeCompassLine: { position: 'absolute', width: 760, height: 1, top: 760, left: -170, backgroundColor: 'rgba(49,130,193,0.08)', transform: [{ rotate: '-54deg' }] },
   routeHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   routeEyebrow: { color: COLORS.blue, fontSize: 8.5, lineHeight: 12, fontWeight: '900', letterSpacing: 1.2 },
   routeTitle: { marginTop: 2, color: COLORS.text, fontSize: 19, lineHeight: 24, fontWeight: '900' },
@@ -410,7 +474,13 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendDot: { width: 6, height: 6, borderRadius: 3 },
   legendText: { color: COLORS.muted, fontSize: 8.5, fontWeight: '700' },
-  mapRoute: { marginTop: 8, paddingBottom: 6 },
+  routeSpotlight: { height: 108, marginTop: 14, overflow: 'hidden', flexDirection: 'row', alignItems: 'flex-end', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)', shadowColor: '#194F7D', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 18, elevation: 4 },
+  spotlightCopy: { flex: 1, minWidth: 0, paddingHorizontal: 14, paddingBottom: 13 },
+  spotlightEyebrow: { color: '#73C9FF', fontSize: 8, lineHeight: 11, fontWeight: '900', letterSpacing: 0.65 },
+  spotlightTitle: { marginTop: 2, color: '#FFFFFF', fontSize: 19, lineHeight: 23, fontWeight: '900' },
+  spotlightGoal: { marginTop: 2, color: 'rgba(255,255,255,0.74)', fontSize: 9, lineHeight: 13, fontWeight: '600' },
+  spotlightAction: { width: 42, height: 42, marginRight: 12, marginBottom: 12, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(25,132,246,0.88)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.65)', shadowColor: COLORS.blue, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.38, shadowRadius: 10, elevation: 5, ...GLASS_WEB },
+  mapRoute: { marginTop: 12, paddingBottom: 6 },
   mapNodeRow: { position: 'relative', height: 126 },
   pathConnector: { position: 'absolute', top: 91, width: '54%', height: 4, borderRadius: 2, backgroundColor: 'rgba(150,181,208,0.3)' },
   pathConnectorRight: { left: '23%', transform: [{ rotate: '19deg' }] },
@@ -418,10 +488,12 @@ const styles = StyleSheet.create({
   nodeAnchor: { position: 'absolute', top: 17, flexDirection: 'row', alignItems: 'center', gap: 10 },
   nodeAnchorLeft: { left: 4 },
   nodeAnchorRight: { right: 4, flexDirection: 'row-reverse' },
-  nodeButton: { width: 72, height: 72, overflow: 'hidden', borderRadius: 25, alignItems: 'center', justifyContent: 'center', borderWidth: 1.2, borderColor: 'rgba(180,211,236,0.82)', shadowColor: '#457AA8', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.13, shadowRadius: 16, elevation: 4 },
-  nodeButtonSelected: { width: 78, height: 78, borderRadius: 28, borderColor: 'rgba(224,253,255,0.95)', shadowColor: '#087CF5', shadowOpacity: 0.42, shadowRadius: 18, elevation: 7 },
+  nodeButton: { width: 72, height: 72, overflow: 'hidden', borderRadius: 25, alignItems: 'center', justifyContent: 'center', borderWidth: 1.2, borderColor: 'rgba(180,211,236,0.82)', shadowColor: '#457AA8', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 4 },
+  nodeButtonSelected: { width: 78, height: 78, borderRadius: 28, borderWidth: 2, borderColor: 'rgba(224,253,255,0.98)', shadowColor: '#087CF5', shadowOpacity: 0.5, shadowRadius: 19, elevation: 7 },
   nodeButtonCompleted: { borderColor: 'rgba(87,207,147,0.6)' },
   nodeShine: { position: 'absolute', left: 12, right: 12, top: 3, height: 2, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.9)' },
+  nodeIconPlate: { width: 36, height: 36, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(7,24,44,0.26)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.48)', ...GLASS_WEB },
+  nodeIconPlateSelected: { backgroundColor: 'rgba(5,99,230,0.48)', borderColor: 'rgba(255,255,255,0.78)' },
   nodeCheck: { position: 'absolute', right: 6, bottom: 6, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.green, borderWidth: 2, borderColor: '#FFFFFF' },
   nodeLock: { position: 'absolute', right: 7, bottom: 7, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.9)', borderWidth: 1, borderColor: 'rgba(173,194,213,0.65)' },
   nodeLabelWrap: { width: 110 },
