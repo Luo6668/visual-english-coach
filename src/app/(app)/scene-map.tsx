@@ -13,7 +13,6 @@ import {
   HandCoins,
   Hospital,
   Library,
-  LockKeyhole,
   Mail,
   Map as MapIcon,
   MessageCircleMore,
@@ -41,7 +40,15 @@ import {
   Text,
   View,
 } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, {
+  Extrapolation,
+  FadeInDown,
+  interpolate,
+  type SharedValue,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MotionPressable } from '@/components/motion-pressable';
 import { fetchSceneMapProgress } from '@/lib/api';
@@ -119,13 +126,13 @@ function sceneStatus(progress?: SceneProgress): SceneStatus {
 function statusLabel(status: SceneStatus) {
   if (status === 'completed') return '已完成';
   if (status === 'in_progress') return '进行中';
-  return '待探索';
+  return '可练习';
 }
 
 function statusColor(status: SceneStatus) {
   if (status === 'completed') return COLORS.green;
   if (status === 'in_progress') return COLORS.blue;
-  return COLORS.subtle;
+  return '#22A7E7';
 }
 
 const DECK_CARD_WIDTH = 158;
@@ -136,46 +143,60 @@ function SceneDeckCard({
   progress,
   index,
   selected,
+  scrollX,
   onPress,
 }: {
   scene: SceneNode;
   progress?: SceneProgress;
   index: number;
   selected: boolean;
+  scrollX: SharedValue<number>;
   onPress: () => void;
 }) {
   const status = sceneStatus(progress);
   const rounds = progress?.dialogue_rounds ?? 0;
   const progressValue = Math.min(rounds / Math.max(scene.requiredRounds, 1), 1);
   const Icon = SCENE_ICONS[scene.id] ?? MapIcon;
+  const cardPosition = index * (DECK_CARD_WIDTH + DECK_CARD_GAP);
+  const motionStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollX.value, [cardPosition - DECK_CARD_WIDTH, cardPosition, cardPosition + DECK_CARD_WIDTH], [0.76, 1, 0.76], Extrapolation.CLAMP),
+    transform: [
+      { perspective: 900 },
+      { translateY: interpolate(scrollX.value, [cardPosition - DECK_CARD_WIDTH, cardPosition, cardPosition + DECK_CARD_WIDTH], [9, 0, 9], Extrapolation.CLAMP) },
+      { rotateY: `${interpolate(scrollX.value, [cardPosition - DECK_CARD_WIDTH, cardPosition, cardPosition + DECK_CARD_WIDTH], [5.5, 0, -5.5], Extrapolation.CLAMP)}deg` },
+      { scale: interpolate(scrollX.value, [cardPosition - DECK_CARD_WIDTH, cardPosition, cardPosition + DECK_CARD_WIDTH], [0.94, 1, 0.94], Extrapolation.CLAMP) },
+    ],
+  }));
 
   return (
-    <MotionPressable
-      onPress={onPress}
-      pressedScale={0.965}
-      hoverScale={1.018}
-      hoverLift={5}
-      hoverTilt={2.2}
-      accessibilityRole="button"
-      accessibilityLabel={`${scene.nameZh}，${statusLabel(status)}，${rounds}/${scene.requiredRounds} 轮`}
-      style={[styles.deckCard, selected && styles.deckCardSelected]}
-    >
-      <Image source={sceneImage(scene.id)} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={220} cachePolicy="memory-disk" recyclingKey={`deck-${scene.id}`} />
-      <LinearGradient colors={['rgba(4,16,32,0.02)', 'rgba(4,16,32,0.24)', 'rgba(4,16,32,0.88)']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFillObject} />
-      <View pointerEvents="none" style={styles.deckCardShine} />
-      <View style={styles.deckCardTop}>
-        <View style={styles.deckIndexPill}><Text style={styles.deckIndexText}>{String(index + 1).padStart(2, '0')}</Text></View>
-        <View style={[styles.deckStatusIcon, { backgroundColor: status === 'completed' ? COLORS.green : selected ? COLORS.blue : 'rgba(7,22,39,0.38)' }]}>
-          {status === 'completed' ? <Check size={13} color="#FFFFFF" strokeWidth={3} /> : status === 'locked' ? <LockKeyhole size={12} color="#FFFFFF" /> : <Icon size={13} color="#FFFFFF" />}
+    <Animated.View style={[styles.deckCardMotion, motionStyle]}>
+      <MotionPressable
+        onPress={onPress}
+        pressedScale={0.955}
+        hoverScale={1.018}
+        hoverLift={5}
+        hoverTilt={2.2}
+        accessibilityRole="button"
+        accessibilityLabel={`${scene.nameZh}，${statusLabel(status)}，${rounds}/${scene.requiredRounds} 轮`}
+        style={[styles.deckCard, selected && styles.deckCardSelected]}
+      >
+        <Image source={sceneImage(scene.id)} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={220} cachePolicy="memory-disk" recyclingKey={`deck-${scene.id}`} />
+        <LinearGradient colors={['rgba(4,16,32,0.02)', 'rgba(4,16,32,0.24)', 'rgba(4,16,32,0.88)']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFillObject} />
+        <View pointerEvents="none" style={styles.deckCardShine} />
+        <View style={styles.deckCardTop}>
+          <View style={styles.deckIndexPill}><Text style={styles.deckIndexText}>{String(index + 1).padStart(2, '0')}</Text></View>
+          <View style={[styles.deckStatusIcon, { backgroundColor: status === 'completed' ? COLORS.green : selected ? COLORS.blue : 'rgba(7,22,39,0.38)' }]}>
+            {status === 'completed' ? <Check size={13} color="#FFFFFF" strokeWidth={3} /> : <Icon size={13} color="#FFFFFF" />}
+          </View>
         </View>
-      </View>
-      <View style={styles.deckCardCopy}>
-        <View style={styles.deckIcon}><Icon size={17} color="#FFFFFF" strokeWidth={2.2} /></View>
-        <Text style={styles.deckTitle}>{scene.nameZh}</Text>
-        <Text style={styles.deckEnglish}>{scene.nameEn}</Text>
-        <View style={styles.deckProgressRow}><View style={styles.deckProgressTrack}><View style={[styles.deckProgressFill, { width: `${Math.max(progressValue * 100, status === 'locked' ? 0 : 7)}%`, backgroundColor: statusColor(status) }]} /></View><Text style={styles.deckProgressText}>{rounds}/{scene.requiredRounds}</Text></View>
-      </View>
-    </MotionPressable>
+        <View style={styles.deckCardCopy}>
+          <View style={styles.deckIcon}><Icon size={17} color="#FFFFFF" strokeWidth={2.2} /></View>
+          <Text style={styles.deckTitle}>{scene.nameZh}</Text>
+          <Text style={styles.deckEnglish}>{scene.nameEn}</Text>
+          <View style={styles.deckProgressRow}><View style={styles.deckProgressTrack}><View style={[styles.deckProgressFill, { width: `${Math.max(progressValue * 100, status === 'locked' ? 0 : 7)}%`, backgroundColor: statusColor(status) }]} /></View><Text style={styles.deckProgressText}>{rounds}/{scene.requiredRounds}</Text></View>
+        </View>
+      </MotionPressable>
+    </Animated.View>
   );
 }
 
@@ -183,6 +204,8 @@ export default function SceneMapScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const initialized = useRef(false);
+  const deckRef = useRef<any>(null);
+  const deckScrollX = useSharedValue(0);
   const [progressMap, setProgressMap] = useState<Record<string, SceneProgress>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -237,7 +260,18 @@ export default function SceneMapScreen() {
     const next = scenes.find((scene) => progressMap[scene.id]?.status === 'in_progress')
       ?? scenes.find((scene) => progressMap[scene.id]?.status !== 'completed')
       ?? scenes[0];
+    const nextIndex = Math.max(scenes.findIndex((scene) => scene.id === next.id), 0);
+    deckScrollX.value = nextIndex * (DECK_CARD_WIDTH + DECK_CARD_GAP);
     setSelectedSceneId(next.id);
+  };
+
+  const deckScrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => { deckScrollX.value = event.contentOffset.x; },
+  });
+
+  const selectDeckScene = (scene: SceneNode, index: number) => {
+    setSelectedSceneId(scene.id);
+    deckRef.current?.scrollTo?.({ x: index * (DECK_CARD_WIDTH + DECK_CARD_GAP), y: 0, animated: true });
   };
 
   const handleDeckMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -269,7 +303,7 @@ export default function SceneMapScreen() {
             <View style={styles.headerCopy}>
               <Text style={styles.headerEyebrow}>SCENE JOURNEY</Text>
               <Text style={styles.pageTitle}>场景地图</Text>
-              <Text style={styles.pageSubtitle}>沿真实生活路径，把英语说出来</Text>
+              <Text style={styles.pageSubtitle}>自由选择真实场景，把英语说出来</Text>
             </View>
             <MotionPressable accessibilityRole="button" accessibilityLabel="刷新场景进度" onPress={() => void loadProgress(true)} haptic={false} pressedScale={0.9} style={styles.headerButton}>
               {refreshing ? <ActivityIndicator size="small" color={COLORS.blue} /> : <RefreshCw size={20} color={COLORS.blue} />}
@@ -280,12 +314,12 @@ export default function SceneMapScreen() {
             <View style={styles.loadingState}><ActivityIndicator size="large" color={COLORS.blue} /><Text style={styles.loadingText}>正在同步场景旅程</Text></View>
           ) : (
             <>
-              <View style={styles.overviewCard}>
+              <Animated.View entering={FadeInDown.springify().damping(19).stiffness(180)} style={styles.overviewCard}>
                 <LinearGradient colors={['rgba(255,255,255,0.96)', 'rgba(220,242,255,0.84)', 'rgba(246,252,255,0.92)']} locations={[0, 0.55, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
                 <View pointerEvents="none" style={styles.cardShine} />
                 <View style={styles.overviewTopRow}>
                   <View style={styles.mapOrb}><LinearGradient colors={['#5FE2FF', '#168BFA', '#0756D7']} style={StyleSheet.absoluteFillObject} /><MapIcon size={24} color="#FFFFFF" /></View>
-                  <View style={styles.overviewCopy}><Text style={styles.overviewLabel}>你的探索版图</Text><Text style={styles.overviewValue}>{exploredCount} / {ALL_SCENES.length} <Text style={styles.overviewUnit}>已探索</Text></Text></View>
+                  <View style={styles.overviewCopy}><Text style={styles.overviewLabel}>全部场景开放</Text><Text style={styles.overviewValue}>{ALL_SCENES.length} / {ALL_SCENES.length} <Text style={styles.overviewUnit}>可直接练习</Text></Text></View>
                   <View style={styles.overviewPercent}><Text style={styles.overviewPercentValue}>{Math.round(overallProgress * 100)}%</Text><Text style={styles.overviewPercentLabel}>已完成</Text></View>
                 </View>
                 <View style={styles.overallTrack}><LinearGradient colors={[COLORS.cyan, COLORS.blue, COLORS.green]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.overallFill, { width: `${Math.max(overallProgress * 100, completedCount ? 5 : 0)}%` }]} /></View>
@@ -294,13 +328,14 @@ export default function SceneMapScreen() {
                   <View style={styles.statDivider} />
                   <View style={styles.overviewStat}><TrendingUp size={15} color={COLORS.blue} /><Text style={styles.overviewStatValue}>{inProgressCount}</Text><Text style={styles.overviewStatLabel}>进行中</Text></View>
                   <View style={styles.statDivider} />
-                  <View style={styles.overviewStat}><Sparkles size={15} color={COLORS.amber} /><Text style={styles.overviewStatValue}>{ALL_SCENES.length - exploredCount}</Text><Text style={styles.overviewStatLabel}>待探索</Text></View>
+                  <View style={styles.overviewStat}><Sparkles size={15} color={COLORS.amber} /><Text style={styles.overviewStatValue}>{ALL_SCENES.length - exploredCount}</Text><Text style={styles.overviewStatLabel}>可练习</Text></View>
                 </View>
-              </View>
+                <View style={styles.accessNote}><Sparkles size={13} color={COLORS.blue} /><Text style={styles.accessNoteText}>无需逐级解锁，任意场景随时开始</Text><View style={styles.accessThumbs}>{['coffee-shop', 'airport', 'hotel'].map((id, index) => <Image key={id} source={sceneImage(id)} style={[styles.accessThumb, { marginLeft: index === 0 ? 0 : -7 }]} contentFit="cover" cachePolicy="memory-disk" />)}</View></View>
+              </Animated.View>
 
               {loadError ? <View style={styles.errorCard}><Text style={styles.errorText}>{loadError}</Text><MotionPressable onPress={() => void loadProgress(true)} style={styles.retryButton}><Text style={styles.retryText}>重试</Text></MotionPressable></View> : null}
 
-              <View style={styles.categoryTabs} accessibilityRole="tablist">
+              <Animated.View entering={FadeInDown.delay(70).springify().damping(19).stiffness(180)} style={styles.categoryTabs} accessibilityRole="tablist">
                 {([
                   { key: 'daily' as const, label: '日常生活', meta: `${DAILY_SCENES.length} 个场景`, icon: Coffee },
                   { key: 'workplace' as const, label: '职场英语', meta: `${WORKPLACE_SCENES.length} 个场景`, icon: BriefcaseBusiness },
@@ -315,31 +350,35 @@ export default function SceneMapScreen() {
                     </MotionPressable>
                   );
                 })}
-              </View>
+              </Animated.View>
 
-              <View style={styles.galleryCard}>
+              <Animated.View entering={FadeInDown.delay(120).springify().damping(19).stiffness(180)} style={styles.galleryCard}>
                 <View pointerEvents="none" style={styles.galleryGlow} />
                 <View style={styles.galleryHeader}>
-                  <View><Text style={styles.galleryEyebrow}>{activeCategory === 'daily' ? 'LIFE SCENES' : 'CAREER SCENES'}</Text><Text style={styles.galleryTitle}>场景画廊</Text><Text style={styles.gallerySubtitle}>左右滑动，选择下一段真实对话</Text></View>
+                  <View><Text style={styles.galleryEyebrow}>{activeCategory === 'daily' ? 'LIFE SCENES' : 'CAREER SCENES'}</Text><Text style={styles.galleryTitle}>场景画廊</Text><Text style={styles.gallerySubtitle}>拖动卡片，松手自动吸附到场景</Text></View>
                   <View style={styles.galleryCounter}><Text style={styles.galleryCounterCurrent}>{String(selectedCategoryIndex + 1).padStart(2, '0')}</Text><Text style={styles.galleryCounterTotal}> / {String(categoryScenes.length).padStart(2, '0')}</Text></View>
                 </View>
-                <ScrollView
+                <Animated.ScrollView
+                  ref={deckRef}
                   key={activeCategory}
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   decelerationRate="fast"
                   snapToInterval={DECK_CARD_WIDTH + DECK_CARD_GAP}
                   snapToAlignment="start"
+                  contentOffset={{ x: selectedCategoryIndex * (DECK_CARD_WIDTH + DECK_CARD_GAP), y: 0 }}
+                  onScroll={deckScrollHandler}
+                  scrollEventThrottle={16}
                   onMomentumScrollEnd={handleDeckMomentumEnd}
                   contentContainerStyle={styles.deckContent}
                 >
-                  {categoryScenes.map((scene, index) => <SceneDeckCard key={scene.id} scene={scene} progress={progressMap[scene.id]} index={index} selected={scene.id === selectedScene.id} onPress={() => setSelectedSceneId(scene.id)} />)}
-                </ScrollView>
+                  {categoryScenes.map((scene, index) => <SceneDeckCard key={scene.id} scene={scene} progress={progressMap[scene.id]} index={index} selected={scene.id === selectedScene.id} scrollX={deckScrollX} onPress={() => selectDeckScene(scene, index)} />)}
+                </Animated.ScrollView>
                 <View style={styles.deckDots}>{categoryScenes.map((scene) => <View key={`dot-${scene.id}`} style={[styles.deckDot, scene.id === selectedScene.id && styles.deckDotActive]} />)}</View>
-              </View>
+              </Animated.View>
 
               <Animated.View key={selectedScene.id} entering={FadeInDown.duration(280)} style={styles.selectedCard}>
-                <View style={styles.selectedMedia}>
+                <MotionPressable onPress={() => router.push(`/(app)/scene-detail?sceneId=${selectedScene.id}` as any)} pressedScale={0.985} hoverScale={1.005} hoverLift={2} hoverTilt={1.5} accessibilityRole="button" accessibilityLabel={`打开${selectedScene.nameZh}场景预览`} style={styles.selectedMedia}>
                   <Image source={sceneImage(selectedScene.id)} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={240} cachePolicy="memory-disk" recyclingKey={`feature-${selectedScene.id}`} />
                   <LinearGradient colors={['rgba(5,15,30,0.05)', 'rgba(4,20,42,0.26)', 'rgba(4,17,35,0.88)']} locations={[0, 0.46, 1]} style={StyleSheet.absoluteFillObject} />
                   <View pointerEvents="none" style={styles.mediaTopShine} />
@@ -351,7 +390,7 @@ export default function SceneMapScreen() {
                     <View style={styles.mediaIcon}><SelectedIcon size={24} color="#FFFFFF" /></View>
                     <View style={styles.mediaTitleCopy}><Text style={styles.mediaTitle}>{selectedScene.nameZh}</Text><Text style={styles.mediaEnglish}>{selectedScene.nameEn.toUpperCase()}</Text></View>
                   </View>
-                </View>
+                </MotionPressable>
                 <View style={styles.selectedBody}>
                   <Text style={styles.selectedDescription} numberOfLines={2}>{selectedScene.description}</Text>
                   <View style={styles.challengeCard}><View style={styles.challengeIcon}><Target size={16} color={COLORS.blue} /></View><View style={styles.challengeCopy}><Text style={styles.challengeLabel}>本场目标</Text><Text style={styles.challengeText} numberOfLines={1}>{selectedScene.dialogueGoal}</Text></View></View>
@@ -361,10 +400,10 @@ export default function SceneMapScreen() {
                   </View>
                   <View style={styles.selectedProgressRow}><Text style={styles.selectedProgressLabel}>对话进度</Text><Text style={[styles.selectedProgressValue, { color: statusColor(selectedStatus) }]}>{selectedRounds} / {selectedScene.requiredRounds} 轮</Text></View>
                   <View style={styles.selectedProgressTrack}><View style={[styles.selectedProgressFill, { width: `${selectedPercent}%`, backgroundColor: statusColor(selectedStatus) }]} /></View>
-                  <MotionPressable onPress={() => router.push(`/(app)/scene-detail?sceneId=${selectedScene.id}` as any)} pressedScale={0.975} hoverLift={2} accessibilityRole="button" accessibilityLabel={`${selectedStatus === 'locked' ? '开始探索' : selectedStatus === 'completed' ? '再次练习' : '继续练习'}${selectedScene.nameZh}`} style={styles.primaryButton}>
+                  <MotionPressable onPress={() => router.push(`/(app)/scene-detail?sceneId=${selectedScene.id}` as any)} pressedScale={0.975} hoverLift={2} accessibilityRole="button" accessibilityLabel={`${selectedStatus === 'locked' ? '开始练习' : selectedStatus === 'completed' ? '再次练习' : '继续练习'}${selectedScene.nameZh}`} style={styles.primaryButton}>
                     <LinearGradient colors={['#31D1FF', COLORS.blue, COLORS.blueDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
                     {selectedStatus === 'locked' ? <Sparkles size={18} color="#FFFFFF" /> : <MessageCircleMore size={18} color="#FFFFFF" />}
-                    <Text style={styles.primaryButtonText}>{selectedStatus === 'locked' ? '开始探索' : selectedStatus === 'completed' ? '再次练习' : '继续练习'}</Text>
+                    <Text style={styles.primaryButtonText}>{selectedStatus === 'locked' ? '开始练习' : selectedStatus === 'completed' ? '再次练习' : '继续练习'}</Text>
                     <ArrowRight size={18} color="#FFFFFF" />
                   </MotionPressable>
                 </View>
@@ -412,6 +451,10 @@ const styles = StyleSheet.create({
   overviewStatValue: { color: COLORS.text, fontSize: 13, fontWeight: '900', fontVariant: ['tabular-nums'] },
   overviewStatLabel: { color: COLORS.muted, fontSize: 9, fontWeight: '700' },
   statDivider: { width: 1, height: 21, backgroundColor: 'rgba(164,199,226,0.38)' },
+  accessNote: { minHeight: 38, marginTop: 13, paddingLeft: 10, paddingRight: 7, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.6)', borderWidth: 1, borderColor: 'rgba(167,210,242,0.58)' },
+  accessNoteText: { flex: 1, color: COLORS.blueDark, fontSize: 9, lineHeight: 12, fontWeight: '800' },
+  accessThumbs: { flexDirection: 'row', alignItems: 'center', paddingLeft: 4 },
+  accessThumb: { width: 25, height: 25, borderRadius: 13, borderWidth: 2, borderColor: '#FFFFFF', backgroundColor: '#DFECF7' },
   errorCard: { minHeight: 48, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 16, backgroundColor: '#FFF2F1', borderWidth: 1, borderColor: '#F2B8B3' },
   errorText: { flex: 1, color: '#9F2D28', fontSize: 11, lineHeight: 16, fontWeight: '700' },
   retryButton: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: '#FFFFFF' },
@@ -434,7 +477,8 @@ const styles = StyleSheet.create({
   galleryCounterCurrent: { color: COLORS.blue, fontSize: 21, lineHeight: 24, fontWeight: '900', fontVariant: ['tabular-nums'] },
   galleryCounterTotal: { color: COLORS.subtle, fontSize: 10, lineHeight: 14, fontWeight: '800', fontVariant: ['tabular-nums'] },
   deckContent: { gap: DECK_CARD_GAP, paddingHorizontal: 15, paddingTop: 13, paddingBottom: 11 },
-  deckCard: { width: DECK_CARD_WIDTH, height: 192, overflow: 'hidden', borderRadius: 22, backgroundColor: '#DCEAF5', borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)', shadowColor: '#24577E', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.19, shadowRadius: 15, elevation: 4 },
+  deckCardMotion: { width: DECK_CARD_WIDTH, height: 202, paddingVertical: 5 },
+  deckCard: { flex: 1, overflow: 'hidden', borderRadius: 22, backgroundColor: '#DCEAF5', borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)', shadowColor: '#24577E', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.19, shadowRadius: 15, elevation: 4 },
   deckCardSelected: { borderWidth: 2, borderColor: 'rgba(88,201,255,0.96)', shadowColor: COLORS.blue, shadowOpacity: 0.42, shadowRadius: 18, elevation: 7 },
   deckCardShine: { position: 'absolute', left: 17, right: 17, top: 3, height: 2, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.76)' },
   deckCardTop: { position: 'absolute', left: 10, right: 10, top: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
