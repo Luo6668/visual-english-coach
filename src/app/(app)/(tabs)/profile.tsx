@@ -130,9 +130,10 @@ export default function ProfileScreen() {
   return (
     <View style={styles.screen}>
       <StatusBar style="dark" backgroundColor={COLORS.background} />
-      <LinearGradient pointerEvents="none" colors={['#DCECF8', '#F7FBFE', '#EDF8F5', '#EEF1F8']} locations={[0, 0.35, 0.71, 1]} style={StyleSheet.absoluteFillObject} />
-      <LinearGradient pointerEvents="none" colors={['rgba(24,125,215,0.28)', 'rgba(68,206,199,0.09)', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.backgroundHaze} />
+      <LinearGradient pointerEvents="none" colors={['#EAF5FC', '#FDFEFF', '#F1FAF8', '#F3F5FB']} locations={[0, 0.34, 0.7, 1]} style={StyleSheet.absoluteFillObject} />
+      <LinearGradient pointerEvents="none" colors={['rgba(89,181,240,0.17)', 'rgba(117,224,208,0.07)', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.backgroundHaze} />
       <View pointerEvents="none" style={styles.backgroundPrism} />
+      <View pointerEvents="none" style={styles.backgroundOrbitLarge} /><View pointerEvents="none" style={styles.backgroundOrbitSmall} />
       <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.72)', 'rgba(116,190,237,0.07)', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.backgroundRailOne} />
       <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0)', 'rgba(137,221,210,0.15)', 'rgba(255,255,255,0.56)', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.backgroundRailTwo} />
 
@@ -148,18 +149,20 @@ export default function ProfileScreen() {
           </View>
 
           <Animated.View entering={FadeInDown.springify().damping(19).stiffness(180)} style={styles.identityCard}>
-            <LinearGradient colors={['rgba(5,22,40,0.97)', 'rgba(9,49,79,0.95)', 'rgba(11,32,58,0.98)']} locations={[0, 0.56, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
-            <LinearGradient pointerEvents="none" colors={['rgba(105,223,255,0)', 'rgba(105,223,255,0.18)', 'rgba(116,99,255,0.08)', 'rgba(255,255,255,0)']} locations={[0, 0.39, 0.67, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.identityRefraction} />
+            <LinearGradient colors={['rgba(255,255,255,0.97)', 'rgba(226,244,255,0.88)', 'rgba(247,252,255,0.94)', 'rgba(229,247,243,0.84)']} locations={[0, 0.36, 0.7, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
+            <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.84)', 'rgba(61,166,238,0.10)', 'rgba(255,255,255,0)']} locations={[0, 0.39, 0.67, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.identityRefraction} />
             <View pointerEvents="none" style={styles.identityAurora} /><View pointerEvents="none" style={styles.identityContourLarge} /><View pointerEvents="none" style={styles.identityContourSmall} /><View pointerEvents="none" style={styles.identityLightRail} /><View pointerEvents="none" style={styles.cardShine} />
             <View style={styles.identityTopRow}>
               <View style={styles.avatarShell}><LinearGradient colors={['#64E8FF', '#188AFA', '#4C58E9']} style={StyleSheet.absoluteFillObject} /><View style={styles.avatarInner}><Text style={styles.avatarInitial}>{displayInitial}</Text></View><View style={styles.avatarStatus} /></View>
               <View style={styles.identityCopy}><Text numberOfLines={1} style={styles.displayName}>{displayName}</Text><Text style={styles.levelName}>{curLevel.name} · LV.{curLevel.level}</Text>{activeTitle ? <View style={styles.activeTitlePill}><Star size={11} color={COLORS.blue} fill={COLORS.blue} /><Text style={styles.activeTitleText}>{activeTitle.name}</Text></View> : null}</View>
-              <View style={styles.streakPill}><Flame size={15} color={COLORS.green} fill={COLORS.green} /><View><Text style={styles.streakValue}>{streak}</Text><Text style={styles.streakLabel}>连续天数</Text></View></View>
             </View>
-            <View style={styles.levelPanel}>
-              <View style={styles.levelPanelHeader}><View><Text style={styles.levelPanelEyebrow}>LEVEL PROGRESS</Text><Text style={styles.levelPanelTitle}>{nextLevel ? `距离 LV.${nextLevel.level} 还差 ${xpToNext} XP` : '已达到最高等级'}</Text></View><Text style={styles.levelXp}>{totalXp} <Text style={styles.levelXpUnit}>XP</Text></Text></View>
-              <View style={styles.progressTrack}><LinearGradient colors={[COLORS.cyan, COLORS.blue, '#6958F3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.progressFill, { width: `${progressPercent}%` }]} /></View>
-              <View style={styles.progressLabels}><Text style={styles.progressLabel}>LV.{curLevel.level}</Text><Text style={styles.progressLabel}>{nextLevel ? `LV.${nextLevel.level} · ${nextLevel.name}` : 'MAX'}</Text></View>
+            <View style={styles.overviewRow}>
+              <View style={styles.levelPanel}>
+                <View style={styles.levelPanelHeader}><View><Text style={styles.levelPanelEyebrow}>LEVEL PROGRESS</Text><Text style={styles.levelPanelTitle}>{nextLevel ? `距离 LV.${nextLevel.level} 还差 ${xpToNext} XP` : '已达到最高等级'}</Text></View><Text style={styles.levelXp}>{totalXp} <Text style={styles.levelXpUnit}>XP</Text></Text></View>
+                <View style={styles.progressTrack}><LinearGradient colors={[COLORS.cyan, COLORS.blue, '#6958F3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.progressFill, { width: `${progressPercent}%` }]} /></View>
+                <View style={styles.progressLabels}><Text style={styles.progressLabel}>LV.{curLevel.level}</Text><Text style={styles.progressLabel}>{nextLevel ? `LV.${nextLevel.level} · ${nextLevel.name}` : 'MAX'}</Text></View>
+              </View>
+              <MotionPressable onPress={() => router.push('/(app)/(tabs)/growth' as any)} pressedScale={0.96} hoverLift={3} accessibilityRole="button" accessibilityLabel={`连续学习 ${streak} 天`} style={styles.streakFocus}><LinearGradient colors={['rgba(235,255,248,0.94)', 'rgba(210,247,232,0.82)']} style={StyleSheet.absoluteFillObject} /><View style={styles.streakIcon}><Flame size={17} color={COLORS.green} fill={COLORS.green} /></View><Text style={styles.streakFocusValue}>{streak}<Text style={styles.streakFocusUnit}> 天</Text></Text><Text style={styles.streakFocusLabel}>{streak > 0 ? '保持节奏' : '从今天开始'}</Text></MotionPressable>
             </View>
             <View style={styles.metricGrid}>
               {metrics.map((item) => {
@@ -180,7 +183,7 @@ export default function ProfileScreen() {
               <MotionPressable onPress={() => router.push('/(app)/achievements?tab=achievements' as any)} pressedScale={0.975} hoverLift={4} hoverTilt={1.4} accessibilityRole="button" accessibilityLabel={`查看当前称号 ${activeTitle?.name ?? ''}`} style={styles.featuredAchievement}>
                 <LinearGradient colors={['rgba(255,250,220,0.98)', 'rgba(225,174,52,0.80)', 'rgba(255,255,255,0.96)', 'rgba(238,197,80,0.72)']} locations={[0, 0.38, 0.7, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
                 <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.76)', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.featuredSheen} />
-                <View style={styles.featuredBadge}><Sparkles size={11} color="#765000" /><Text style={styles.featuredBadgeText}>当前称号</Text></View><View style={styles.medalOrb}><View pointerEvents="none" style={styles.medalHalo} /><Medal size={39} color="#BD7900" strokeWidth={1.9} /></View><Text numberOfLines={2} style={styles.featuredTitle}>{activeTitle?.name ?? '等待解锁'}</Text><Text style={styles.featuredMeta}>{activeTitle ? '完成阶段学习目标' : '继续学习获得首个称号'}</Text><View style={styles.featuredLink}><Text style={styles.featuredLinkText}>查看成长轨迹</Text><ChevronRight size={13} color="#765000" /></View>
+                <View style={styles.featuredMain}><View style={styles.medalOrb}><View pointerEvents="none" style={styles.medalHalo} /><Medal size={39} color="#BD7900" strokeWidth={1.9} /></View><View style={styles.featuredBody}><View style={styles.featuredBadge}><Sparkles size={11} color="#765000" /><Text style={styles.featuredBadgeText}>当前称号</Text></View><Text numberOfLines={2} style={styles.featuredTitle}>{activeTitle?.name ?? '等待解锁'}</Text><Text style={styles.featuredMeta}>{activeTitle ? '完成阶段学习目标' : '继续学习获得首个称号'}</Text><View style={styles.featuredLink}><Text style={styles.featuredLinkText}>查看成长轨迹</Text><ChevronRight size={13} color="#765000" /></View></View></View>
               </MotionPressable>
               <View style={styles.upcomingList}>
                 {upcomingTitles.length > 0 ? upcomingTitles.map((title, index) => <MotionPressable key={title.name} onPress={() => router.push('/(app)/achievements?tab=achievements' as any)} pressedScale={0.965} hoverLift={3} accessibilityRole="button" accessibilityLabel={`查看称号 ${title.name}，LV.${title.level} 解锁`} style={styles.upcomingCard}><LinearGradient pointerEvents="none" colors={[`${title.color}16`, 'rgba(255,255,255,0.78)', `${title.color}08`]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} /><View pointerEvents="none" style={[styles.upcomingRail, { backgroundColor: title.color }]} /><View style={[styles.upcomingIcon, { backgroundColor: `${title.color}12` }]}><Award size={23} color={title.color} strokeWidth={1.8} /><View style={styles.lockDot}><LockKeyhole size={8} color="#FFFFFF" /></View></View><View style={styles.upcomingCopy}><Text numberOfLines={1} style={styles.upcomingTitle}>{title.name}</Text><Text style={styles.upcomingMeta}>LV.{title.level} 解锁</Text><View style={styles.upcomingTrack}><View style={[styles.upcomingFill, { width: `${Math.min((curLevel.level / title.level) * 100, 100)}%`, backgroundColor: title.color }]} /></View></View><Text style={styles.upcomingIndex}>0{index + 1}</Text></MotionPressable>) : <MotionPressable onPress={() => router.push('/(app)/achievements?tab=achievements' as any)} pressedScale={0.97} hoverLift={3} style={styles.allUnlockedCard}><Medal size={32} color={COLORS.green} /><Text style={styles.allUnlockedTitle}>称号已全部解锁</Text><Text style={styles.allUnlockedMeta}>查看完整收藏</Text></MotionPressable>}
@@ -211,7 +214,9 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
   backgroundHaze: { position: 'absolute', left: -90, right: -90, top: -110, height: 620, transform: [{ rotate: '-8deg' }] },
-  backgroundPrism: { position: 'absolute', width: 720, height: 330, top: 78, left: '16%', borderRadius: 108, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.58)', transform: [{ rotate: '-13deg' }], shadowColor: '#3E8DBA', shadowOffset: { width: 0, height: 18 }, shadowOpacity: 0.08, shadowRadius: 32 },
+  backgroundPrism: { position: 'absolute', width: 720, height: 330, top: 78, left: '16%', borderRadius: 108, backgroundColor: 'rgba(255,255,255,0.28)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.68)', transform: [{ rotate: '-13deg' }], shadowColor: '#5F9CC5', shadowOffset: { width: 0, height: 18 }, shadowOpacity: 0.06, shadowRadius: 32 },
+  backgroundOrbitLarge: { position: 'absolute', width: 520, height: 520, right: -310, top: 318, borderRadius: 260, borderWidth: 1, borderColor: 'rgba(88,164,215,0.10)' },
+  backgroundOrbitSmall: { position: 'absolute', width: 330, height: 330, right: -198, top: 412, borderRadius: 165, borderWidth: 1, borderColor: 'rgba(74,195,176,0.10)' },
   backgroundRailOne: { position: 'absolute', left: -140, top: 500, width: 920, height: 94, transform: [{ rotate: '-11deg' }] },
   backgroundRailTwo: { position: 'absolute', left: -170, top: 1110, width: 980, height: 128, transform: [{ rotate: '9deg' }] },
   scrollContent: { paddingBottom: 132 },
@@ -222,42 +227,45 @@ const styles = StyleSheet.create({
   pageTitle: { marginTop: 1, color: COLORS.text, fontSize: 27, lineHeight: 32, fontWeight: '900' },
   pageSubtitle: { color: COLORS.muted, fontSize: 10, lineHeight: 15, fontWeight: '600' },
   headerButton: { width: 43, height: 43, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.74)', borderWidth: 1, borderColor: COLORS.line, shadowColor: '#3C77A9', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.12, shadowRadius: 13, elevation: 3, ...GLASS_WEB },
-  identityCard: { overflow: 'hidden', borderRadius: 29, borderWidth: 1.2, borderColor: 'rgba(133,215,255,0.54)', padding: 15, shadowColor: '#073D6A', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.34, shadowRadius: 34, elevation: 9, ...GLASS_WEB },
+  identityCard: { overflow: 'hidden', borderRadius: 29, borderWidth: 1.2, borderColor: 'rgba(255,255,255,0.90)', padding: 15, shadowColor: '#3978A6', shadowOffset: { width: 0, height: 18 }, shadowOpacity: 0.17, shadowRadius: 32, elevation: 7, ...GLASS_WEB },
   identityRefraction: { position: 'absolute', width: '160%', height: 260, top: -90, left: '-28%', transform: [{ rotate: '-10deg' }] },
-  identityAurora: { position: 'absolute', width: 290, height: 180, top: -86, right: -62, borderRadius: 72, backgroundColor: 'rgba(60,206,255,0.13)', transform: [{ rotate: '-18deg' }] },
-  identityContourLarge: { position: 'absolute', width: 250, height: 250, borderRadius: 125, right: -96, top: -86, borderWidth: 1, borderColor: 'rgba(92,207,255,0.26)' },
-  identityContourSmall: { position: 'absolute', width: 184, height: 184, borderRadius: 92, right: -58, top: -50, borderWidth: 1, borderColor: 'rgba(255,255,255,0.26)' },
-  identityLightRail: { position: 'absolute', width: 420, height: 1, right: -132, bottom: 89, backgroundColor: 'rgba(97,217,255,0.42)', transform: [{ rotate: '-16deg' }] },
-  cardShine: { position: 'absolute', left: 26, right: 26, top: 2, height: 2, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.72)' },
+  identityAurora: { position: 'absolute', width: 290, height: 180, top: -86, right: -62, borderRadius: 72, backgroundColor: 'rgba(53,176,246,0.10)', transform: [{ rotate: '-18deg' }] },
+  identityContourLarge: { position: 'absolute', width: 250, height: 250, borderRadius: 125, right: -96, top: -86, borderWidth: 1, borderColor: 'rgba(43,149,219,0.18)' },
+  identityContourSmall: { position: 'absolute', width: 184, height: 184, borderRadius: 92, right: -58, top: -50, borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)' },
+  identityLightRail: { position: 'absolute', width: 420, height: 1, right: -132, bottom: 89, backgroundColor: 'rgba(57,153,219,0.21)', transform: [{ rotate: '-16deg' }] },
+  cardShine: { position: 'absolute', left: 26, right: 26, top: 2, height: 2, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.96)' },
   identityTopRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   avatarShell: { width: 66, height: 66, padding: 3, borderRadius: 23, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)', shadowColor: '#37CEFF', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.38, shadowRadius: 16, elevation: 5 },
-  avatarInner: { width: '100%', height: '100%', borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(8,34,59,0.78)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.38)' },
-  avatarInitial: { color: '#FFFFFF', fontSize: 27, lineHeight: 31, fontWeight: '900' },
+  avatarInner: { width: '100%', height: '100%', borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(248,253,255,0.88)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.88)' },
+  avatarInitial: { color: COLORS.blueDark, fontSize: 27, lineHeight: 31, fontWeight: '900' },
   avatarStatus: { position: 'absolute', right: 4, bottom: 4, width: 13, height: 13, borderRadius: 7, backgroundColor: COLORS.green, borderWidth: 2, borderColor: '#FFFFFF' },
   identityCopy: { flex: 1, minWidth: 0 },
-  displayName: { color: '#FFFFFF', fontSize: 19, lineHeight: 23, fontWeight: '900' },
-  levelName: { marginTop: 2, color: 'rgba(204,230,247,0.72)', fontSize: 9.5, lineHeight: 13, fontWeight: '700' },
-  activeTitlePill: { minHeight: 23, marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 12, backgroundColor: 'rgba(104,206,255,0.12)', borderWidth: 1, borderColor: 'rgba(124,215,255,0.34)' },
-  activeTitleText: { color: '#A7E5FF', fontSize: 8, lineHeight: 11, fontWeight: '900' },
-  streakPill: { minWidth: 61, minHeight: 46, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 16, backgroundColor: 'rgba(35,176,126,0.12)', borderWidth: 1, borderColor: 'rgba(100,232,181,0.34)' },
-  streakValue: { color: '#63E5B0', fontSize: 14, lineHeight: 16, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  streakLabel: { color: 'rgba(175,235,212,0.72)', fontSize: 6.5, lineHeight: 9, fontWeight: '800' },
-  levelPanel: { marginTop: 14, padding: 12, borderRadius: 19, backgroundColor: 'rgba(219,242,255,0.08)', borderWidth: 1, borderColor: 'rgba(153,221,255,0.22)' },
+  displayName: { color: COLORS.text, fontSize: 19, lineHeight: 23, fontWeight: '900' },
+  levelName: { marginTop: 2, color: COLORS.muted, fontSize: 9.5, lineHeight: 13, fontWeight: '700' },
+  activeTitlePill: { minHeight: 23, marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 12, backgroundColor: 'rgba(236,247,255,0.86)', borderWidth: 1, borderColor: 'rgba(124,194,242,0.40)' },
+  activeTitleText: { color: COLORS.blueDark, fontSize: 8, lineHeight: 11, fontWeight: '900' },
+  overviewRow: { marginTop: 14, flexDirection: 'row', alignItems: 'stretch', gap: 8 },
+  levelPanel: { flex: 1, minWidth: 0, padding: 12, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.58)', borderWidth: 1, borderColor: 'rgba(142,194,231,0.38)' },
   levelPanelHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10 },
-  levelPanelEyebrow: { color: '#65DFFF', fontSize: 6.5, lineHeight: 9, fontWeight: '900', letterSpacing: 1.05 },
-  levelPanelTitle: { marginTop: 2, color: '#FFFFFF', fontSize: 10, lineHeight: 14, fontWeight: '900' },
-  levelXp: { color: '#FFFFFF', fontSize: 17, lineHeight: 20, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  levelXpUnit: { color: 'rgba(198,227,245,0.66)', fontSize: 8, fontWeight: '800' },
-  progressTrack: { height: 8, marginTop: 10, overflow: 'hidden', borderRadius: 99, backgroundColor: 'rgba(2,16,29,0.48)', borderWidth: 1, borderColor: 'rgba(171,229,255,0.18)' },
+  levelPanelEyebrow: { color: COLORS.blue, fontSize: 6.5, lineHeight: 9, fontWeight: '900', letterSpacing: 1.05 },
+  levelPanelTitle: { marginTop: 2, color: COLORS.text, fontSize: 10, lineHeight: 14, fontWeight: '900' },
+  levelXp: { color: COLORS.text, fontSize: 17, lineHeight: 20, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  levelXpUnit: { color: COLORS.muted, fontSize: 8, fontWeight: '800' },
+  progressTrack: { height: 8, marginTop: 10, overflow: 'hidden', borderRadius: 99, backgroundColor: 'rgba(109,153,190,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.76)' },
   progressFill: { height: '100%', borderRadius: 99 },
   progressLabels: { marginTop: 5, flexDirection: 'row', justifyContent: 'space-between' },
-  progressLabel: { color: 'rgba(195,222,240,0.58)', fontSize: 7, lineHeight: 10, fontWeight: '800' },
+  progressLabel: { color: COLORS.subtle, fontSize: 7, lineHeight: 10, fontWeight: '800' },
+  streakFocus: { width: 86, overflow: 'hidden', padding: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 19, borderWidth: 1, borderColor: 'rgba(116,213,174,0.40)', shadowColor: '#47A47F', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.10, shadowRadius: 12, elevation: 2 },
+  streakIcon: { width: 29, height: 29, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.70)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.92)' },
+  streakFocusValue: { marginTop: 4, color: COLORS.green, fontSize: 17, lineHeight: 20, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  streakFocusUnit: { fontSize: 7.5, fontWeight: '800' },
+  streakFocusLabel: { marginTop: 1, color: '#51816D', fontSize: 7, lineHeight: 10, fontWeight: '800' },
   metricGrid: { marginTop: 10, flexDirection: 'row', gap: 7 },
-  metricCard: { flex: 1, minWidth: 0, minHeight: 71, padding: 9, borderRadius: 17, backgroundColor: 'rgba(216,241,255,0.08)', borderWidth: 1, borderColor: 'rgba(158,222,255,0.19)' },
+  metricCard: { flex: 1, minWidth: 0, minHeight: 71, padding: 9, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(160,202,232,0.34)' },
   metricIcon: { width: 27, height: 27, marginBottom: 5, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  metricValue: { color: '#FFFFFF', fontSize: 15, lineHeight: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  metricUnit: { color: 'rgba(190,220,239,0.64)', fontSize: 7.5, fontWeight: '700' },
-  metricLabel: { marginTop: 1, color: 'rgba(190,220,239,0.66)', fontSize: 7.5, lineHeight: 10, fontWeight: '700' },
+  metricValue: { color: COLORS.text, fontSize: 15, lineHeight: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  metricUnit: { color: COLORS.muted, fontSize: 7.5, fontWeight: '700' },
+  metricLabel: { marginTop: 1, color: COLORS.muted, fontSize: 7.5, lineHeight: 10, fontWeight: '700' },
   continueCard: { minHeight: 65, marginTop: 10, padding: 8, paddingRight: 9, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(156,228,255,0.60)', shadowColor: '#0875F7', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.27, shadowRadius: 17, elevation: 4 },
   continueHighlight: { position: 'absolute', left: 62, right: 26, top: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.76)' },
   continueIcon: { width: 43, height: 43, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.42)' },
@@ -279,19 +287,21 @@ const styles = StyleSheet.create({
   sectionTitle: { marginTop: 1, color: COLORS.text, fontSize: 19, lineHeight: 23, fontWeight: '900' },
   sectionAction: { minHeight: 31, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 2, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.65)', borderWidth: 1, borderColor: 'rgba(172,207,234,0.50)' },
   sectionActionText: { color: COLORS.muted, fontSize: 8.5, fontWeight: '800' },
-  achievementGrid: { marginTop: 10, minHeight: 193, flexDirection: 'row', gap: 9 },
-  featuredAchievement: { flex: 1.06, minWidth: 0, overflow: 'hidden', padding: 12, borderRadius: 21, borderWidth: 1, borderColor: 'rgba(229,180,48,0.70)', shadowColor: '#8D5C00', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.23, shadowRadius: 18, elevation: 4 },
-  featuredSheen: { position: 'absolute', width: 54, height: 280, top: -36, left: 66, transform: [{ rotate: '17deg' }] },
+  achievementGrid: { marginTop: 10, gap: 9 },
+  featuredAchievement: { minHeight: 126, overflow: 'hidden', padding: 12, borderRadius: 21, borderWidth: 1, borderColor: 'rgba(229,180,48,0.64)', shadowColor: '#9A710D', shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.18, shadowRadius: 17, elevation: 3 },
+  featuredSheen: { position: 'absolute', width: 62, height: 260, top: -58, left: '52%', transform: [{ rotate: '17deg' }] },
+  featuredMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 13 },
+  featuredBody: { flex: 1, minWidth: 0 },
   featuredBadge: { alignSelf: 'flex-start', minHeight: 23, paddingHorizontal: 7, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.68)', borderWidth: 1, borderColor: 'rgba(223,177,57,0.36)' },
   featuredBadgeText: { color: '#8E680E', fontSize: 7, lineHeight: 10, fontWeight: '900' },
-  medalOrb: { width: 66, height: 66, marginTop: 10, overflow: 'hidden', borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.54)', borderWidth: 1, borderColor: 'rgba(255,250,218,0.88)', shadowColor: '#8F5A00', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.22, shadowRadius: 13 },
+  medalOrb: { width: 79, height: 79, overflow: 'hidden', borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.54)', borderWidth: 1, borderColor: 'rgba(255,250,218,0.88)', shadowColor: '#8F5A00', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.20, shadowRadius: 13 },
   medalHalo: { position: 'absolute', width: 88, height: 26, top: 5, left: -11, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.48)', transform: [{ rotate: '-17deg' }] },
-  featuredTitle: { marginTop: 9, color: COLORS.text, fontSize: 13, lineHeight: 17, fontWeight: '900' },
+  featuredTitle: { marginTop: 7, color: COLORS.text, fontSize: 16, lineHeight: 20, fontWeight: '900' },
   featuredMeta: { marginTop: 2, color: '#796A43', fontSize: 7.5, lineHeight: 10, fontWeight: '700' },
-  featuredLink: { marginTop: 'auto', paddingTop: 7, flexDirection: 'row', alignItems: 'center', gap: 2 },
+  featuredLink: { paddingTop: 7, flexDirection: 'row', alignItems: 'center', gap: 2 },
   featuredLinkText: { color: '#8E680E', fontSize: 7.5, fontWeight: '900' },
-  upcomingList: { flex: 1, gap: 9 },
-  upcomingCard: { flex: 1, minHeight: 92, overflow: 'hidden', padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.64)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)', shadowColor: '#4D7695', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.10, shadowRadius: 13, elevation: 2 },
+  upcomingList: { flexDirection: 'row', gap: 9 },
+  upcomingCard: { flex: 1, minWidth: 0, minHeight: 88, overflow: 'hidden', padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.64)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)', shadowColor: '#4D7695', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.10, shadowRadius: 13, elevation: 2 },
   upcomingRail: { position: 'absolute', left: 0, top: 19, bottom: 19, width: 2, borderRadius: 2, opacity: 0.7 },
   upcomingIcon: { width: 41, height: 41, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   lockDot: { position: 'absolute', right: -3, top: -3, width: 17, height: 17, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#607089', borderWidth: 1, borderColor: '#FFFFFF' },
@@ -300,7 +310,7 @@ const styles = StyleSheet.create({
   upcomingMeta: { marginTop: 2, color: COLORS.muted, fontSize: 7, lineHeight: 10, fontWeight: '700' },
   upcomingTrack: { height: 4, marginTop: 6, overflow: 'hidden', borderRadius: 2, backgroundColor: 'rgba(143,171,199,0.18)' },
   upcomingFill: { height: '100%', borderRadius: 2 },
-  upcomingIndex: { alignSelf: 'flex-start', color: 'rgba(113,138,164,0.36)', fontSize: 8, fontWeight: '900' },
+  upcomingIndex: { position: 'absolute', right: 8, top: 7, color: 'rgba(113,138,164,0.36)', fontSize: 7, fontWeight: '900' },
   allUnlockedCard: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 19, backgroundColor: 'rgba(239,255,247,0.76)', borderWidth: 1, borderColor: 'rgba(116,216,173,0.48)' },
   allUnlockedTitle: { marginTop: 7, color: COLORS.green, fontSize: 10, fontWeight: '900' },
   allUnlockedMeta: { marginTop: 2, color: COLORS.muted, fontSize: 7.5, fontWeight: '700' },
