@@ -169,6 +169,10 @@ export async function saveDiary(payload: { diary_type: 'daily' | 'weekly'; conte
   return mysqlData('diaries', { action: 'insert', values: payload });
 }
 
+export async function updateDiary(id: string, payload: { content: string }) {
+  return mysqlData('diaries', { action: 'update', filters: { id }, values: payload });
+}
+
 export async function deleteDiary(id: string) {
   return mysqlData('diaries', { action: 'delete', filters: { id } });
 }

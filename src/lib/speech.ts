@@ -1,4 +1,5 @@
 import * as Speech from 'expo-speech';
+import { Platform } from 'react-native';
 import { isLocalServiceMode } from '@/lib/serviceConfig';
 
 let webUtterance: SpeechSynthesisUtterance | null = null;
@@ -23,6 +24,7 @@ type TtsInvoker = (name: string, body: unknown) => Promise<any>;
 
 type SpeechOptions = {
   rate?: number;
+  onStart?: () => void;
 };
 
 function normalizeSpeechRate(rate?: number): number {
@@ -38,7 +40,7 @@ function speechLanguage(text: string): string {
 export function stopLocalSpeech(): void {
   playbackGeneration += 1;
   playbackPaused = false;
-  if (process.env.EXPO_OS === 'web' && typeof window !== 'undefined') {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
     window.speechSynthesis?.cancel();
     webUtterance = null;
     if (webAudio) {
@@ -57,7 +59,7 @@ export function stopLocalSpeech(): void {
 
 export function pauseLocalSpeech(): void {
   playbackPaused = true;
-  if (process.env.EXPO_OS === 'web' && typeof window !== 'undefined') {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
     window.speechSynthesis?.pause();
     webAudio?.pause();
   }
@@ -67,7 +69,7 @@ export function pauseLocalSpeech(): void {
 
 export function resumeLocalSpeech(): void {
   playbackPaused = false;
-  if (process.env.EXPO_OS === 'web' && typeof window !== 'undefined') {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
     window.speechSynthesis?.resume();
     if (webAudio) void webAudio.play().catch(() => {});
   }
@@ -148,7 +150,7 @@ export function speakLocally(
   if (!cleanText) return finish();
   const rate = normalizeSpeechRate(options.rate);
 
-  if (process.env.EXPO_OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
     speakInBrowser(cleanText, finish, generation, rate);
     return;
   }
@@ -203,16 +205,27 @@ export async function speakWithTTS(
     if (!audioUri) throw new Error('TTS 服务未返回音频');
 
     console.log('[TTS] voice:', result?.voice || (isLocalServiceMode ? 'Kokoro' : 'MiniMax'));
-    if (process.env.EXPO_OS === 'web' && typeof document !== 'undefined') {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
       const audio = document.createElement('audio');
       webAudio = audio;
       audio.src = audioUri;
       audio.preload = 'auto';
       audio.playbackRate = rate;
+      audio.volume = 1;
+      audio.muted = false;
       audio.onended = finish;
       audio.onerror = finish;
       document.body.appendChild(audio);
-      if (!playbackPaused) await audio.play();
+      if (!playbackPaused) {
+        try {
+          await audio.play();
+          options.onStart?.();
+        } catch (playError) {
+          audio.remove();
+          webAudio = null;
+          throw playError;
+        }
+      }
       return;
     }
 
@@ -224,6 +237,7 @@ export async function speakWithTTS(
       if (status.didJustFinish) finish();
     }) ?? null;
     if (!playbackPaused) player.play();
+    options.onStart?.();
     if (!activeNativeSubscription) {
       setTimeout(finish, (result?.audioLength ?? cleanText.length * 85) + 500);
     }
@@ -231,6 +245,7 @@ export async function speakWithTTS(
     if (generation !== playbackGeneration) return;
     console.warn('[TTS] preferred voice unavailable, using system voice:', error);
     const startPaused = playbackPaused;
+    options.onStart?.();
     speakLocally(cleanText, onDone, { rate });
     if (startPaused) pauseLocalSpeech();
   }

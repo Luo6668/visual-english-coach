@@ -1,9 +1,9 @@
 import { useAudioPlayer } from 'expo-audio';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { BookOpen, Calendar, Check, ChevronLeft, RefreshCw, Sparkles, Trash2, Volume2 } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from 'react-native';
-import { deleteDiary, fetchDiaries, fetchLearningRecords, invokeEdgeFunction, saveDiary } from '@/lib/api';
+import { deleteDiary, fetchDiaries, fetchLearningRecords, invokeEdgeFunction, saveDiary, updateDiary } from '@/lib/api';
 import { speakWithTTS, stopLocalSpeech } from '@/lib/speech';
 import { formatLocalDate } from '@/lib/utils';
 
@@ -32,6 +32,11 @@ interface LearningRecord {
   i_think?: string;
   i_say?: string;
   created_at: string;
+}
+
+interface RecordDay {
+  date: string;
+  records: LearningRecord[];
 }
 
 // ── 辅助函数 ────────────────────────────────────────────
@@ -75,7 +80,8 @@ export default function DiaryScreen() {
   const router = useRouter();
   const player = useAudioPlayer();
   const [activeTab, setActiveTab]     = useState<'daily' | 'weekly'>('daily');
-  const [todayRecs, setTodayRecs]     = useState<LearningRecord[]>([]);
+  const [recordDays, setRecordDays]   = useState<RecordDay[]>([]);
+  const [selectedStudyDate, setSelectedStudyDate] = useState(formatLocalDate());
   const [weekRecs, setWeekRecs]       = useState<LearningRecord[]>([]);
   const [diaries, setDiaries]         = useState<DiaryEntry[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -85,6 +91,7 @@ export default function DiaryScreen() {
   const [deletingId, setDeletingId]   = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<DiaryEntry | null>(null);
   const [speakingId, setSpeakingId]   = useState<string | null>(null);
+  const [speechLoadingId, setSpeechLoadingId] = useState<string | null>(null);
   const [error, setError]             = useState('');
   const [success, setSuccess]         = useState('');
 
@@ -98,15 +105,28 @@ export default function DiaryScreen() {
       const weekStart = getWeekStart();
       const nextWeek = new Date(weekStart);
       nextWeek.setDate(weekStart.getDate() + 7);
-      const currentToday = allRecs.filter((r: LearningRecord) => formatLocalDate(parseDate(r.created_at)) === today);
+      const grouped = new Map<string, LearningRecord[]>();
+      allRecs.forEach((record: LearningRecord) => {
+        const date = formatLocalDate(parseDate(record.created_at));
+        grouped.set(date, [...(grouped.get(date) || []), record]);
+      });
+      const availableDays = [...grouped.entries()]
+        .sort(([left], [right]) => right.localeCompare(left))
+        .slice(0, 7)
+        .map(([date, records]) => ({ date, records }));
       const currentWeek = allRecs.filter((r: LearningRecord) => {
         const createdAt = parseDate(r.created_at);
         return createdAt >= weekStart && createdAt < nextWeek;
       });
-      setTodayRecs(currentToday);
+      setRecordDays(availableDays);
       setWeekRecs(currentWeek);
       setDiaries(allDiaries);
-      setSelectedIds(previous => new Set([...previous].filter(id => currentToday.some((record: LearningRecord) => record.id === id))));
+      setSelectedStudyDate(previous => {
+        if (availableDays.some(day => day.date === previous)) return previous;
+        if (availableDays.some(day => day.date === today)) return today;
+        return availableDays[0]?.date || today;
+      });
+      setSelectedIds(new Set());
     } catch (loadError) {
       console.error('[diary] load failed:', loadError);
       setError('加载失败，请检查本地服务后重试');
@@ -121,21 +141,30 @@ export default function DiaryScreen() {
     return () => stopLocalSpeech();
   }, [loadData]));
 
+  const dailyRecs = useMemo(
+    () => recordDays.find(day => day.date === selectedStudyDate)?.records || [],
+    [recordDays, selectedStudyDate],
+  );
+  const existingDaily = useMemo(
+    () => diaries.find(diary => diary.diary_type === 'daily' && diary.study_date === selectedStudyDate),
+    [diaries, selectedStudyDate],
+  );
+
   // ── 生成每日日记 ──
   const handleGenerateDaily = async () => {
     if (selectedIds.size === 0) return;
     setGenerating(true); setError(''); setSuccess('');
     try {
-      const selected = todayRecs.filter(r => selectedIds.has(r.id));
+      const selected = dailyRecs.filter(r => selectedIds.has(r.id));
       const result   = await invokeEdgeFunction('diary', { records: selected, diaryType: 'daily' });
       const content  = typeof result?.content === 'string' ? result.content.trim() : '';
       if (!content) throw new Error('AI 未返回有效日记内容');
-      const today    = formatLocalDate();
-      await saveDiary({ diary_type: 'daily', content, study_date: today });
+      if (existingDaily) await updateDiary(existingDaily.id, { content });
+      else await saveDiary({ diary_type: 'daily', content, study_date: selectedStudyDate });
       const updated  = await fetchDiaries();
       setDiaries(updated);
       setSelectedIds(new Set());
-      setSuccess('今日日记已生成并保存');
+      setSuccess(`${formatDate(selectedStudyDate)}的日记已${existingDaily ? '更新' : '生成并保存'}`);
     } catch (e: any) {
       setError('生成失败：' + (e.message || '请检查 API 配置'));
     } finally {
@@ -177,6 +206,7 @@ export default function DiaryScreen() {
       if (speakingId === id) {
         stopLocalSpeech();
         setSpeakingId(null);
+        setSpeechLoadingId(null);
       }
     } catch (deleteError) {
       console.error('[diary] delete failed:', deleteError);
@@ -191,11 +221,16 @@ export default function DiaryScreen() {
     if (speakingId === diary.id) {
       stopLocalSpeech();
       setSpeakingId(null);
+      setSpeechLoadingId(null);
       return;
     }
     stopLocalSpeech();
     setSpeakingId(diary.id);
-    void speakWithTTS(diary.content, player, invokeEdgeFunction, () => setSpeakingId(null), { rate: 0.92 });
+    setSpeechLoadingId(diary.id);
+    void speakWithTTS(diary.content, player, invokeEdgeFunction, () => {
+      setSpeakingId(null);
+      setSpeechLoadingId(null);
+    }, { rate: 0.92, onStart: () => setSpeechLoadingId(null) });
   };
 
   const toggleSelect = (id: string) =>
@@ -229,7 +264,7 @@ export default function DiaryScreen() {
             { key: 'daily',  label: '📅 每日日记' },
             { key: 'weekly', label: '🌟 Weekly Story' },
           ] as const).map(t => (
-            <Pressable key={t.key} onPress={() => setActiveTab(t.key)} className="active:opacity-80"
+            <Pressable key={t.key} onPress={() => setActiveTab(t.key)} className="active:opacity-80" accessibilityRole="button" accessibilityState={{ selected: activeTab === t.key }}
               style={{ flex: 1, paddingVertical: 9, borderRadius: 11, backgroundColor: activeTab === t.key ? WHITE : 'transparent', alignItems: 'center' }}>
               <Text style={{ fontSize: 13, fontWeight: '700', color: activeTab === t.key ? BLUE_DARK : '#64748B' }}>
                 {t.label}
@@ -270,33 +305,59 @@ export default function DiaryScreen() {
                 <View style={{ gap: 12 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Calendar size={16} color={BLUE} />
-                    <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E293B' }}>今日学习记录</Text>
-                    <Text style={{ fontSize: 12, color: '#94A3B8' }}>（选择后生成日记）</Text>
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E293B' }}>选择学习日期</Text>
+                    <Text style={{ fontSize: 12, color: '#94A3B8' }}>最近 7 个有记录的日期</Text>
                   </View>
 
-                  {todayRecs.length === 0 ? (
-                    <View style={{ backgroundColor: WHITE, borderRadius: 18, padding: 24, alignItems: 'center', gap: 8 }}>
+                  {recordDays.length > 0 && (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 6 }}>
+                      {recordDays.map(day => {
+                        const active = day.date === selectedStudyDate;
+                        const date = parseDate(day.date);
+                        return (
+                          <Pressable key={day.date} onPress={() => { setSelectedStudyDate(day.date); setSelectedIds(new Set()); setError(''); }} className="active:opacity-80" accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={`${formatDate(day.date)}，${day.records.length}条学习记录`}
+                            style={{ minWidth: 76, backgroundColor: active ? BLUE : WHITE, borderRadius: 14, paddingVertical: 9, paddingHorizontal: 12, borderWidth: 1, borderColor: active ? BLUE : '#E1EAF5', alignItems: 'center' }}>
+                            <Text style={{ color: active ? WHITE : '#64748B', fontSize: 10, fontWeight: '700' }}>{date.toLocaleDateString('zh-CN', { weekday: 'short' })}</Text>
+                            <Text style={{ color: active ? WHITE : '#1E293B', fontSize: 13, fontWeight: '800', marginTop: 2 }}>{date.getMonth() + 1}月{date.getDate()}日</Text>
+                            <Text style={{ color: active ? 'rgba(255,255,255,0.76)' : '#94A3B8', fontSize: 9, marginTop: 2 }}>{day.records.length} 条记录</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#334155' }}>{formatDate(selectedStudyDate)} · 学习记录</Text>
+                    {dailyRecs.length > 0 && <Text style={{ fontSize: 11, color: BLUE, fontWeight: '700' }}>{existingDaily ? '已有日记 · 可重新生成' : `已选 ${selectedIds.size}/${dailyRecs.length}`}</Text>}
+                  </View>
+
+                  {dailyRecs.length === 0 ? (
+                    <View style={{ backgroundColor: WHITE, borderRadius: 18, padding: 24, alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#E7EEF8' }}>
                       <Text style={{ fontSize: 36 }}>📭</Text>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#1E293B' }}>今天还没有学习记录</Text>
-                      <Text style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center' }}>先去拍照识别场景，再来生成日记吧！</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#1E293B' }}>还没有可写入日记的学习记录</Text>
+                      <Text style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center', lineHeight: 18 }}>完成一次场景学习后，这里会自动出现可选择的真实记录。</Text>
+                      <Pressable onPress={() => router.replace('/home')} className="active:opacity-80" accessibilityRole="button"
+                        style={{ marginTop: 4, backgroundColor: BLUE_LIGHT, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 9 }}>
+                        <Text style={{ color: BLUE_DARK, fontSize: 12, fontWeight: '800' }}>去学习场景</Text>
+                      </Pressable>
                     </View>
                   ) : (
                     <View style={{ gap: 8 }}>
                       {/* 全选 */}
-                      <Pressable onPress={() => setSelectedIds(prev => prev.size === todayRecs.length ? new Set() : new Set(todayRecs.map(r => r.id)))}
+                      <Pressable onPress={() => setSelectedIds(prev => prev.size === dailyRecs.length ? new Set() : new Set(dailyRecs.map(r => r.id)))} accessibilityRole="checkbox" accessibilityState={{ checked: selectedIds.size === dailyRecs.length }}
                         className="active:opacity-70"
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <View style={{ width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: selectedIds.size === todayRecs.length ? BLUE : '#CBD5E1', backgroundColor: selectedIds.size === todayRecs.length ? BLUE : WHITE, alignItems: 'center', justifyContent: 'center' }}>
-                          {selectedIds.size === todayRecs.length && <Check size={11} color={WHITE} />}
+                        <View style={{ width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: selectedIds.size === dailyRecs.length ? BLUE : '#CBD5E1', backgroundColor: selectedIds.size === dailyRecs.length ? BLUE : WHITE, alignItems: 'center', justifyContent: 'center' }}>
+                          {selectedIds.size === dailyRecs.length && <Check size={11} color={WHITE} />}
                         </View>
-                        <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '600' }}>全选 ({todayRecs.length}条)</Text>
+                        <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '600' }}>全选 ({dailyRecs.length}条)</Text>
                       </Pressable>
 
-                      {todayRecs.map(r => {
+                      {dailyRecs.map(r => {
                         const sel = selectedIds.has(r.id);
                         return (
-                          <Pressable key={r.id} onPress={() => toggleSelect(r.id)} className="active:opacity-85"
-                            style={{ backgroundColor: WHITE, borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderColor: sel ? BLUE : '#E8EDF2' }}>
+                          <Pressable key={r.id} onPress={() => toggleSelect(r.id)} className="active:opacity-85" accessibilityRole="checkbox" accessibilityState={{ checked: sel }} accessibilityLabel={`${r.scene_name}学习记录`}
+                            style={{ backgroundColor: sel ? '#F7FBFF' : WHITE, borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderColor: sel ? BLUE : '#E8EDF2', shadowColor: '#6CA8D7', shadowOffset: { width: 0, height: 4 }, shadowOpacity: sel ? 0.12 : 0.05, shadowRadius: 10 }}>
                             <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: sel ? BLUE + '18' : '#F0F4F8', alignItems: 'center', justifyContent: 'center' }}>
                               <Text style={{ fontSize: 20 }}>{sceneEmoji(r.scene_name)}</Text>
                             </View>
@@ -312,12 +373,12 @@ export default function DiaryScreen() {
                       })}
 
                       {/* 生成按钮 */}
-                      <Pressable onPress={handleGenerateDaily} disabled={generating || selectedIds.size === 0}
+                      <Pressable onPress={handleGenerateDaily} disabled={generating || selectedIds.size === 0} accessibilityRole="button" accessibilityLabel={existingDaily ? '重新生成这天的英语日记' : '生成这天的英语日记'}
                         className="active:opacity-85"
                         style={{ backgroundColor: selectedIds.size > 0 ? BLUE : '#CBD5E1', borderRadius: 18, paddingVertical: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 4 }}>
                         {generating
                           ? <><ActivityIndicator color={WHITE} size="small" /><Text style={{ color: WHITE, fontWeight: '800', fontSize: 14 }}>AI 正在创作...</Text></>
-                          : <><Sparkles size={18} color={WHITE} /><Text style={{ color: WHITE, fontWeight: '800', fontSize: 14 }}>AI 生成今日日记</Text></>
+                          : <><Sparkles size={18} color={WHITE} /><Text style={{ color: WHITE, fontWeight: '800', fontSize: 14 }}>{existingDaily ? '重新生成这天的英语日记' : '生成这天的英语日记'}</Text></>
                         }
                       </Pressable>
                     </View>
@@ -351,7 +412,7 @@ export default function DiaryScreen() {
                     )}
                   </View>
 
-                  <Pressable onPress={handleGenerateWeekly} disabled={generating || weekRecs.length === 0}
+                  <Pressable onPress={handleGenerateWeekly} disabled={generating || weekRecs.length === 0} accessibilityRole="button" accessibilityLabel="生成本周 Story"
                     className="active:opacity-85"
                     style={{ backgroundColor: weekRecs.length > 0 ? BLUE_DARK : '#CBD5E1', borderRadius: 18, paddingVertical: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
                     {generating
@@ -373,7 +434,7 @@ export default function DiaryScreen() {
                   </View>
 
                   {filteredDiaries.map((d, idx) => (
-                    <DiaryCard key={d.id} diary={d} index={idx} onDelete={setPendingDelete} onSpeak={handleSpeak} deletingId={deletingId} speakingId={speakingId} />
+                    <DiaryCard key={d.id} diary={d} index={idx} onDelete={setPendingDelete} onSpeak={handleSpeak} deletingId={deletingId} speakingId={speakingId} speechLoadingId={speechLoadingId} />
                   ))}
                 </View>
               )}
@@ -386,7 +447,7 @@ export default function DiaryScreen() {
                     {activeTab === 'daily' ? '还没有日记' : '还没有 Weekly Story'}
                   </Text>
                   <Text style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center', lineHeight: 18 }}>
-                    {activeTab === 'daily' ? '选择今日学习记录，让 AI 为你生成专属日记' : '每周学习结束后，生成你的英语成长故事'}
+                    {activeTab === 'daily' ? '选择上方任意一天的学习记录，让 AI 为你生成专属日记' : '每周学习结束后，生成你的英语成长故事'}
                   </Text>
                 </View>
               )}
@@ -421,13 +482,14 @@ export default function DiaryScreen() {
 // ── 日记卡片组件 ─────────────────────────────────────────
 const CARD_ACCENTS = [BLUE, BLUE_DARK, '#6366F1', '#0891B2', '#059669'];
 
-function DiaryCard({ diary, index, onDelete, onSpeak, deletingId, speakingId }: {
+function DiaryCard({ diary, index, onDelete, onSpeak, deletingId, speakingId, speechLoadingId }: {
   diary: DiaryEntry;
   index: number;
   onDelete: (diary: DiaryEntry) => void;
   onSpeak: (diary: DiaryEntry) => void;
   deletingId: string | null;
   speakingId: string | null;
+  speechLoadingId: string | null;
 }) {
   const [expanded, setExpanded] = useState(index === 0);
   const accent   = CARD_ACCENTS[index % CARD_ACCENTS.length];
@@ -463,9 +525,11 @@ function DiaryCard({ diary, index, onDelete, onSpeak, deletingId, speakingId }: 
             </View>
           </View>
           <View style={{ flexDirection: 'row', gap: 7 }}>
-            <Pressable onPress={() => onSpeak(diary)} className="active:opacity-70" accessibilityRole="button" accessibilityLabel={speakingId === diary.id ? '停止朗读' : '朗读日记'}
+            <Pressable onPress={() => onSpeak(diary)} className="active:opacity-70" accessibilityRole="button" accessibilityLabel={speechLoadingId === diary.id ? '正在准备朗读' : speakingId === diary.id ? '停止朗读' : '朗读日记'}
               style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: speakingId === diary.id ? BLUE : BLUE_LIGHT, alignItems: 'center', justifyContent: 'center' }}>
-              <Volume2 size={15} color={speakingId === diary.id ? WHITE : BLUE} />
+              {speechLoadingId === diary.id
+                ? <ActivityIndicator size="small" color={WHITE} />
+                : <Volume2 size={15} color={speakingId === diary.id ? WHITE : BLUE} />}
             </Pressable>
             <Pressable onPress={() => onDelete(diary)} className="active:opacity-70" disabled={deletingId === diary.id}
               accessibilityRole="button" accessibilityLabel={`删除${dateLabel}的日记`}
