@@ -31,6 +31,13 @@ import {
 } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, {
+  Circle,
+  Defs,
+  Path,
+  Stop,
+  LinearGradient as SvgLinearGradient,
+} from 'react-native-svg';
 import { MotionPressable } from '@/components/motion-pressable';
 import { useSession } from '@/ctx';
 import { fetchLearningRecords, fetchUserStats, fetchXpData } from '@/lib/api';
@@ -130,6 +137,18 @@ function calcLevel(totalXp: number) {
   return LEVELS[0];
 }
 
+function toDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function logDateKey(log: any) {
+  const value = String(log?.reward_date ?? log?.created_at ?? '').slice(0, 10);
+  return value.length === 10 ? value : '';
+}
+
 export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -138,6 +157,7 @@ export default function ProfileScreen() {
   const [xpData, setXpData] = useState<{ stats: any; logs: any[] }>({ stats: null, logs: [] });
   const [recordCount, setRecordCount] = useState(0);
   const [selectedBadgeIndex, setSelectedBadgeIndex] = useState(0);
+  const [selectedDayKey, setSelectedDayKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -188,6 +208,40 @@ export default function ProfileScreen() {
   const selectedUnlocked = curLevel.level >= selectedBadge.level;
   const selectedRequiredXp = LEVELS.find((level) => level.level === selectedBadge.level)?.minXp ?? 0;
   const selectedProgress = Math.min(totalXp / Math.max(selectedRequiredXp, 1), 1);
+
+  const weekData = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() - 6 + index);
+      const key = toDateKey(date);
+      const value = xpData.logs
+        .filter((log) => logDateKey(log) === key)
+        .reduce((sum, log) => sum + Number(log.xp_amount ?? 0), 0);
+      return {
+        key,
+        label: '日一二三四五六'[date.getDay()],
+        value,
+        today: index === 6,
+      };
+    });
+  }, [xpData.logs]);
+  const selectedDay = weekData.find((day) => day.key === selectedDayKey) ?? weekData[6];
+  const weekTotal = weekData.reduce((sum, day) => sum + day.value, 0);
+  const weekMax = Math.max(...weekData.map((day) => day.value), 20);
+  const chartPoints = weekData.map((day, index) => ({
+    x: 16 + index * 38,
+    y: 14 + (1 - day.value / weekMax) * 58,
+  }));
+  const chartLinePath = chartPoints
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+    .join(' ');
+  const chartAreaPath = `${chartLinePath} L ${chartPoints.at(-1)?.x ?? 244} 82 L 16 82 Z`;
+  const selectedChartIndex = Math.max(
+    weekData.findIndex((day) => day.key === selectedDay.key),
+    0,
+  );
 
   const growthSignals = useMemo(
     () => [
@@ -283,6 +337,11 @@ export default function ProfileScreen() {
             <View pointerEvents="none" style={styles.identityFineLineTwo} />
             <LinearGradient
               pointerEvents="none"
+              colors={['#23C5F7', '#287EF4', '#7658E8', '#EF7C62']}
+              style={styles.identityColorRail}
+            />
+            <LinearGradient
+              pointerEvents="none"
               colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.82)', 'rgba(255,255,255,0)']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
@@ -301,6 +360,7 @@ export default function ProfileScreen() {
                 <View style={styles.avatarStatus} />
               </View>
               <View style={styles.identityCopy}>
+                <Text style={styles.identityStatus}>LEARNING PASSPORT · ACTIVE</Text>
                 <Text numberOfLines={1} style={styles.displayName}>{displayName}</Text>
                 <Text style={styles.levelName}>{curLevel.name} · LV.{curLevel.level}</Text>
                 <View style={styles.activeTitleRow}>
@@ -310,11 +370,17 @@ export default function ProfileScreen() {
                   </Text>
                 </View>
               </View>
-              <View style={styles.levelMonogram}>
+              <LinearGradient
+                colors={['#168AF7', '#5365EA', '#7658E8']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.levelMonogram}
+              >
                 <Text style={styles.levelMonogramLabel}>LEVEL</Text>
                 <Text style={styles.levelMonogramValue}>{curLevel.level}</Text>
                 <Text style={styles.levelMonogramMax}>/ 10</Text>
-              </View>
+                <View style={styles.levelMonogramNotch} />
+              </LinearGradient>
             </View>
 
             <View style={styles.progressBlock}>
@@ -334,6 +400,7 @@ export default function ProfileScreen() {
                   end={{ x: 1, y: 0 }}
                   style={[styles.progressFill, { width: `${progressPercent}%` }]}
                 />
+                <View style={[styles.progressMarker, { left: `${Math.min(progressPercent, 97)}%` }]} />
               </View>
               <View style={styles.progressTicks}>
                 {Array.from({ length: 8 }).map((_, index) => (
@@ -380,6 +447,14 @@ export default function ProfileScreen() {
                 <Text style={styles.streakLabel}>天</Text>
               </MotionPressable>
             </View>
+            <View style={styles.passportFooter}>
+              <Text style={styles.passportSerial}>VEC · {String(curLevel.level).padStart(2, '0')} · {String(totalXp).padStart(4, '0')}</Text>
+              <View style={styles.passportScan}>
+                {[2, 1, 3, 2, 1, 3, 1, 2, 3, 1].map((height, index) => (
+                  <View key={index} style={[styles.passportScanBar, { height: height * 3 }]} />
+                ))}
+              </View>
+            </View>
           </Animated.View>
 
           <Animated.View
@@ -393,41 +468,116 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.livePill}>
                 <View style={styles.liveDot} />
-                <Text style={styles.liveText}>实时同步</Text>
+                <Text style={styles.liveText}>真实记录</Text>
               </View>
             </View>
-            <View style={styles.signalRail}>
-              {growthSignals.map((item, index) => {
-                const SignalIcon = item.icon;
-                return (
-                  <MotionPressable
-                    key={item.label}
-                    onPress={() => router.push(item.route)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${item.label} ${item.value} ${item.unit}`}
-                    pressedScale={0.95}
-                    hoverLift={4}
-                    style={[styles.signalItem, index < growthSignals.length - 1 && styles.signalItemDivider]}
-                  >
-                    <View style={styles.signalIconRow}>
-                      <SignalIcon size={17} color={item.color} strokeWidth={2.4} />
-                      <View style={[styles.signalPulse, { backgroundColor: item.color }]} />
-                    </View>
-                    <Text style={styles.signalValue}>
-                      {item.value}<Text style={styles.signalUnit}> {item.unit}</Text>
-                    </Text>
-                    <Text style={styles.signalLabel}>{item.label}</Text>
-                    <View style={styles.signalMiniBars}>
-                      {[0.42, 0.75, 0.54, 1, 0.7].map((height, barIndex) => (
-                        <View
-                          key={barIndex}
-                          style={[styles.signalMiniBar, { height: 3 + height * 8, backgroundColor: item.color, opacity: 0.24 + barIndex * 0.12 }]}
-                        />
-                      ))}
-                    </View>
-                  </MotionPressable>
-                );
-              })}
+            <View style={styles.signalConsole}>
+              <LinearGradient
+                colors={['rgba(233,246,255,0.94)', 'rgba(240,235,255,0.90)', 'rgba(255,246,239,0.90)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+              <View pointerEvents="none" style={styles.signalConsoleRail} />
+              <View style={styles.signalConsoleHeader}>
+                <View>
+                  <Text style={styles.signalConsoleEyebrow}>7 DAY LEARNING PULSE</Text>
+                  <Text style={styles.signalConsoleTitle}>本周学习脉冲</Text>
+                </View>
+                <View style={styles.signalReading}>
+                  <Text style={styles.signalReadingValue}>{selectedDay.value}</Text>
+                  <Text style={styles.signalReadingUnit}>XP</Text>
+                  <Text style={styles.signalReadingLabel}>{selectedDay.today ? '今天' : `周${selectedDay.label}`}</Text>
+                </View>
+              </View>
+
+              <View style={styles.chartWrap}>
+                <Svg width="100%" height="94" viewBox="0 0 260 94">
+                  <Defs>
+                    <SvgLinearGradient id="growthArea" x1="0" y1="0" x2="0" y2="1">
+                      <Stop offset="0" stopColor="#2D89F4" stopOpacity="0.38" />
+                      <Stop offset="0.58" stopColor="#7658E8" stopOpacity="0.13" />
+                      <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+                    </SvgLinearGradient>
+                    <SvgLinearGradient id="growthLine" x1="0" y1="0" x2="1" y2="0">
+                      <Stop offset="0" stopColor="#23C5F7" />
+                      <Stop offset="0.52" stopColor="#287EF4" />
+                      <Stop offset="1" stopColor="#7658E8" />
+                    </SvgLinearGradient>
+                  </Defs>
+                  <Path d="M 16 30 L 244 30" stroke="rgba(74,105,142,0.10)" strokeWidth="1" strokeDasharray="3 5" />
+                  <Path d="M 16 56 L 244 56" stroke="rgba(74,105,142,0.10)" strokeWidth="1" strokeDasharray="3 5" />
+                  <Path d={chartAreaPath} fill="url(#growthArea)" />
+                  <Path d={chartLinePath} fill="none" stroke="url(#growthLine)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                  {chartPoints.map((point, index) => (
+                    <Circle
+                      key={weekData[index].key}
+                      cx={point.x}
+                      cy={point.y}
+                      r={selectedChartIndex === index ? 5.5 : 3.1}
+                      fill={selectedChartIndex === index ? '#FFFFFF' : '#4B75EE'}
+                      stroke={selectedChartIndex === index ? '#287EF4' : '#FFFFFF'}
+                      strokeWidth={selectedChartIndex === index ? 3 : 1.5}
+                    />
+                  ))}
+                </Svg>
+                <View style={styles.chartDayRow}>
+                  {weekData.map((day) => {
+                    const selected = day.key === selectedDay.key;
+                    return (
+                      <MotionPressable
+                        key={day.key}
+                        onPress={() => setSelectedDayKey(day.key)}
+                        haptic={false}
+                        pressedScale={0.88}
+                        style={[styles.chartDay, selected && styles.chartDaySelected]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`周${day.label} ${day.value} XP`}
+                      >
+                        <Text style={[styles.chartDayText, selected && styles.chartDayTextSelected]}>
+                          {day.today ? '今' : day.label}
+                        </Text>
+                      </MotionPressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.weekSummary}>
+                <View style={styles.weekSummaryPrimary}>
+                  <Text style={styles.weekSummaryLabel}>本周累计</Text>
+                  <Text style={styles.weekSummaryValue}>{weekTotal}<Text style={styles.weekSummaryUnit}> XP</Text></Text>
+                </View>
+                <View style={styles.weekSummaryDivider} />
+                <Text style={styles.weekSummaryNote}>
+                  {weekTotal > 0 ? '每一次练习都被记录' : '开始练习后，这里会出现你的真实成长曲线'}
+                </Text>
+              </View>
+
+              <View style={styles.signalDock}>
+                {growthSignals.map((item) => {
+                  const SignalIcon = item.icon;
+                  return (
+                    <MotionPressable
+                      key={item.label}
+                      onPress={() => router.push(item.route)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${item.label} ${item.value} ${item.unit}`}
+                      pressedScale={0.94}
+                      hoverLift={4}
+                      style={styles.signalChip}
+                    >
+                      <View style={[styles.signalChipIcon, { backgroundColor: `${item.color}14` }]}>
+                        <SignalIcon size={16} color={item.color} strokeWidth={2.4} />
+                      </View>
+                      <View style={styles.signalChipCopy}>
+                        <Text style={styles.signalChipValue}>{item.value}<Text style={styles.signalChipUnit}> {item.unit}</Text></Text>
+                        <Text style={styles.signalChipLabel}>{item.label}</Text>
+                      </View>
+                    </MotionPressable>
+                  );
+                })}
+              </View>
             </View>
           </Animated.View>
 
@@ -753,7 +903,7 @@ const styles = StyleSheet.create({
     elevation: 3, ...GLASS_WEB,
   },
   identityPanel: {
-    minHeight: 280, overflow: 'hidden', borderRadius: 30, borderWidth: 1.2,
+    minHeight: 306, overflow: 'hidden', borderRadius: 30, borderWidth: 1.2,
     borderColor: 'rgba(255,255,255,0.92)', padding: 18, shadowColor: '#426E98',
     shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.18, shadowRadius: 36,
     elevation: 8, ...GLASS_WEB,
@@ -767,6 +917,10 @@ const styles = StyleSheet.create({
     position: 'absolute', width: 290, height: 96, right: -90, top: 38,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)', borderRadius: 18,
     transform: [{ rotate: '-14deg' }],
+  },
+  identityColorRail: {
+    position: 'absolute', left: 0, top: 30, bottom: 30, width: 5,
+    borderTopRightRadius: 5, borderBottomRightRadius: 5,
   },
   identitySheen: {
     position: 'absolute', width: 92, height: 430, top: -130, left: '54%',
@@ -791,17 +945,27 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.green, borderWidth: 2, borderColor: '#FFFFFF',
   },
   identityCopy: { flex: 1, minWidth: 0 },
+  identityStatus: {
+    marginBottom: 3, color: COLORS.blue, fontSize: 6.5, lineHeight: 9,
+    fontWeight: '900', letterSpacing: 0.85,
+  },
   displayName: { color: COLORS.text, fontSize: 22, lineHeight: 26, fontWeight: '900' },
   levelName: { marginTop: 2, color: COLORS.muted, fontSize: 11, lineHeight: 15, fontWeight: '700' },
   activeTitleRow: { marginTop: 7, flexDirection: 'row', alignItems: 'center', gap: 5 },
   activeTitleText: { fontSize: 9, lineHeight: 12, fontWeight: '900' },
   levelMonogram: {
-    width: 66, minHeight: 74, paddingVertical: 8, borderLeftWidth: 1,
-    borderLeftColor: 'rgba(93,105,184,0.18)', alignItems: 'center', justifyContent: 'center',
+    width: 72, minHeight: 86, paddingVertical: 8, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.44)', shadowColor: '#4E57D8',
+    shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.26, shadowRadius: 16,
   },
-  levelMonogramLabel: { color: COLORS.muted, fontSize: 6.5, lineHeight: 8, fontWeight: '900', letterSpacing: 1 },
-  levelMonogramValue: { color: COLORS.text, fontSize: 28, lineHeight: 31, fontWeight: '900' },
-  levelMonogramMax: { color: COLORS.subtle, fontSize: 8, lineHeight: 10, fontWeight: '800' },
+  levelMonogramLabel: { color: 'rgba(235,243,255,0.72)', fontSize: 6.5, lineHeight: 8, fontWeight: '900', letterSpacing: 1 },
+  levelMonogramValue: { color: '#FFFFFF', fontSize: 30, lineHeight: 33, fontWeight: '900' },
+  levelMonogramMax: { color: 'rgba(235,243,255,0.72)', fontSize: 8, lineHeight: 10, fontWeight: '800' },
+  levelMonogramNotch: {
+    position: 'absolute', left: -4, top: 39, width: 8, height: 8, borderRadius: 4,
+    backgroundColor: '#E9EAFC', borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)',
+  },
   progressBlock: { marginTop: 22 },
   progressCopyRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
   progressCopy: { flex: 1, minWidth: 0 },
@@ -814,6 +978,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.82)',
   },
   progressFill: { height: '100%', borderRadius: 99 },
+  progressMarker: {
+    position: 'absolute', top: -3, width: 15, height: 15, marginLeft: -7,
+    borderRadius: 8, backgroundColor: '#FFFFFF', borderWidth: 3, borderColor: '#7658E8',
+    shadowColor: '#7658E8', shadowOpacity: 0.32, shadowRadius: 7,
+  },
   progressTicks: { marginTop: 5, flexDirection: 'row', justifyContent: 'space-between' },
   progressTick: { width: 1, height: 3, backgroundColor: 'rgba(80,103,137,0.22)' },
   identityActions: { marginTop: 16, flexDirection: 'row', gap: 9 },
@@ -834,28 +1003,67 @@ const styles = StyleSheet.create({
   },
   streakValue: { color: COLORS.green, fontSize: 17, lineHeight: 20, fontWeight: '900' },
   streakLabel: { color: COLORS.green, fontSize: 8, lineHeight: 11, fontWeight: '800' },
+  passportFooter: {
+    marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  passportSerial: {
+    color: 'rgba(70,91,120,0.52)', fontSize: 6.5, lineHeight: 9,
+    fontWeight: '900', letterSpacing: 1,
+  },
+  passportScan: { height: 10, flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
+  passportScanBar: { width: 2, borderRadius: 1, backgroundColor: 'rgba(62,82,116,0.38)' },
   signalSection: { gap: 10 },
   signalHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   signalTitle: { marginTop: 1, color: COLORS.text, fontSize: 20, lineHeight: 24, fontWeight: '900' },
   livePill: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.green },
   liveText: { color: COLORS.muted, fontSize: 8, lineHeight: 11, fontWeight: '800' },
-  signalRail: {
-    minHeight: 132, flexDirection: 'row', overflow: 'hidden', borderRadius: 25,
-    backgroundColor: 'rgba(255,255,255,0.64)', borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.92)', shadowColor: '#3D698E',
-    shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 22,
-    elevation: 3, ...GLASS_WEB,
+  signalConsole: {
+    minHeight: 344, overflow: 'hidden', padding: 15, borderRadius: 28,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.94)', shadowColor: '#406C94',
+    shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.15, shadowRadius: 28,
+    elevation: 5, ...GLASS_WEB,
   },
-  signalItem: { flex: 1, minWidth: 0, paddingHorizontal: 12, paddingVertical: 15 },
-  signalItemDivider: { borderRightWidth: 1, borderRightColor: 'rgba(100,130,156,0.13)' },
-  signalIconRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  signalPulse: { width: 4, height: 4, borderRadius: 2, opacity: 0.75 },
-  signalValue: { marginTop: 12, color: COLORS.text, fontSize: 21, lineHeight: 24, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  signalUnit: { color: COLORS.muted, fontSize: 8, fontWeight: '700' },
-  signalLabel: { marginTop: 2, color: COLORS.muted, fontSize: 8, lineHeight: 11, fontWeight: '800' },
-  signalMiniBars: { height: 14, marginTop: 9, flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
-  signalMiniBar: { width: 3, borderRadius: 2 },
+  signalConsoleRail: {
+    position: 'absolute', width: 250, height: 120, right: -86, top: -35,
+    borderWidth: 20, borderColor: 'rgba(72,102,223,0.07)', borderRadius: 28,
+    transform: [{ rotate: '-15deg' }],
+  },
+  signalConsoleHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 },
+  signalConsoleEyebrow: { color: COLORS.blue, fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 1 },
+  signalConsoleTitle: { marginTop: 2, color: COLORS.text, fontSize: 17, lineHeight: 21, fontWeight: '900' },
+  signalReading: { alignItems: 'flex-end' },
+  signalReadingValue: { color: COLORS.blue, fontSize: 26, lineHeight: 28, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  signalReadingUnit: { marginTop: -3, color: COLORS.purple, fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 0.8 },
+  signalReadingLabel: { marginTop: 2, color: COLORS.muted, fontSize: 7.5, lineHeight: 10, fontWeight: '700' },
+  chartWrap: { marginTop: 5 },
+  chartDayRow: { height: 30, marginTop: -8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  chartDay: { width: 29, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  chartDaySelected: { backgroundColor: '#1D7FF1', shadowColor: '#167CF3', shadowOpacity: 0.28, shadowRadius: 8 },
+  chartDayText: { color: COLORS.muted, fontSize: 8, lineHeight: 11, fontWeight: '800' },
+  chartDayTextSelected: { color: '#FFFFFF' },
+  weekSummary: {
+    minHeight: 46, marginTop: 4, paddingHorizontal: 11, flexDirection: 'row',
+    alignItems: 'center', borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.46)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)',
+  },
+  weekSummaryPrimary: { width: 78 },
+  weekSummaryLabel: { color: COLORS.muted, fontSize: 6.5, lineHeight: 9, fontWeight: '800' },
+  weekSummaryValue: { marginTop: 1, color: COLORS.text, fontSize: 15, lineHeight: 18, fontWeight: '900' },
+  weekSummaryUnit: { color: COLORS.blue, fontSize: 7.5, fontWeight: '900' },
+  weekSummaryDivider: { width: 1, height: 25, marginHorizontal: 10, backgroundColor: 'rgba(91,116,145,0.14)' },
+  weekSummaryNote: { flex: 1, color: COLORS.muted, fontSize: 7.5, lineHeight: 11, fontWeight: '600' },
+  signalDock: { marginTop: 10, flexDirection: 'row', gap: 6 },
+  signalChip: {
+    flex: 1, minWidth: 0, minHeight: 62, paddingHorizontal: 8, flexDirection: 'row',
+    alignItems: 'center', gap: 6, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.58)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.88)',
+  },
+  signalChipIcon: { width: 29, height: 29, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  signalChipCopy: { flex: 1, minWidth: 0 },
+  signalChipValue: { color: COLORS.text, fontSize: 13, lineHeight: 16, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  signalChipUnit: { color: COLORS.muted, fontSize: 6.5, fontWeight: '700' },
+  signalChipLabel: { marginTop: 1, color: COLORS.muted, fontSize: 6.5, lineHeight: 9, fontWeight: '700' },
   loadingState: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   loadingText: { color: COLORS.muted, fontSize: 10, fontWeight: '700' },
   errorCard: {
