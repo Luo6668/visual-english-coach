@@ -1,19 +1,17 @@
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
-  Award,
   Bookmark,
   BookOpen,
-  Camera,
   ChevronRight,
+  Compass,
+  Crown,
   Flame,
-  Image as ImageIcon,
-  LockKeyhole,
   LogOut,
   Map,
-  Medal,
+  MessageCircle,
+  Mic2,
   PenLine,
   RefreshCw,
   Settings,
@@ -31,34 +29,30 @@ import {
   Text,
   View,
 } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MotionPressable } from '@/components/motion-pressable';
 import { useSession } from '@/ctx';
 import { fetchLearningRecords, fetchUserStats, fetchXpData } from '@/lib/api';
 
-declare const require: (assetPath: string) => number;
-
-const FALLBACK_IMAGE = require('../../../../assets/home-premium/hero-photo.png');
-
 const COLORS = {
   background: '#F5F8FC',
   text: '#0A1728',
   muted: '#62738A',
-  subtle: '#91A2B7',
-  blue: '#147CF5',
-  blueDark: '#075DD8',
+  subtle: '#92A1B4',
+  blue: '#167CF3',
+  blueDark: '#075BCB',
   purple: '#7658E8',
-  green: '#17A86C',
-  orange: '#F08B35',
+  green: '#14A873',
+  orange: '#F28B35',
   coral: '#EE625E',
 };
 
 const GLASS_WEB =
   Platform.OS === 'web'
     ? ({
-        backdropFilter: 'blur(22px) saturate(1.4)',
-        WebkitBackdropFilter: 'blur(22px) saturate(1.4)',
+        backdropFilter: 'blur(24px) saturate(1.45)',
+        WebkitBackdropFilter: 'blur(24px) saturate(1.45)',
         isolation: 'isolate',
       } as any)
     : null;
@@ -76,33 +70,64 @@ const LEVELS = [
   { level: 10, name: '英语领袖', minXp: 5000, reward: '传奇称号「English Master」+ 王冠框' },
 ];
 
-const TITLES = [
-  { level: 2, name: 'English Rookie', color: '#318AF5', gradient: ['#DFF1FF', '#F7FBFF'] as const },
-  { level: 4, name: 'Scene Talker', color: '#F27A45', gradient: ['#FFE6D9', '#FFF9F4'] as const },
-  { level: 7, name: 'Fluent Speaker', color: '#18A98A', gradient: ['#DDF9EF', '#F8FFFC'] as const },
-  { level: 9, name: 'Language Pro', color: '#7658E8', gradient: ['#EAE3FF', '#FAF8FF'] as const },
-  { level: 10, name: 'English Master', color: '#D49312', gradient: ['#FFF0BF', '#FFFDF3'] as const },
+const BADGES = [
+  {
+    level: 2,
+    name: '初次开口',
+    english: 'English Rookie',
+    description: '从第一次真实表达开始，让英语进入日常生活。',
+    color: '#2386F4',
+    colors: ['#A8E0FF', '#307FF1', '#7658E8'] as const,
+    tint: ['rgba(218,241,255,0.92)', 'rgba(244,240,255,0.84)'] as const,
+    icon: Sparkles,
+  },
+  {
+    level: 4,
+    name: '场景表达家',
+    english: 'Scene Talker',
+    description: '能够在真实生活场景中完成清晰、自然的基础对话。',
+    color: '#EF754C',
+    colors: ['#FFD07C', '#F27854', '#E95580'] as const,
+    tint: ['rgba(255,235,213,0.94)', 'rgba(255,239,245,0.84)'] as const,
+    icon: MessageCircle,
+  },
+  {
+    level: 7,
+    name: '流利节奏',
+    english: 'Fluent Speaker',
+    description: '形成稳定的开口习惯，让语音、语调和节奏自然衔接。',
+    color: '#12A985',
+    colors: ['#8FE8CD', '#17B08E', '#2589E7'] as const,
+    tint: ['rgba(218,251,239,0.94)', 'rgba(226,242,255,0.86)'] as const,
+    icon: Mic2,
+  },
+  {
+    level: 9,
+    name: '语言探索者',
+    english: 'Language Pro',
+    description: '跨越更多真实场景，建立属于自己的表达地图。',
+    color: '#7053DD',
+    colors: ['#CBB7FF', '#7658E8', '#377DE9'] as const,
+    tint: ['rgba(238,231,255,0.95)', 'rgba(230,241,255,0.86)'] as const,
+    icon: Compass,
+  },
+  {
+    level: 10,
+    name: '英语领航者',
+    english: 'English Master',
+    description: '完成全部成长阶段，拥有持续表达和主动探索的能力。',
+    color: '#C88B11',
+    colors: ['#FFE79D', '#E9AD2F', '#EC704E'] as const,
+    tint: ['rgba(255,246,207,0.95)', 'rgba(255,231,218,0.86)'] as const,
+    icon: Crown,
+  },
 ];
 
-type LearningRecord = Record<string, any> & { id: string | number };
-
 function calcLevel(totalXp: number) {
-  for (let index = LEVELS.length - 1; index >= 0; index--) {
+  for (let index = LEVELS.length - 1; index >= 0; index -= 1) {
     if (totalXp >= LEVELS[index].minXp) return LEVELS[index];
   }
   return LEVELS[0];
-}
-
-function imageSource(uri?: string | null) {
-  if (uri && !uri.startsWith('blob:')) return { uri };
-  return FALLBACK_IMAGE;
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return '最近学习';
-  const date = new Date(value.replace(' ', 'T'));
-  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10).replace(/-/g, '.');
-  return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
 export default function ProfileScreen() {
@@ -111,8 +136,8 @@ export default function ProfileScreen() {
   const { session, signOut } = useSession();
   const [stats, setStats] = useState<any>(null);
   const [xpData, setXpData] = useState<{ stats: any; logs: any[] }>({ stats: null, logs: [] });
-  const [records, setRecords] = useState<LearningRecord[]>([]);
-  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [recordCount, setRecordCount] = useState(0);
+  const [selectedBadgeIndex, setSelectedBadgeIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -129,9 +154,9 @@ export default function ProfileScreen() {
       ]);
       setStats(userStats);
       setXpData(xp);
-      setRecords(learningRecords);
+      setRecordCount(learningRecords.length);
     } catch {
-      setLoadError('学习资料暂时没有同步成功，请稍后重试。');
+      setLoadError('成长资料暂时没有同步成功，请稍后重试。');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -157,128 +182,55 @@ export default function ProfileScreen() {
   const email = session?.user?.email ?? '用户';
   const displayName = email.includes('@') ? email.split('@')[0] : email;
   const displayInitial = displayName.trim().slice(0, 1).toUpperCase() || 'U';
-  const unlockedTitles = TITLES.filter((title) => curLevel.level >= title.level);
-  const activeTitle = [...unlockedTitles].reverse()[0];
+  const unlockedBadges = BADGES.filter((badge) => curLevel.level >= badge.level);
+  const activeBadge = [...unlockedBadges].reverse()[0];
+  const selectedBadge = BADGES[selectedBadgeIndex];
+  const selectedUnlocked = curLevel.level >= selectedBadge.level;
+  const selectedRequiredXp = LEVELS.find((level) => level.level === selectedBadge.level)?.minXp ?? 0;
+  const selectedProgress = Math.min(totalXp / Math.max(selectedRequiredXp, 1), 1);
 
-  const galleryRecords = useMemo(() => {
-    const favorites = records.filter((record) => record.is_favorited);
-    const favoriteIds = new Set(favorites.map((record) => String(record.id)));
-    const source = [
-      ...favorites,
-      ...records.filter((record) => !favoriteIds.has(String(record.id))),
-    ];
-    const seenScenes = new Set<string>();
-    const uniqueScenes = source.filter((record) => {
-      const key = String(record.scene_name || record.id);
-      if (seenScenes.has(key)) return false;
-      seenScenes.add(key);
-      return true;
-    });
-    const uniqueIds = new Set(uniqueScenes.map((record) => String(record.id)));
-    return [
-      ...uniqueScenes,
-      ...source.filter((record) => !uniqueIds.has(String(record.id))),
-    ].slice(0, 6);
-  }, [records]);
-  const safeGalleryIndex = galleryRecords.length ? galleryIndex % galleryRecords.length : 0;
-  const activeRecord = galleryRecords[safeGalleryIndex];
-  const sideRecords = galleryRecords
-    .map((record, index) => ({ record, index }))
-    .filter(({ index }) => index !== safeGalleryIndex)
-    .slice(0, 2);
-
-  const metricCards = [
-    {
-      icon: Camera,
-      value: records.length,
-      unit: '条',
-      label: '场景记录',
-      gradient: ['#DCEFFF', '#F5FAFF'] as const,
-      accent: COLORS.blue,
-      route: '/(app)/(tabs)/learning' as any,
-    },
-    {
-      icon: BookOpen,
-      value: totalWords,
-      unit: '词',
-      label: '词汇收藏',
-      gradient: ['#ECE5FF', '#FAF8FF'] as const,
-      accent: COLORS.purple,
-      route: '/(app)/(tabs)/learning' as any,
-    },
-    {
-      icon: Flame,
-      value: streak,
-      unit: '天',
-      label: '连续学习',
-      gradient: ['#DDF8EB', '#F8FFFB'] as const,
-      accent: COLORS.green,
-      route: '/(app)/(tabs)/growth' as any,
-    },
-  ];
-
-  const toolCards = [
-    {
-      icon: PenLine,
-      label: '英语日记',
-      sub: '把今天写成英语故事',
-      meta: 'DAILY STORY',
-      gradient: ['#ECE5FF', '#F9F7FF'] as const,
-      accent: COLORS.purple,
-      route: '/(app)/diary' as any,
-    },
-    {
-      icon: Map,
-      label: '英语地图',
-      sub: '探索更多生活场景',
-      meta: 'SCENE MAP',
-      gradient: ['#DDF8ED', '#F7FFFB'] as const,
-      accent: COLORS.green,
-      route: '/(app)/map' as any,
-    },
-    {
-      icon: Bookmark,
-      label: '表达本',
-      sub: `${records.length} 条场景持续沉淀`,
-      meta: 'COLLECTION',
-      gradient: ['#FFE5D9', '#FFF8F4'] as const,
-      accent: COLORS.orange,
-      route: '/(app)/(tabs)/learning' as any,
-    },
-    {
-      icon: Settings,
-      label: '设置',
-      sub: '服务、通知与偏好',
-      meta: 'PREFERENCES',
-      gradient: ['#E5EDF5', '#FAFCFE'] as const,
-      accent: '#5D7188',
-      route: '/(app)/settings' as any,
-    },
-  ];
-
-  const openRecord = (record?: LearningRecord) => {
-    if (record?.id) router.push(`/(app)/record/${record.id}` as any);
-  };
+  const growthSignals = useMemo(
+    () => [
+      {
+        icon: Target,
+        value: recordCount,
+        unit: '条',
+        label: '真实场景',
+        color: COLORS.blue,
+        route: '/(app)/(tabs)/learning' as any,
+      },
+      {
+        icon: BookOpen,
+        value: totalWords,
+        unit: '词',
+        label: '表达积累',
+        color: COLORS.purple,
+        route: '/(app)/(tabs)/learning' as any,
+      },
+      {
+        icon: Flame,
+        value: streak,
+        unit: '天',
+        label: '连续学习',
+        color: COLORS.green,
+        route: '/(app)/(tabs)/growth' as any,
+      },
+    ],
+    [recordCount, streak, totalWords],
+  );
 
   return (
     <View style={styles.screen}>
       <StatusBar style="dark" backgroundColor={COLORS.background} />
       <LinearGradient
         pointerEvents="none"
-        colors={['#FAFCFF', '#EEF6FC', '#F9F7FF', '#F4FBF8']}
+        colors={['#FBFDFF', '#EEF6FC', '#F8F5FF', '#F3FAF7']}
         locations={[0, 0.38, 0.72, 1]}
         style={StyleSheet.absoluteFillObject}
       />
-      <LinearGradient
-        pointerEvents="none"
-        colors={['rgba(34,145,244,0.15)', 'rgba(122,88,232,0.08)', 'rgba(244,141,77,0.07)', 'rgba(255,255,255,0)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.spectrumWash}
-      />
-      <View pointerEvents="none" style={styles.backgroundLines}>
-        {Array.from({ length: 8 }).map((_, index) => (
-          <View key={index} style={[styles.backgroundLine, { top: index * 88 }]} />
+      <View pointerEvents="none" style={styles.backgroundGrid}>
+        {Array.from({ length: 9 }).map((_, index) => (
+          <View key={index} style={[styles.backgroundLine, { top: index * 92 }]} />
         ))}
       </View>
 
@@ -300,9 +252,9 @@ export default function ProfileScreen() {
         <View style={styles.pageContent}>
           <View style={styles.header}>
             <View style={styles.headerCopy}>
-              <Text style={styles.headerEyebrow}>MY LEARNING STUDIO</Text>
-              <Text style={styles.pageTitle}>我的空间</Text>
-              <Text style={styles.pageSubtitle}>收藏场景、表达和每一次成长</Text>
+              <Text style={styles.headerEyebrow}>MY GROWTH SPACE</Text>
+              <Text style={styles.pageTitle}>我的成长空间</Text>
+              <Text style={styles.pageSubtitle}>看见每一次开口，如何变成你的能力</Text>
             </View>
             <MotionPressable
               accessibilityRole="button"
@@ -318,29 +270,29 @@ export default function ProfileScreen() {
 
           <Animated.View
             entering={FadeInDown.springify().damping(18).stiffness(175)}
-            style={styles.passportCard}
+            style={styles.identityPanel}
           >
             <LinearGradient
-              colors={['#DFF2FF', '#E9E4FF', '#FFF0E5', '#E3F7EF']}
+              colors={['#DDF1FF', '#ECE8FF', '#FFF1E6', '#E4F8EF']}
               locations={[0, 0.38, 0.72, 1]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={StyleSheet.absoluteFillObject}
             />
+            <View pointerEvents="none" style={styles.identityFineLineOne} />
+            <View pointerEvents="none" style={styles.identityFineLineTwo} />
             <LinearGradient
               pointerEvents="none"
-              colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.88)', 'rgba(255,255,255,0)']}
+              colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.82)', 'rgba(255,255,255,0)']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.passportSheen}
+              style={styles.identitySheen}
             />
-            <View pointerEvents="none" style={styles.passportArcOne} />
-            <View pointerEvents="none" style={styles.passportArcTwo} />
 
-            <View style={styles.identityRow}>
+            <View style={styles.identityTop}>
               <View style={styles.avatarShell}>
                 <LinearGradient
-                  colors={['#45D7FF', '#287EF4', '#8058E9']}
+                  colors={['#48D8FF', '#287FF4', '#7B58E7']}
                   style={StyleSheet.absoluteFillObject}
                 />
                 <View style={styles.avatarInner}>
@@ -352,39 +304,45 @@ export default function ProfileScreen() {
                 <Text numberOfLines={1} style={styles.displayName}>{displayName}</Text>
                 <Text style={styles.levelName}>{curLevel.name} · LV.{curLevel.level}</Text>
                 <View style={styles.activeTitleRow}>
-                  <Star size={12} color={COLORS.purple} fill={COLORS.purple} />
-                  <Text style={styles.activeTitleText}>
-                    {activeTitle?.name ?? '继续学习解锁称号'}
+                  <Star size={12} color={activeBadge?.color ?? COLORS.purple} fill={activeBadge?.color ?? COLORS.purple} />
+                  <Text style={[styles.activeTitleText, { color: activeBadge?.color ?? COLORS.purple }]}>
+                    {activeBadge?.name ?? '继续学习解锁成长称号'}
                   </Text>
                 </View>
               </View>
-              <View style={styles.levelDial}>
-                <View style={styles.levelDialInner}>
-                  <Text style={styles.levelDialLabel}>LEVEL</Text>
-                  <Text style={styles.levelDialValue}>{curLevel.level}</Text>
+              <View style={styles.levelMonogram}>
+                <Text style={styles.levelMonogramLabel}>LEVEL</Text>
+                <Text style={styles.levelMonogramValue}>{curLevel.level}</Text>
+                <Text style={styles.levelMonogramMax}>/ 10</Text>
+              </View>
+            </View>
+
+            <View style={styles.progressBlock}>
+              <View style={styles.progressCopyRow}>
+                <View style={styles.progressCopy}>
+                  <Text style={styles.progressEyebrow}>NEXT MILESTONE</Text>
+                  <Text style={styles.progressTitle}>
+                    {nextLevel ? `还差 ${xpToNext} XP 到达「${nextLevel.name}」` : '已完成全部成长阶段'}
+                  </Text>
                 </View>
+                <Text style={styles.totalXp}>{totalXp} XP</Text>
+              </View>
+              <View style={styles.progressTrack}>
+                <LinearGradient
+                  colors={['#27C8FF', '#147CF5', '#7658E8', '#EF7B63']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[styles.progressFill, { width: `${progressPercent}%` }]}
+                />
+              </View>
+              <View style={styles.progressTicks}>
+                {Array.from({ length: 8 }).map((_, index) => (
+                  <View key={index} style={styles.progressTick} />
+                ))}
               </View>
             </View>
 
-            <View style={styles.progressCopyRow}>
-              <View>
-                <Text style={styles.progressEyebrow}>NEXT CHAPTER</Text>
-                <Text style={styles.progressTitle}>
-                  {nextLevel ? `距离 ${nextLevel.name} 还差 ${xpToNext} XP` : '已达到最高等级'}
-                </Text>
-              </View>
-              <Text style={styles.totalXp}>{totalXp} XP</Text>
-            </View>
-            <View style={styles.progressTrack}>
-              <LinearGradient
-                colors={['#27C8FF', '#147CF5', '#7658E8', '#EF7B63']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[styles.progressFill, { width: `${progressPercent}%` }]}
-              />
-            </View>
-
-            <View style={styles.passportActions}>
+            <View style={styles.identityActions}>
               <MotionPressable
                 onPress={() => router.push('/(app)/(tabs)/learning' as any)}
                 accessibilityRole="button"
@@ -404,7 +362,7 @@ export default function ProfileScreen() {
                 <View style={styles.continueButtonCopy}>
                   <Text style={styles.continueButtonTitle}>继续今天的学习</Text>
                   <Text numberOfLines={1} style={styles.continueButtonMeta}>
-                    {nextLevel?.reward ?? '回顾学习内容'}
+                    {nextLevel?.reward ?? '回顾已经掌握的内容'}
                   </Text>
                 </View>
                 <ChevronRight size={18} color="#FFFFFF" />
@@ -417,7 +375,7 @@ export default function ProfileScreen() {
                 hoverLift={3}
                 style={styles.streakButton}
               >
-                <Flame size={18} color={COLORS.green} fill={COLORS.green} />
+                <Flame size={17} color={COLORS.green} fill={COLORS.green} />
                 <Text style={styles.streakValue}>{streak}</Text>
                 <Text style={styles.streakLabel}>天</Text>
               </MotionPressable>
@@ -426,44 +384,57 @@ export default function ProfileScreen() {
 
           <Animated.View
             entering={FadeInDown.delay(60).springify().damping(18).stiffness(175)}
-            style={styles.metricRow}
+            style={styles.signalSection}
           >
-            {metricCards.map((item) => {
-              const MetricIcon = item.icon;
-              return (
-                <MotionPressable
-                  key={item.label}
-                  onPress={() => router.push(item.route)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${item.label} ${item.value} ${item.unit}`}
-                  pressedScale={0.94}
-                  hoverLift={5}
-                  hoverTilt={2}
-                  style={styles.metricCard}
-                >
-                  <LinearGradient
-                    colors={item.gradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={StyleSheet.absoluteFillObject}
-                  />
-                  <View style={[styles.metricIcon, { backgroundColor: `${item.accent}14` }]}>
-                    <MetricIcon size={18} color={item.accent} strokeWidth={2.5} />
-                  </View>
-                  <Text style={styles.metricValue}>
-                    {item.value}<Text style={styles.metricUnit}> {item.unit}</Text>
-                  </Text>
-                  <Text style={styles.metricLabel}>{item.label}</Text>
-                  <View style={[styles.metricAccent, { backgroundColor: item.accent }]} />
-                </MotionPressable>
-              );
-            })}
+            <View style={styles.signalHeadingRow}>
+              <View>
+                <Text style={styles.sectionEyebrow}>GROWTH SIGNAL</Text>
+                <Text style={styles.signalTitle}>成长信号</Text>
+              </View>
+              <View style={styles.livePill}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveText}>实时同步</Text>
+              </View>
+            </View>
+            <View style={styles.signalRail}>
+              {growthSignals.map((item, index) => {
+                const SignalIcon = item.icon;
+                return (
+                  <MotionPressable
+                    key={item.label}
+                    onPress={() => router.push(item.route)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${item.label} ${item.value} ${item.unit}`}
+                    pressedScale={0.95}
+                    hoverLift={4}
+                    style={[styles.signalItem, index < growthSignals.length - 1 && styles.signalItemDivider]}
+                  >
+                    <View style={styles.signalIconRow}>
+                      <SignalIcon size={17} color={item.color} strokeWidth={2.4} />
+                      <View style={[styles.signalPulse, { backgroundColor: item.color }]} />
+                    </View>
+                    <Text style={styles.signalValue}>
+                      {item.value}<Text style={styles.signalUnit}> {item.unit}</Text>
+                    </Text>
+                    <Text style={styles.signalLabel}>{item.label}</Text>
+                    <View style={styles.signalMiniBars}>
+                      {[0.42, 0.75, 0.54, 1, 0.7].map((height, barIndex) => (
+                        <View
+                          key={barIndex}
+                          style={[styles.signalMiniBar, { height: 3 + height * 8, backgroundColor: item.color, opacity: 0.24 + barIndex * 0.12 }]}
+                        />
+                      ))}
+                    </View>
+                  </MotionPressable>
+                );
+              })}
+            </View>
           </Animated.View>
 
           {loading && !stats && !xpData.stats ? (
             <View style={styles.loadingState}>
               <ActivityIndicator color={COLORS.blue} />
-              <Text style={styles.loadingText}>正在同步学习空间</Text>
+              <Text style={styles.loadingText}>正在同步成长空间</Text>
             </View>
           ) : null}
 
@@ -482,235 +453,259 @@ export default function ProfileScreen() {
           ) : null}
 
           <Animated.View
-            entering={FadeInDown.delay(110).springify().damping(18).stiffness(175)}
+            entering={FadeInDown.delay(120).springify().damping(18).stiffness(175)}
             style={styles.section}
           >
             <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.sectionEyebrow}>VISUAL MEMORIES</Text>
-                <Text style={styles.sectionTitle}>学习相册</Text>
-                <Text style={styles.sectionSubtitle}>把练过的真实场景，收进你的表达世界</Text>
+              <View style={styles.sectionHeaderCopy}>
+                <Text style={styles.sectionEyebrow}>MILESTONE ARCHIVE</Text>
+                <Text style={styles.sectionTitle}>成长勋章馆</Text>
+                <Text style={styles.sectionSubtitle}>每一次开口，都留下一个成长印记</Text>
               </View>
               <MotionPressable
-                onPress={() => router.push('/(app)/(tabs)/learning' as any)}
+                onPress={() => router.push('/(app)/achievements?tab=titles' as any)}
                 pressedScale={0.92}
                 style={styles.sectionAction}
               >
-                <Text style={styles.sectionActionText}>{records.length} 条</Text>
+                <Text style={styles.sectionActionText}>{unlockedBadges.length}/{BADGES.length}</Text>
                 <ChevronRight size={15} color={COLORS.muted} />
               </MotionPressable>
             </View>
 
-            <View style={styles.galleryShell}>
-              <MotionPressable
-                onPress={() => openRecord(activeRecord)}
-                disabled={!activeRecord}
-                accessibilityRole="button"
-                accessibilityLabel={`打开${activeRecord?.scene_name ?? '场景'}学习记录`}
-                pressedScale={0.98}
-                hoverLift={5}
-                hoverTilt={1.8}
-                style={styles.galleryMain}
-              >
-                <Image
-                  source={imageSource(activeRecord?.scene_image)}
-                  style={StyleSheet.absoluteFillObject}
-                  contentFit="cover"
-                  transition={260}
-                />
-                <LinearGradient
-                  colors={['rgba(6,20,38,0.02)', 'rgba(6,20,38,0.16)', 'rgba(6,18,36,0.90)']}
-                  locations={[0, 0.45, 1]}
-                  style={StyleSheet.absoluteFillObject}
-                />
-                <LinearGradient
-                  pointerEvents="none"
-                  colors={['rgba(255,255,255,0.42)', 'rgba(255,255,255,0)']}
-                  start={{ x: 0.1, y: 0 }}
-                  end={{ x: 0.85, y: 0.65 }}
-                  style={styles.galleryRefraction}
-                />
-                <View style={styles.galleryTopRow}>
-                  <View style={styles.galleryBadge}>
-                    <ImageIcon size={13} color="#FFFFFF" />
-                    <Text style={styles.galleryBadgeText}>SCENE MEMORY</Text>
-                  </View>
-                  <Text style={styles.galleryDate}>{formatDate(activeRecord?.created_at)}</Text>
-                </View>
-                <View style={styles.galleryMainCopy}>
-                  <Text numberOfLines={1} style={styles.galleryTitle}>
-                    {activeRecord?.scene_name ?? '还没有场景记录'}
-                  </Text>
-                  <Text numberOfLines={2} style={styles.galleryPhrase}>
-                    {activeRecord?.i_say || activeRecord?.i_see || '完成一次真实场景学习后，图片会出现在这里。'}
-                  </Text>
-                  <View style={styles.galleryOpenRow}>
-                    <Text style={styles.galleryOpenText}>打开学习记录</Text>
-                    <ChevronRight size={15} color="#FFFFFF" />
-                  </View>
-                </View>
-              </MotionPressable>
-
-              <View style={styles.gallerySide}>
-                {sideRecords.map(({ record, index }) => (
-                  <MotionPressable
-                    key={record.id}
-                    onPress={() => setGalleryIndex(index)}
-                    pressedScale={0.93}
-                    hoverLift={4}
-                    hoverTilt={2.2}
-                    accessibilityRole="button"
-                    accessibilityLabel={`切换到${record.scene_name || '场景'}图片`}
-                    style={styles.galleryThumb}
-                  >
-                    <Image
-                      source={imageSource(record.scene_image)}
-                      style={StyleSheet.absoluteFillObject}
-                      contentFit="cover"
-                      transition={220}
-                    />
-                    <LinearGradient
-                      colors={['rgba(5,18,34,0.02)', 'rgba(5,18,34,0.72)']}
-                      style={StyleSheet.absoluteFillObject}
-                    />
-                    <Text numberOfLines={2} style={styles.galleryThumbTitle}>
-                      {record.scene_name || '场景记录'}
-                    </Text>
-                  </MotionPressable>
-                ))}
-                {sideRecords.length < 2 ? (
-                  <MotionPressable
-                    onPress={() => router.push('/(app)/(tabs)/home' as any)}
-                    pressedScale={0.94}
-                    style={styles.galleryAdd}
-                  >
-                    <Camera size={22} color={COLORS.blue} />
-                    <Text style={styles.galleryAddText}>添加场景</Text>
-                  </MotionPressable>
-                ) : null}
-              </View>
-            </View>
-            <View style={styles.galleryDots}>
-              {galleryRecords.map((record, index) => (
-                <MotionPressable
-                  key={record.id}
-                  onPress={() => setGalleryIndex(index)}
-                  pressedScale={0.8}
-                  style={[styles.galleryDot, index === safeGalleryIndex && styles.galleryDotActive]}
-                ><View /></MotionPressable>
-              ))}
-            </View>
-          </Animated.View>
-
-          <Animated.View
-            entering={FadeInDown.delay(170).springify().damping(18).stiffness(175)}
-            style={styles.section}
-          >
-            <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.sectionEyebrow}>ACHIEVEMENT CABINET</Text>
-                <Text style={styles.sectionTitle}>成就陈列</Text>
-                <Text style={styles.sectionSubtitle}>每个称号，都记录一段真实进步</Text>
-              </View>
-              <MotionPressable
-                onPress={() => router.push('/(app)/achievements?tab=achievements' as any)}
-                pressedScale={0.92}
-                style={styles.sectionAction}
-              >
-                <Text style={styles.sectionActionText}>{unlockedTitles.length}/{TITLES.length}</Text>
-                <ChevronRight size={15} color={COLORS.muted} />
-              </MotionPressable>
-            </View>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.achievementRail}
+              decelerationRate="fast"
+              contentContainerStyle={styles.badgeRail}
             >
-              {TITLES.map((title) => {
-                const unlocked = curLevel.level >= title.level;
-                const active = activeTitle?.name === title.name;
+              {BADGES.map((badge, index) => {
+                const unlocked = curLevel.level >= badge.level;
+                const selected = selectedBadgeIndex === index;
+                const BadgeIcon = badge.icon;
                 return (
                   <MotionPressable
-                    key={title.name}
-                    onPress={() => router.push('/(app)/achievements?tab=titles' as any)}
+                    key={badge.english}
+                    onPress={() => setSelectedBadgeIndex(index)}
                     accessibilityRole="button"
-                    accessibilityLabel={`${title.name}，${active ? '当前佩戴' : unlocked ? '已收藏' : `LV.${title.level} 解锁`}`}
-                    pressedScale={0.95}
-                    hoverLift={5}
-                    hoverTilt={2.4}
-                    style={[styles.achievementCard, active && styles.achievementCardActive]}
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={`${badge.name}，${unlocked ? '已获得' : `等级 ${badge.level} 解锁`}`}
+                    pressedScale={0.94}
+                    hoverLift={selected ? 8 : 5}
+                    hoverTilt={3}
+                    style={[styles.badgeShelfItem, selected && styles.badgeShelfItemSelected]}
                   >
-                    <LinearGradient
-                      colors={unlocked ? title.gradient : ['#EDF1F5', '#FAFCFE']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={StyleSheet.absoluteFillObject}
-                    />
-                    <View style={[styles.achievementIcon, { backgroundColor: unlocked ? `${title.color}17` : '#E7ECF1' }]}>
-                      {unlocked ? (
-                        <Medal size={25} color={title.color} />
-                      ) : (
-                        <LockKeyhole size={20} color={COLORS.subtle} />
-                      )}
+                    <View style={[styles.badgeHalo, selected && { shadowColor: badge.color, shadowOpacity: 0.34 }]}>
+                      <LinearGradient
+                        colors={unlocked ? badge.colors : ['#DDE4EA', '#AAB6C2', '#EEF2F5']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.badgeOuter}
+                      >
+                        <View style={styles.badgeRim}>
+                          <LinearGradient
+                            colors={unlocked ? ['rgba(255,255,255,0.92)', `${badge.color}68`, 'rgba(255,255,255,0.46)'] : ['#F7F9FA', '#CBD3DB', '#EEF1F4']}
+                            style={styles.badgeInner}
+                          >
+                            <BadgeIcon
+                              size={27}
+                              color={unlocked ? badge.color : '#8795A4'}
+                              strokeWidth={2.1}
+                            />
+                            <View style={styles.badgeGlint} />
+                          </LinearGradient>
+                        </View>
+                      </LinearGradient>
                     </View>
-                    <Text numberOfLines={2} style={[styles.achievementName, active && { color: title.color }]}>
-                      {title.name}
+                    <Text numberOfLines={1} style={[styles.badgeName, selected && { color: badge.color }]}>
+                      {badge.name}
                     </Text>
-                    <Text style={styles.achievementStatus}>
-                      {active ? '当前佩戴' : unlocked ? '已收藏' : `LV.${title.level} 解锁`}
+                    <Text style={styles.badgeState}>
+                      {activeBadge?.english === badge.english ? '当前称号' : unlocked ? '已获得' : `LV.${badge.level}`}
                     </Text>
-                    <View style={[styles.achievementAccent, { backgroundColor: unlocked ? title.color : '#C7D0DA' }]} />
+                    <View style={[styles.badgeSelectionLine, selected && { backgroundColor: badge.color, opacity: 1 }]} />
                   </MotionPressable>
                 );
               })}
             </ScrollView>
+
+            <Animated.View key={selectedBadge.english} entering={FadeIn.duration(220)} style={styles.badgeDetail}>
+              <LinearGradient
+                colors={selectedBadge.tint}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+              <View pointerEvents="none" style={[styles.badgeDetailLine, { borderColor: `${selectedBadge.color}22` }]} />
+              <View style={styles.badgeDetailTop}>
+                <View style={[styles.badgeDetailIcon, { borderColor: `${selectedBadge.color}45` }]}>
+                  <selectedBadge.icon size={24} color={selectedBadge.color} />
+                </View>
+                <View style={styles.badgeDetailCopy}>
+                  <Text style={[styles.badgeDetailEyebrow, { color: selectedBadge.color }]}>
+                    {selectedBadge.english.toUpperCase()}
+                  </Text>
+                  <Text style={styles.badgeDetailTitle}>{selectedBadge.name}</Text>
+                </View>
+                <View style={[styles.badgeStatusPill, { backgroundColor: `${selectedBadge.color}12` }]}>
+                  <Text style={[styles.badgeStatusText, { color: selectedBadge.color }]}>
+                    {selectedUnlocked ? '已获得' : `LV.${selectedBadge.level} 解锁`}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.badgeDescription}>{selectedBadge.description}</Text>
+              <View style={styles.badgeProgressRow}>
+                <View style={styles.badgeProgressTrack}>
+                  <View
+                    style={[
+                      styles.badgeProgressFill,
+                      { width: `${selectedProgress * 100}%`, backgroundColor: selectedBadge.color },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.badgeProgressText}>
+                  {selectedUnlocked ? '完成' : `${totalXp}/${selectedRequiredXp} XP`}
+                </Text>
+              </View>
+              <MotionPressable
+                onPress={() => router.push('/(app)/achievements?tab=titles' as any)}
+                pressedScale={0.96}
+                hoverLift={2}
+                style={styles.badgeDetailAction}
+              >
+                <Text style={[styles.badgeDetailActionText, { color: selectedBadge.color }]}>查看成长档案</Text>
+                <ChevronRight size={15} color={selectedBadge.color} />
+              </MotionPressable>
+            </Animated.View>
           </Animated.View>
 
           <Animated.View
-            entering={FadeInDown.delay(230).springify().damping(18).stiffness(175)}
+            entering={FadeInDown.delay(190).springify().damping(18).stiffness(175)}
             style={styles.section}
           >
             <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.sectionEyebrow}>MY TOOLKIT</Text>
-                <Text style={styles.sectionTitle}>常用功能</Text>
-                <Text style={styles.sectionSubtitle}>从记录到复习，继续你的学习路径</Text>
+              <View style={styles.sectionHeaderCopy}>
+                <Text style={styles.sectionEyebrow}>PERSONAL TOOLKIT</Text>
+                <Text style={styles.sectionTitle}>我的学习工具</Text>
+                <Text style={styles.sectionSubtitle}>记录、整理、探索，建立自己的表达系统</Text>
               </View>
             </View>
-            <View style={styles.toolGrid}>
-              {toolCards.map((item) => {
-                const ToolIcon = item.icon;
-                return (
-                  <MotionPressable
-                    key={item.label}
-                    onPress={() => router.push(item.route)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${item.label}，${item.sub}`}
-                    pressedScale={0.96}
-                    hoverLift={6}
-                    hoverTilt={2.4}
-                    style={styles.toolCard}
-                  >
-                    <LinearGradient
-                      colors={item.gradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={StyleSheet.absoluteFillObject}
-                    />
-                    <View pointerEvents="none" style={[styles.toolPattern, { borderColor: `${item.accent}13` }]} />
-                    <View style={styles.toolTopRow}>
-                      <View style={[styles.toolIcon, { backgroundColor: `${item.accent}14` }]}>
-                        <ToolIcon size={21} color={item.accent} />
-                      </View>
-                      <ChevronRight size={17} color={item.accent} />
-                    </View>
-                    <Text style={[styles.toolMeta, { color: item.accent }]}>{item.meta}</Text>
-                    <Text style={styles.toolTitle}>{item.label}</Text>
-                    <Text numberOfLines={2} style={styles.toolSub}>{item.sub}</Text>
-                  </MotionPressable>
-                );
-              })}
+
+            <MotionPressable
+              onPress={() => router.push('/(app)/diary' as any)}
+              accessibilityRole="button"
+              accessibilityLabel="打开英语日记"
+              pressedScale={0.975}
+              hoverLift={6}
+              hoverTilt={1.6}
+              style={styles.diaryCard}
+            >
+              <LinearGradient
+                colors={['#8265ED', '#5F67DD', '#3F82E4']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+              <View pointerEvents="none" style={styles.diaryNotebook}>
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <View key={index} style={[styles.diaryRule, { top: 18 + index * 14 }]} />
+                ))}
+              </View>
+              <View style={styles.diaryIcon}>
+                <PenLine size={25} color="#FFFFFF" />
+              </View>
+              <View style={styles.diaryCopy}>
+                <Text style={styles.diaryEyebrow}>DAILY STORY</Text>
+                <Text style={styles.diaryTitle}>英语日记</Text>
+                <Text style={styles.diarySubtitle}>把今天写成一段可以开口讲的英语故事</Text>
+              </View>
+              <View style={styles.diaryAction}>
+                <Text style={styles.diaryActionText}>开始记录</Text>
+                <ChevronRight size={17} color="#FFFFFF" />
+              </View>
+            </MotionPressable>
+
+            <View style={styles.toolPair}>
+              <MotionPressable
+                onPress={() => router.push('/(app)/(tabs)/learning' as any)}
+                accessibilityRole="button"
+                accessibilityLabel="打开表达本"
+                pressedScale={0.96}
+                hoverLift={6}
+                hoverTilt={2.2}
+                style={styles.expressionCard}
+              >
+                <LinearGradient
+                  colors={['#FFF0E2', '#FFE1D8', '#FFF8F2']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFillObject}
+                />
+                <View style={styles.expressionTop}>
+                  <View style={styles.expressionIcon}>
+                    <Bookmark size={20} color={COLORS.coral} fill={`${COLORS.coral}24`} />
+                  </View>
+                  <ChevronRight size={17} color={COLORS.coral} />
+                </View>
+                <Text style={styles.toolEyebrowOrange}>PHRASE BOOK</Text>
+                <Text style={styles.toolTitle}>表达本</Text>
+                <Text style={styles.toolDescription}>{recordCount} 条真实场景表达持续沉淀</Text>
+                <View style={styles.phrasePreview}>
+                  <Text numberOfLines={1} style={styles.phrasePreviewText}>Could I have…</Text>
+                  <View style={styles.phraseDot} />
+                </View>
+              </MotionPressable>
+
+              <MotionPressable
+                onPress={() => router.push('/(app)/map' as any)}
+                accessibilityRole="button"
+                accessibilityLabel="打开场景地图"
+                pressedScale={0.96}
+                hoverLift={6}
+                hoverTilt={2.2}
+                style={styles.mapCard}
+              >
+                <LinearGradient
+                  colors={['#DDF9EC', '#DDF2F7', '#F7FFFB']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFillObject}
+                />
+                <View pointerEvents="none" style={styles.mapPathOne} />
+                <View pointerEvents="none" style={styles.mapPathTwo} />
+                <View style={styles.mapTop}>
+                  <View style={styles.mapIcon}>
+                    <Map size={20} color={COLORS.green} />
+                  </View>
+                  <ChevronRight size={17} color={COLORS.green} />
+                </View>
+                <Text style={styles.toolEyebrowGreen}>SCENE WORLD</Text>
+                <Text style={styles.toolTitle}>场景地图</Text>
+                <Text style={styles.toolDescription}>全部开放，随时进入生活场景练习</Text>
+                <View style={styles.mapNodes}>
+                  {[0, 1, 2].map((node) => (
+                    <View key={node} style={[styles.mapNode, node === 1 && styles.mapNodeActive]} />
+                  ))}
+                </View>
+              </MotionPressable>
             </View>
+
+            <MotionPressable
+              onPress={() => router.push('/(app)/settings' as any)}
+              accessibilityRole="button"
+              accessibilityLabel="打开设置"
+              pressedScale={0.975}
+              hoverLift={3}
+              style={styles.settingsStrip}
+            >
+              <View style={styles.settingsIcon}>
+                <Settings size={19} color="#536A82" />
+              </View>
+              <View style={styles.settingsCopy}>
+                <Text style={styles.settingsTitle}>学习设置</Text>
+                <Text style={styles.settingsSubtitle}>语音、通知与个人偏好</Text>
+              </View>
+              <ChevronRight size={18} color={COLORS.muted} />
+            </MotionPressable>
           </Animated.View>
 
           <MotionPressable
@@ -731,33 +726,25 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
-  spectrumWash: {
-    position: 'absolute', left: -90, right: -90, top: -120, height: 920,
-    transform: [{ rotate: '-7deg' }],
-  },
-  backgroundLines: {
-    position: 'absolute', left: -90, right: -90, top: 260, height: 760,
-    opacity: 0.5, transform: [{ rotate: '-8deg' }],
+  backgroundGrid: {
+    position: 'absolute', left: -72, right: -72, top: 218, height: 840,
+    opacity: 0.6, transform: [{ rotate: '-6deg' }],
   },
   backgroundLine: {
     position: 'absolute', left: 0, right: 0, height: 1,
-    backgroundColor: 'rgba(99,143,180,0.08)',
+    backgroundColor: 'rgba(80,125,165,0.075)',
   },
   scrollContent: { paddingBottom: 132 },
   pageContent: {
-    width: '100%', maxWidth: 640, alignSelf: 'center', paddingHorizontal: 17, gap: 22,
+    width: '100%', maxWidth: 640, alignSelf: 'center', paddingHorizontal: 17, gap: 24,
   },
-  header: { minHeight: 78, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  header: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: 14 },
   headerCopy: { flex: 1, minWidth: 0 },
   headerEyebrow: {
-    color: COLORS.purple, fontSize: 9, lineHeight: 13, fontWeight: '900', letterSpacing: 1.45,
+    color: COLORS.purple, fontSize: 9, lineHeight: 13, fontWeight: '900', letterSpacing: 1.35,
   },
-  pageTitle: {
-    marginTop: 1, color: COLORS.text, fontSize: 30, lineHeight: 35, fontWeight: '900',
-  },
-  pageSubtitle: {
-    marginTop: 1, color: COLORS.muted, fontSize: 12, lineHeight: 17, fontWeight: '600',
-  },
+  pageTitle: { marginTop: 2, color: COLORS.text, fontSize: 30, lineHeight: 35, fontWeight: '900' },
+  pageSubtitle: { marginTop: 2, color: COLORS.muted, fontSize: 12, lineHeight: 17, fontWeight: '600' },
   headerButton: {
     width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1,
@@ -765,25 +752,27 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.13, shadowRadius: 17,
     elevation: 3, ...GLASS_WEB,
   },
-  passportCard: {
-    overflow: 'hidden', borderRadius: 30, borderWidth: 1.2,
+  identityPanel: {
+    minHeight: 280, overflow: 'hidden', borderRadius: 30, borderWidth: 1.2,
     borderColor: 'rgba(255,255,255,0.92)', padding: 18, shadowColor: '#426E98',
     shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.18, shadowRadius: 36,
     elevation: 8, ...GLASS_WEB,
   },
-  passportSheen: {
-    position: 'absolute', width: 100, height: 420, top: -130, left: '52%',
+  identityFineLineOne: {
+    position: 'absolute', width: 310, height: 118, right: -118, top: 12,
+    borderWidth: 1, borderColor: 'rgba(82,104,219,0.14)', borderRadius: 18,
+    transform: [{ rotate: '-14deg' }],
+  },
+  identityFineLineTwo: {
+    position: 'absolute', width: 290, height: 96, right: -90, top: 38,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)', borderRadius: 18,
+    transform: [{ rotate: '-14deg' }],
+  },
+  identitySheen: {
+    position: 'absolute', width: 92, height: 430, top: -130, left: '54%',
     transform: [{ rotate: '18deg' }],
   },
-  passportArcOne: {
-    position: 'absolute', width: 230, height: 230, borderRadius: 115, right: -105,
-    top: -98, borderWidth: 1, borderColor: 'rgba(82,104,219,0.15)',
-  },
-  passportArcTwo: {
-    position: 'absolute', width: 164, height: 164, borderRadius: 82, right: -64,
-    top: -58, borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)',
-  },
-  identityRow: { flexDirection: 'row', alignItems: 'center', gap: 13 },
+  identityTop: { flexDirection: 'row', alignItems: 'center', gap: 13 },
   avatarShell: {
     width: 70, height: 70, padding: 3, borderRadius: 24, overflow: 'hidden',
     alignItems: 'center', justifyContent: 'center', borderWidth: 1,
@@ -803,125 +792,86 @@ const styles = StyleSheet.create({
   },
   identityCopy: { flex: 1, minWidth: 0 },
   displayName: { color: COLORS.text, fontSize: 22, lineHeight: 26, fontWeight: '900' },
-  levelName: {
-    marginTop: 2, color: COLORS.muted, fontSize: 11, lineHeight: 15, fontWeight: '700',
-  },
+  levelName: { marginTop: 2, color: COLORS.muted, fontSize: 11, lineHeight: 15, fontWeight: '700' },
   activeTitleRow: { marginTop: 7, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  activeTitleText: {
-    color: '#5C47C8', fontSize: 9, lineHeight: 12, fontWeight: '900',
+  activeTitleText: { fontSize: 9, lineHeight: 12, fontWeight: '900' },
+  levelMonogram: {
+    width: 66, minHeight: 74, paddingVertical: 8, borderLeftWidth: 1,
+    borderLeftColor: 'rgba(93,105,184,0.18)', alignItems: 'center', justifyContent: 'center',
   },
-  levelDial: {
-    width: 64, height: 64, borderRadius: 32, padding: 5, backgroundColor: 'rgba(255,255,255,0.38)',
-    borderWidth: 1, borderColor: 'rgba(100,111,221,0.20)', shadowColor: '#5F58D8',
-    shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.13, shadowRadius: 14,
-  },
-  levelDialInner: {
-    flex: 1, borderRadius: 27, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.7)', borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.9)',
-  },
-  levelDialLabel: {
-    color: COLORS.muted, fontSize: 6.5, lineHeight: 8, fontWeight: '900', letterSpacing: 0.8,
-  },
-  levelDialValue: {
-    marginTop: 1, color: COLORS.text, fontSize: 23, lineHeight: 26, fontWeight: '900',
-  },
-  progressCopyRow: {
-    marginTop: 22, flexDirection: 'row', alignItems: 'flex-end',
-    justifyContent: 'space-between', gap: 12,
-  },
-  progressEyebrow: {
-    color: COLORS.blue, fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 1.1,
-  },
-  progressTitle: {
-    marginTop: 3, color: COLORS.text, fontSize: 14, lineHeight: 18, fontWeight: '900',
-  },
-  totalXp: {
-    color: COLORS.purple, fontSize: 15, lineHeight: 18, fontWeight: '900',
-    fontVariant: ['tabular-nums'],
-  },
+  levelMonogramLabel: { color: COLORS.muted, fontSize: 6.5, lineHeight: 8, fontWeight: '900', letterSpacing: 1 },
+  levelMonogramValue: { color: COLORS.text, fontSize: 28, lineHeight: 31, fontWeight: '900' },
+  levelMonogramMax: { color: COLORS.subtle, fontSize: 8, lineHeight: 10, fontWeight: '800' },
+  progressBlock: { marginTop: 22 },
+  progressCopyRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
+  progressCopy: { flex: 1, minWidth: 0 },
+  progressEyebrow: { color: COLORS.blue, fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 1.1 },
+  progressTitle: { marginTop: 3, color: COLORS.text, fontSize: 13, lineHeight: 18, fontWeight: '900' },
+  totalXp: { color: COLORS.purple, fontSize: 15, lineHeight: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
   progressTrack: {
     height: 10, marginTop: 12, overflow: 'hidden', borderRadius: 99,
     backgroundColor: 'rgba(92,110,148,0.14)', borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.82)',
   },
   progressFill: { height: '100%', borderRadius: 99 },
-  passportActions: { marginTop: 18, flexDirection: 'row', gap: 9 },
+  progressTicks: { marginTop: 5, flexDirection: 'row', justifyContent: 'space-between' },
+  progressTick: { width: 1, height: 3, backgroundColor: 'rgba(80,103,137,0.22)' },
+  identityActions: { marginTop: 16, flexDirection: 'row', gap: 9 },
   continueButton: {
-    flex: 1, minHeight: 62, overflow: 'hidden', paddingHorizontal: 11,
+    flex: 1, minHeight: 60, overflow: 'hidden', paddingHorizontal: 11,
     flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 21,
     borderWidth: 1, borderColor: 'rgba(168,223,255,0.65)', shadowColor: '#0875F7',
     shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 18,
     elevation: 4,
   },
   continueButtonCopy: { flex: 1, minWidth: 0 },
-  continueButtonTitle: {
-    color: '#FFFFFF', fontSize: 12, lineHeight: 16, fontWeight: '900',
-  },
-  continueButtonMeta: {
-    marginTop: 2, color: 'rgba(230,242,255,0.76)', fontSize: 7.5, lineHeight: 10,
-    fontWeight: '700',
-  },
+  continueButtonTitle: { color: '#FFFFFF', fontSize: 12, lineHeight: 16, fontWeight: '900' },
+  continueButtonMeta: { marginTop: 2, color: 'rgba(230,242,255,0.76)', fontSize: 7.5, lineHeight: 10, fontWeight: '700' },
   streakButton: {
-    width: 70, minHeight: 62, flexDirection: 'row', alignItems: 'center',
+    width: 70, minHeight: 60, flexDirection: 'row', alignItems: 'center',
     justifyContent: 'center', gap: 3, borderRadius: 21, backgroundColor: 'rgba(242,255,249,0.72)',
     borderWidth: 1, borderColor: 'rgba(70,183,132,0.26)',
   },
   streakValue: { color: COLORS.green, fontSize: 17, lineHeight: 20, fontWeight: '900' },
   streakLabel: { color: COLORS.green, fontSize: 8, lineHeight: 11, fontWeight: '800' },
-  metricRow: { flexDirection: 'row', gap: 9 },
-  metricCard: {
-    flex: 1, minWidth: 0, minHeight: 118, overflow: 'hidden', padding: 11,
-    borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)',
-    shadowColor: '#3A688C', shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.12,
-    shadowRadius: 18, elevation: 3,
+  signalSection: { gap: 10 },
+  signalHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  signalTitle: { marginTop: 1, color: COLORS.text, fontSize: 20, lineHeight: 24, fontWeight: '900' },
+  livePill: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.green },
+  liveText: { color: COLORS.muted, fontSize: 8, lineHeight: 11, fontWeight: '800' },
+  signalRail: {
+    minHeight: 132, flexDirection: 'row', overflow: 'hidden', borderRadius: 25,
+    backgroundColor: 'rgba(255,255,255,0.64)', borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.92)', shadowColor: '#3D698E',
+    shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 22,
+    elevation: 3, ...GLASS_WEB,
   },
-  metricIcon: {
-    width: 36, height: 36, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
-  },
-  metricValue: {
-    marginTop: 10, color: COLORS.text, fontSize: 20, lineHeight: 23, fontWeight: '900',
-    fontVariant: ['tabular-nums'],
-  },
-  metricUnit: { color: COLORS.muted, fontSize: 8.5, fontWeight: '700' },
-  metricLabel: {
-    marginTop: 2, color: COLORS.muted, fontSize: 8, lineHeight: 11, fontWeight: '800',
-  },
-  metricAccent: {
-    position: 'absolute', left: 11, right: 11, bottom: 8, height: 3, borderRadius: 2,
-    opacity: 0.7,
-  },
-  loadingState: {
-    minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-  },
+  signalItem: { flex: 1, minWidth: 0, paddingHorizontal: 12, paddingVertical: 15 },
+  signalItemDivider: { borderRightWidth: 1, borderRightColor: 'rgba(100,130,156,0.13)' },
+  signalIconRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  signalPulse: { width: 4, height: 4, borderRadius: 2, opacity: 0.75 },
+  signalValue: { marginTop: 12, color: COLORS.text, fontSize: 21, lineHeight: 24, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  signalUnit: { color: COLORS.muted, fontSize: 8, fontWeight: '700' },
+  signalLabel: { marginTop: 2, color: COLORS.muted, fontSize: 8, lineHeight: 11, fontWeight: '800' },
+  signalMiniBars: { height: 14, marginTop: 9, flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
+  signalMiniBar: { width: 3, borderRadius: 2 },
+  loadingState: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   loadingText: { color: COLORS.muted, fontSize: 10, fontWeight: '700' },
   errorCard: {
     minHeight: 50, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center',
     gap: 10, borderRadius: 17, backgroundColor: '#FFF2F1', borderWidth: 1,
     borderColor: '#F2B8B3',
   },
-  errorText: {
-    flex: 1, color: '#9F2D28', fontSize: 10, lineHeight: 14, fontWeight: '700',
-  },
-  retryButton: {
-    paddingHorizontal: 9, paddingVertical: 7, flexDirection: 'row', alignItems: 'center',
-    gap: 4, borderRadius: 12, backgroundColor: '#FFFFFF',
-  },
+  errorText: { flex: 1, color: '#9F2D28', fontSize: 10, lineHeight: 14, fontWeight: '700' },
+  retryButton: { paddingHorizontal: 9, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 12, backgroundColor: '#FFFFFF' },
   retryText: { color: '#A23832', fontSize: 9, fontWeight: '900' },
-  section: { gap: 13 },
-  sectionHeader: {
-    minHeight: 58, flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', gap: 12,
-  },
-  sectionEyebrow: {
-    color: COLORS.blue, fontSize: 8, lineHeight: 11, fontWeight: '900', letterSpacing: 1.2,
-  },
-  sectionTitle: {
-    marginTop: 1, color: COLORS.text, fontSize: 22, lineHeight: 26, fontWeight: '900',
-  },
-  sectionSubtitle: {
-    marginTop: 2, color: COLORS.muted, fontSize: 9, lineHeight: 13, fontWeight: '600',
-  },
+  section: { gap: 14 },
+  sectionHeader: { minHeight: 62, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  sectionHeaderCopy: { flex: 1, minWidth: 0 },
+  sectionEyebrow: { color: COLORS.blue, fontSize: 8, lineHeight: 11, fontWeight: '900', letterSpacing: 1.2 },
+  sectionTitle: { marginTop: 1, color: COLORS.text, fontSize: 22, lineHeight: 26, fontWeight: '900' },
+  sectionSubtitle: { marginTop: 2, color: COLORS.muted, fontSize: 9, lineHeight: 13, fontWeight: '600' },
   sectionAction: {
     minHeight: 35, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 2,
     borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.68)', borderWidth: 1,
@@ -929,114 +879,140 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.08, shadowRadius: 11,
   },
   sectionActionText: { color: COLORS.muted, fontSize: 9, fontWeight: '900' },
-  galleryShell: { height: 224, flexDirection: 'row', gap: 9 },
-  galleryMain: {
-    flex: 1, minWidth: 0, overflow: 'hidden', borderRadius: 26, borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.88)', shadowColor: '#1D4D75',
-    shadowOffset: { width: 0, height: 13 }, shadowOpacity: 0.24, shadowRadius: 24,
-    elevation: 6,
+  badgeRail: { gap: 8, paddingTop: 6, paddingBottom: 8, paddingRight: 5 },
+  badgeShelfItem: {
+    width: 112, minHeight: 144, paddingHorizontal: 8, paddingTop: 8, paddingBottom: 12,
+    alignItems: 'center', borderRadius: 22, borderWidth: 1, borderColor: 'transparent',
   },
-  galleryRefraction: {
-    position: 'absolute', width: '120%', height: 120, top: -35, left: -22,
-    transform: [{ rotate: '-8deg' }],
+  badgeShelfItemSelected: {
+    backgroundColor: 'rgba(255,255,255,0.62)', borderColor: 'rgba(255,255,255,0.92)',
+    shadowColor: '#446987', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.12,
+    shadowRadius: 18, elevation: 3, ...GLASS_WEB,
   },
-  galleryTopRow: {
-    padding: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-  },
-  galleryBadge: {
-    minHeight: 27, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderRadius: 14, backgroundColor: 'rgba(10,22,39,0.26)', borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)', ...GLASS_WEB,
-  },
-  galleryBadgeText: {
-    color: '#FFFFFF', fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 0.8,
-  },
-  galleryDate: {
-    color: '#FFFFFF', fontSize: 8.5, lineHeight: 12, fontWeight: '800',
-    textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  galleryMainCopy: { position: 'absolute', left: 15, right: 15, bottom: 15 },
-  galleryTitle: {
-    color: '#FFFFFF', fontSize: 20, lineHeight: 24, fontWeight: '900',
-    textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 5,
-  },
-  galleryPhrase: {
-    marginTop: 4, color: 'rgba(245,249,255,0.82)', fontSize: 9, lineHeight: 13,
-    fontWeight: '600',
-  },
-  galleryOpenRow: { marginTop: 9, flexDirection: 'row', alignItems: 'center', gap: 2 },
-  galleryOpenText: { color: '#FFFFFF', fontSize: 9, lineHeight: 12, fontWeight: '900' },
-  gallerySide: { width: 111, gap: 9 },
-  galleryThumb: {
-    flex: 1, overflow: 'hidden', borderRadius: 22, borderWidth: 1.4,
-    borderColor: 'rgba(255,255,255,0.9)', shadowColor: '#234F72',
-    shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.18, shadowRadius: 15,
+  badgeHalo: {
+    width: 78, height: 78, borderRadius: 39, shadowColor: '#49627C',
+    shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.18, shadowRadius: 13,
     elevation: 4,
   },
-  galleryThumbTitle: {
-    position: 'absolute', left: 9, right: 9, bottom: 9, color: '#FFFFFF',
-    fontSize: 9, lineHeight: 12, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.45)',
-    textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+  badgeOuter: { flex: 1, borderRadius: 39, padding: 5, alignItems: 'center', justifyContent: 'center' },
+  badgeRim: {
+    flex: 1, width: '100%', borderRadius: 34, padding: 3, backgroundColor: 'rgba(255,255,255,0.78)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.88)',
   },
-  galleryAdd: {
-    flex: 1, borderRadius: 22, alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: 'rgba(232,244,255,0.72)', borderWidth: 1,
-    borderColor: 'rgba(110,182,237,0.32)',
+  badgeInner: { flex: 1, borderRadius: 30, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  badgeGlint: {
+    position: 'absolute', width: 38, height: 8, top: 7, left: 8, borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.72)', transform: [{ rotate: '-18deg' }],
   },
-  galleryAddText: { color: COLORS.blue, fontSize: 8.5, lineHeight: 11, fontWeight: '900' },
-  galleryDots: { minHeight: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
-  galleryDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(106,133,160,0.24)' },
-  galleryDotActive: { width: 22, backgroundColor: COLORS.blue },
-  achievementRail: { gap: 10, paddingBottom: 5, paddingRight: 4 },
-  achievementCard: {
-    width: 146, minHeight: 146, overflow: 'hidden', padding: 12, borderRadius: 23,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', shadowColor: '#3A617E',
-    shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 17,
+  badgeName: { marginTop: 11, color: COLORS.text, fontSize: 11, lineHeight: 14, fontWeight: '900' },
+  badgeState: { marginTop: 3, color: COLORS.muted, fontSize: 7.5, lineHeight: 10, fontWeight: '700' },
+  badgeSelectionLine: { width: 28, height: 3, marginTop: 8, borderRadius: 2, backgroundColor: COLORS.subtle, opacity: 0.2 },
+  badgeDetail: {
+    minHeight: 194, overflow: 'hidden', padding: 15, borderRadius: 26, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.92)', shadowColor: '#3E6585',
+    shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.13, shadowRadius: 24,
+    elevation: 4, ...GLASS_WEB,
+  },
+  badgeDetailLine: {
+    position: 'absolute', width: 260, height: 110, right: -92, top: -34,
+    borderWidth: 18, borderRadius: 28, transform: [{ rotate: '-18deg' }],
+  },
+  badgeDetailTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  badgeDetailIcon: {
+    width: 48, height: 48, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.66)', borderWidth: 1,
+  },
+  badgeDetailCopy: { flex: 1, minWidth: 0 },
+  badgeDetailEyebrow: { fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 0.85 },
+  badgeDetailTitle: { marginTop: 2, color: COLORS.text, fontSize: 17, lineHeight: 21, fontWeight: '900' },
+  badgeStatusPill: { minHeight: 28, paddingHorizontal: 9, alignItems: 'center', justifyContent: 'center', borderRadius: 14 },
+  badgeStatusText: { fontSize: 8, lineHeight: 11, fontWeight: '900' },
+  badgeDescription: { marginTop: 13, color: COLORS.muted, fontSize: 10, lineHeight: 15, fontWeight: '600' },
+  badgeProgressRow: { marginTop: 13, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  badgeProgressTrack: { flex: 1, height: 6, overflow: 'hidden', borderRadius: 3, backgroundColor: 'rgba(88,108,135,0.14)' },
+  badgeProgressFill: { height: '100%', borderRadius: 3 },
+  badgeProgressText: { width: 72, textAlign: 'right', color: COLORS.muted, fontSize: 8, lineHeight: 11, fontWeight: '800' },
+  badgeDetailAction: { marginTop: 13, flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start' },
+  badgeDetailActionText: { fontSize: 9, lineHeight: 12, fontWeight: '900' },
+  diaryCard: {
+    minHeight: 164, overflow: 'hidden', padding: 16, borderRadius: 27, flexDirection: 'row',
+    alignItems: 'center', borderWidth: 1, borderColor: 'rgba(205,221,255,0.54)',
+    shadowColor: '#4B4FB3', shadowOffset: { width: 0, height: 13 }, shadowOpacity: 0.25,
+    shadowRadius: 24, elevation: 6,
+  },
+  diaryNotebook: {
+    position: 'absolute', width: 132, height: 102, right: -10, top: 18,
+    borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.21)', transform: [{ rotate: '-7deg' }],
+  },
+  diaryRule: { position: 'absolute', left: 15, right: 15, height: 1, backgroundColor: 'rgba(255,255,255,0.17)' },
+  diaryIcon: {
+    width: 56, height: 56, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.34)',
+  },
+  diaryCopy: { flex: 1, minWidth: 0, marginLeft: 13, paddingRight: 3 },
+  diaryEyebrow: { color: 'rgba(236,242,255,0.75)', fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 1 },
+  diaryTitle: { marginTop: 2, color: '#FFFFFF', fontSize: 22, lineHeight: 26, fontWeight: '900' },
+  diarySubtitle: { marginTop: 5, maxWidth: 210, color: 'rgba(244,247,255,0.78)', fontSize: 9, lineHeight: 13, fontWeight: '600' },
+  diaryAction: {
+    position: 'absolute', left: 85, bottom: 16, minHeight: 32, paddingHorizontal: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
+  },
+  diaryActionText: { color: '#FFFFFF', fontSize: 9, lineHeight: 12, fontWeight: '900' },
+  toolPair: { flexDirection: 'row', gap: 10 },
+  expressionCard: {
+    flex: 1, minWidth: 0, minHeight: 188, overflow: 'hidden', padding: 14, borderRadius: 25,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.92)', shadowColor: '#A05D47',
+    shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.12, shadowRadius: 20,
     elevation: 3,
   },
-  achievementCardActive: { borderColor: 'rgba(49,138,245,0.48)', shadowOpacity: 0.22 },
-  achievementIcon: {
-    width: 48, height: 48, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
+  mapCard: {
+    flex: 1, minWidth: 0, minHeight: 188, overflow: 'hidden', padding: 14, borderRadius: 25,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.92)', shadowColor: '#39795F',
+    shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.12, shadowRadius: 20,
+    elevation: 3,
   },
-  achievementName: {
-    marginTop: 13, color: COLORS.text, fontSize: 12, lineHeight: 16, fontWeight: '900',
+  expressionTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  expressionIcon: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.58)' },
+  mapTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  mapIcon: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.58)' },
+  toolEyebrowOrange: { marginTop: 15, color: COLORS.coral, fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 0.9 },
+  toolEyebrowGreen: { marginTop: 15, color: COLORS.green, fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 0.9 },
+  toolTitle: { marginTop: 2, color: COLORS.text, fontSize: 17, lineHeight: 21, fontWeight: '900' },
+  toolDescription: { marginTop: 4, color: COLORS.muted, fontSize: 8.5, lineHeight: 12, fontWeight: '600' },
+  phrasePreview: {
+    height: 34, marginTop: 13, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.66)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.88)',
   },
-  achievementStatus: {
-    marginTop: 4, color: COLORS.muted, fontSize: 8, lineHeight: 11, fontWeight: '700',
+  phrasePreviewText: { flex: 1, color: '#974D3E', fontSize: 8.5, lineHeight: 11, fontWeight: '800' },
+  phraseDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: COLORS.coral },
+  mapPathOne: {
+    position: 'absolute', width: 170, height: 62, left: 16, bottom: 2, borderTopWidth: 2,
+    borderTopColor: 'rgba(20,168,115,0.20)', borderRadius: 50, transform: [{ rotate: '-14deg' }],
   },
-  achievementAccent: {
-    position: 'absolute', left: 12, right: 12, bottom: 9, height: 3, borderRadius: 2,
-    opacity: 0.7,
+  mapPathTwo: {
+    position: 'absolute', width: 130, height: 72, left: 45, bottom: -12, borderTopWidth: 1,
+    borderTopColor: 'rgba(22,124,243,0.18)', borderRadius: 50, transform: [{ rotate: '11deg' }],
   },
-  toolGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  toolCard: {
-    width: '47%', flexGrow: 1, minHeight: 146, overflow: 'hidden', padding: 13,
-    borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)',
-    shadowColor: '#3A617E', shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.12,
-    shadowRadius: 18, elevation: 3,
+  mapNodes: { marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  mapNode: { width: 9, height: 9, borderRadius: 5, backgroundColor: 'rgba(20,168,115,0.3)', borderWidth: 2, borderColor: '#FFFFFF' },
+  mapNodeActive: { width: 14, height: 14, borderRadius: 7, backgroundColor: COLORS.green, shadowColor: COLORS.green, shadowOpacity: 0.35, shadowRadius: 8 },
+  settingsStrip: {
+    minHeight: 70, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 11,
+    borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.58)', borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.92)', shadowColor: '#50667D',
+    shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 18,
+    ...GLASS_WEB,
   },
-  toolPattern: {
-    position: 'absolute', width: 122, height: 122, borderRadius: 61, right: -50, top: -50,
-    borderWidth: 22,
-  },
-  toolTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  toolIcon: {
-    width: 42, height: 42, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
-  },
-  toolMeta: {
-    marginTop: 14, fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 0.9,
-  },
-  toolTitle: {
-    marginTop: 3, color: COLORS.text, fontSize: 14, lineHeight: 18, fontWeight: '900',
-  },
-  toolSub: {
-    marginTop: 4, color: COLORS.muted, fontSize: 8.5, lineHeight: 12, fontWeight: '700',
-  },
+  settingsIcon: { width: 42, height: 42, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(226,235,243,0.78)' },
+  settingsCopy: { flex: 1, minWidth: 0 },
+  settingsTitle: { color: COLORS.text, fontSize: 13, lineHeight: 17, fontWeight: '900' },
+  settingsSubtitle: { marginTop: 2, color: COLORS.muted, fontSize: 8.5, lineHeight: 12, fontWeight: '600' },
   logoutButton: {
     height: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.44)', borderWidth: 1,
+    borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.42)', borderWidth: 1,
     borderColor: 'rgba(226,176,176,0.34)',
   },
   logoutText: { color: COLORS.coral, fontSize: 11, fontWeight: '800' },
