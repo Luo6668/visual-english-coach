@@ -16,7 +16,6 @@ import {
   RefreshCw,
   Settings,
   Sparkles,
-  Star,
   Target,
 } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
@@ -208,6 +207,9 @@ export default function ProfileScreen() {
   const selectedUnlocked = curLevel.level >= selectedBadge.level;
   const selectedRequiredXp = LEVELS.find((level) => level.level === selectedBadge.level)?.minXp ?? 0;
   const selectedProgress = Math.min(totalXp / Math.max(selectedRequiredXp, 1), 1);
+  const milestoneXp = nextLevel?.minXp ?? totalXp;
+  const ringRadius = 29;
+  const ringCircumference = 2 * Math.PI * ringRadius;
 
   const weekData = useMemo(() => {
     const today = new Date();
@@ -327,8 +329,8 @@ export default function ProfileScreen() {
             style={styles.identityPanel}
           >
             <LinearGradient
-              colors={['#DDF1FF', '#ECE8FF', '#FFF1E6', '#E4F8EF']}
-              locations={[0, 0.38, 0.72, 1]}
+              colors={['#DDF4FF', '#EAE9FF', '#FFF3E8', '#E2F8EE']}
+              locations={[0, 0.36, 0.7, 1]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={StyleSheet.absoluteFillObject}
@@ -348,112 +350,157 @@ export default function ProfileScreen() {
               style={styles.identitySheen}
             />
 
-            <View style={styles.identityTop}>
-              <View style={styles.avatarShell}>
-                <LinearGradient
-                  colors={['#48D8FF', '#287FF4', '#7B58E7']}
-                  style={StyleSheet.absoluteFillObject}
-                />
-                <View style={styles.avatarInner}>
-                  <Text style={styles.avatarInitial}>{displayInitial}</Text>
+            <View style={styles.boardingPassLayout}>
+              <View style={styles.passportBody}>
+                <View style={styles.identityTopCompact}>
+                  <View style={styles.avatarShell}>
+                    <LinearGradient
+                      colors={['#48D8FF', '#287FF4', '#7B58E7']}
+                      style={StyleSheet.absoluteFillObject}
+                    />
+                    <View style={styles.avatarInner}>
+                      <Text style={styles.avatarInitial}>{displayInitial}</Text>
+                    </View>
+                    <View style={styles.avatarStatus} />
+                  </View>
+                  <View style={styles.identityCopy}>
+                    <Text style={styles.identityStatus}>ACTIVE LEARNING PASS</Text>
+                    <Text numberOfLines={1} style={styles.displayName}>{displayName}</Text>
+                    <Text style={styles.levelName}>{curLevel.name} · {activeBadge?.name ?? '成长学员'}</Text>
+                  </View>
                 </View>
-                <View style={styles.avatarStatus} />
-              </View>
-              <View style={styles.identityCopy}>
-                <Text style={styles.identityStatus}>LEARNING PASSPORT · ACTIVE</Text>
-                <Text numberOfLines={1} style={styles.displayName}>{displayName}</Text>
-                <Text style={styles.levelName}>{curLevel.name} · LV.{curLevel.level}</Text>
-                <View style={styles.activeTitleRow}>
-                  <Star size={12} color={activeBadge?.color ?? COLORS.purple} fill={activeBadge?.color ?? COLORS.purple} />
-                  <Text style={[styles.activeTitleText, { color: activeBadge?.color ?? COLORS.purple }]}>
-                    {activeBadge?.name ?? '继续学习解锁成长称号'}
-                  </Text>
-                </View>
-              </View>
-              <LinearGradient
-                colors={['#168AF7', '#5365EA', '#7658E8']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.levelMonogram}
-              >
-                <Text style={styles.levelMonogramLabel}>LEVEL</Text>
-                <Text style={styles.levelMonogramValue}>{curLevel.level}</Text>
-                <Text style={styles.levelMonogramMax}>/ 10</Text>
-                <View style={styles.levelMonogramNotch} />
-              </LinearGradient>
-            </View>
 
-            <View style={styles.progressBlock}>
-              <View style={styles.progressCopyRow}>
-                <View style={styles.progressCopy}>
-                  <Text style={styles.progressEyebrow}>NEXT MILESTONE</Text>
+                <View style={styles.milestoneCopy}>
+                  <Text style={styles.progressEyebrow}>NEXT CHECKPOINT</Text>
                   <Text style={styles.progressTitle}>
-                    {nextLevel ? `还差 ${xpToNext} XP 到达「${nextLevel.name}」` : '已完成全部成长阶段'}
+                    {nextLevel ? `前往 LV.${nextLevel.level}「${nextLevel.name}」` : '已抵达最高成长等级'}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.milestoneReward}>
+                    {nextLevel ? `再积累 ${xpToNext} XP · ${nextLevel.reward}` : '继续保持真实场景表达'}
                   </Text>
                 </View>
-                <Text style={styles.totalXp}>{totalXp} XP</Text>
-              </View>
-              <View style={styles.progressTrack}>
-                <LinearGradient
-                  colors={['#27C8FF', '#147CF5', '#7658E8', '#EF7B63']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[styles.progressFill, { width: `${progressPercent}%` }]}
-                />
-                <View style={[styles.progressMarker, { left: `${Math.min(progressPercent, 97)}%` }]} />
-              </View>
-              <View style={styles.progressTicks}>
-                {Array.from({ length: 8 }).map((_, index) => (
-                  <View key={index} style={styles.progressTick} />
-                ))}
-              </View>
-            </View>
 
-            <View style={styles.identityActions}>
-              <MotionPressable
-                onPress={() => router.push('/(app)/(tabs)/learning' as any)}
-                accessibilityRole="button"
-                accessibilityLabel="继续今天的学习"
-                pressedScale={0.96}
-                hoverLift={3}
-                hoverTilt={1}
-                style={styles.continueButton}
-              >
-                <LinearGradient
-                  colors={['#168CF7', '#6358E8']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={StyleSheet.absoluteFillObject}
-                />
-                <Target size={18} color="#FFFFFF" />
-                <View style={styles.continueButtonCopy}>
-                  <Text style={styles.continueButtonTitle}>继续今天的学习</Text>
-                  <Text numberOfLines={1} style={styles.continueButtonMeta}>
-                    {nextLevel?.reward ?? '回顾已经掌握的内容'}
-                  </Text>
+                <View style={styles.xpRunway}>
+                  <View style={styles.runwayTrack}>
+                    <LinearGradient
+                      colors={['#1BC6F7', '#217FF4', '#7459E8']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={[styles.runwayFill, { width: `${Math.max(progressPercent, 3)}%` }]}
+                    />
+                    <View style={styles.runwayStartNode} />
+                    <View style={[styles.runwayNowNode, { left: `${Math.min(Math.max(progressPercent, 4), 94)}%` }]}>
+                      <View style={styles.runwayNowCore} />
+                    </View>
+                    <View style={styles.runwayEndNode} />
+                  </View>
+                  <View style={styles.runwayLabels}>
+                    <View>
+                      <Text style={styles.runwayLabel}>LV.{curLevel.level} 起点</Text>
+                      <Text style={styles.runwayValue}>{curLevel.minXp} XP</Text>
+                    </View>
+                    <View style={styles.runwayCurrentLabel}>
+                      <Text style={styles.runwayLabel}>当前航点</Text>
+                      <Text style={[styles.runwayValue, styles.runwayValueActive]}>{totalXp} XP</Text>
+                    </View>
+                    <View style={styles.runwayDestinationLabel}>
+                      <Text style={styles.runwayLabel}>目标</Text>
+                      <Text style={styles.runwayValue}>{milestoneXp} XP</Text>
+                    </View>
+                  </View>
                 </View>
-                <ChevronRight size={18} color="#FFFFFF" />
-              </MotionPressable>
+
+                <View style={styles.identityActions}>
+                  <MotionPressable
+                    onPress={() => router.push('/(app)/(tabs)/learning' as any)}
+                    accessibilityRole="button"
+                    accessibilityLabel="继续今天的学习"
+                    pressedScale={0.95}
+                    hoverLift={3}
+                    hoverTilt={1.4}
+                    style={styles.continueButton}
+                  >
+                    <LinearGradient
+                      colors={['#168CF7', '#4F67ED']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={StyleSheet.absoluteFillObject}
+                    />
+                    <Target size={16} color="#FFFFFF" />
+                    <Text style={styles.continueButtonTitle}>继续学习</Text>
+                    <ChevronRight size={16} color="#FFFFFF" />
+                  </MotionPressable>
+                  <MotionPressable
+                    onPress={() => router.push('/(app)/(tabs)/growth' as any)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`查看连续学习 ${streak} 天`}
+                    pressedScale={0.92}
+                    hoverLift={3}
+                    style={styles.streakButton}
+                  >
+                    <Flame size={15} color={COLORS.green} fill={COLORS.green} />
+                    <Text style={styles.streakValue}>{streak}</Text>
+                    <Text style={styles.streakLabel}>天</Text>
+                  </MotionPressable>
+                </View>
+
+                <Text style={styles.passportSerial}>
+                  VEC / {String(curLevel.level).padStart(2, '0')} / {String(totalXp).padStart(4, '0')}
+                </Text>
+              </View>
+
               <MotionPressable
                 onPress={() => router.push('/(app)/(tabs)/growth' as any)}
                 accessibilityRole="button"
-                accessibilityLabel={`查看连续学习 ${streak} 天`}
-                pressedScale={0.92}
-                hoverLift={3}
-                style={styles.streakButton}
+                accessibilityLabel={`查看等级 ${curLevel.level} 的成长详情`}
+                pressedScale={0.96}
+                hoverLift={4}
+                hoverTilt={2}
+                style={styles.levelTicket}
               >
-                <Flame size={17} color={COLORS.green} fill={COLORS.green} />
-                <Text style={styles.streakValue}>{streak}</Text>
-                <Text style={styles.streakLabel}>天</Text>
+                <LinearGradient
+                  colors={['#138AF7', '#405EE9', '#7553DF']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0.95, y: 1 }}
+                  style={StyleSheet.absoluteFillObject}
+                />
+                <View pointerEvents="none" style={styles.ticketGlow} />
+                <View pointerEvents="none" style={styles.ticketPerforation} />
+                <View pointerEvents="none" style={[styles.ticketCutout, styles.ticketCutoutTop]} />
+                <View pointerEvents="none" style={[styles.ticketCutout, styles.ticketCutoutBottom]} />
+                <Text style={styles.ticketEyebrow}>LEVEL PASS</Text>
+                <View style={styles.levelRing}>
+                  <Svg width="76" height="76" viewBox="0 0 76 76">
+                    <Circle cx="38" cy="38" r={ringRadius} fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" strokeWidth="5" />
+                    <Circle
+                      cx="38"
+                      cy="38"
+                      r={ringRadius}
+                      fill="none"
+                      stroke="#FFFFFF"
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                      strokeDasharray={`${ringCircumference} ${ringCircumference}`}
+                      strokeDashoffset={ringCircumference * (1 - progressPercent / 100)}
+                      transform="rotate(-90 38 38)"
+                    />
+                  </Svg>
+                  <View style={styles.levelRingCopy}>
+                    <Text style={styles.levelMonogramValue}>{curLevel.level}</Text>
+                    <Text style={styles.levelMonogramMax}>/ 10</Text>
+                  </View>
+                </View>
+                <View style={styles.ticketXpBlock}>
+                  <Text style={styles.ticketXp}>{totalXp}</Text>
+                  <Text style={styles.ticketXpUnit}>XP EARNED</Text>
+                </View>
+                <View style={styles.passportScan}>
+                  {[3, 1, 4, 2, 2, 5, 1, 3, 4, 2, 5, 2].map((height, index) => (
+                    <View key={index} style={[styles.passportScanBar, { height: height * 3 }]} />
+                  ))}
+                </View>
+                <Text style={styles.ticketOpen}>查看成长</Text>
               </MotionPressable>
-            </View>
-            <View style={styles.passportFooter}>
-              <Text style={styles.passportSerial}>VEC · {String(curLevel.level).padStart(2, '0')} · {String(totalXp).padStart(4, '0')}</Text>
-              <View style={styles.passportScan}>
-                {[2, 1, 3, 2, 1, 3, 1, 2, 3, 1].map((height, index) => (
-                  <View key={index} style={[styles.passportScanBar, { height: height * 3 }]} />
-                ))}
-              </View>
             </View>
           </Animated.View>
 
@@ -903,13 +950,13 @@ const styles = StyleSheet.create({
     elevation: 3, ...GLASS_WEB,
   },
   identityPanel: {
-    minHeight: 306, overflow: 'hidden', borderRadius: 30, borderWidth: 1.2,
-    borderColor: 'rgba(255,255,255,0.92)', padding: 18, shadowColor: '#426E98',
-    shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.18, shadowRadius: 36,
+    minHeight: 292, overflow: 'hidden', borderRadius: 30, borderWidth: 1.2,
+    borderColor: 'rgba(255,255,255,0.94)', padding: 13, shadowColor: '#426E98',
+    shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.2, shadowRadius: 38,
     elevation: 8, ...GLASS_WEB,
   },
   identityFineLineOne: {
-    position: 'absolute', width: 310, height: 118, right: -118, top: 12,
+    position: 'absolute', width: 310, height: 118, right: -108, top: 15,
     borderWidth: 1, borderColor: 'rgba(82,104,219,0.14)', borderRadius: 18,
     transform: [{ rotate: '-14deg' }],
   },
@@ -919,99 +966,128 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '-14deg' }],
   },
   identityColorRail: {
-    position: 'absolute', left: 0, top: 30, bottom: 30, width: 5,
+    position: 'absolute', left: 0, top: 28, bottom: 28, width: 4,
     borderTopRightRadius: 5, borderBottomRightRadius: 5,
   },
   identitySheen: {
-    position: 'absolute', width: 92, height: 430, top: -130, left: '54%',
+    position: 'absolute', width: 86, height: 430, top: -130, left: '39%',
     transform: [{ rotate: '18deg' }],
   },
-  identityTop: { flexDirection: 'row', alignItems: 'center', gap: 13 },
+  boardingPassLayout: { flex: 1, minHeight: 266, flexDirection: 'row', gap: 10 },
+  passportBody: { flex: 1, minWidth: 0, paddingTop: 5, paddingLeft: 5, paddingBottom: 2 },
+  identityTopCompact: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatarShell: {
-    width: 70, height: 70, padding: 3, borderRadius: 24, overflow: 'hidden',
+    width: 51, height: 51, padding: 2.5, borderRadius: 17, overflow: 'hidden',
     alignItems: 'center', justifyContent: 'center', borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.8)', shadowColor: '#4876DD',
-    shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.3, shadowRadius: 18,
+    shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.25, shadowRadius: 14,
     elevation: 5,
   },
   avatarInner: {
-    width: '100%', height: '100%', borderRadius: 21, alignItems: 'center',
+    width: '100%', height: '100%', borderRadius: 14, alignItems: 'center',
     justifyContent: 'center', backgroundColor: 'rgba(250,253,255,0.9)', borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.9)',
   },
-  avatarInitial: { color: COLORS.blueDark, fontSize: 28, lineHeight: 32, fontWeight: '900' },
+  avatarInitial: { color: COLORS.blueDark, fontSize: 22, lineHeight: 26, fontWeight: '900' },
   avatarStatus: {
-    position: 'absolute', right: 4, bottom: 4, width: 14, height: 14, borderRadius: 7,
+    position: 'absolute', right: 2, bottom: 2, width: 12, height: 12, borderRadius: 6,
     backgroundColor: COLORS.green, borderWidth: 2, borderColor: '#FFFFFF',
   },
   identityCopy: { flex: 1, minWidth: 0 },
   identityStatus: {
-    marginBottom: 3, color: COLORS.blue, fontSize: 6.5, lineHeight: 9,
-    fontWeight: '900', letterSpacing: 0.85,
+    marginBottom: 1, color: COLORS.blue, fontSize: 6, lineHeight: 8,
+    fontWeight: '900', letterSpacing: 0.95,
   },
-  displayName: { color: COLORS.text, fontSize: 22, lineHeight: 26, fontWeight: '900' },
-  levelName: { marginTop: 2, color: COLORS.muted, fontSize: 11, lineHeight: 15, fontWeight: '700' },
-  activeTitleRow: { marginTop: 7, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  activeTitleText: { fontSize: 9, lineHeight: 12, fontWeight: '900' },
-  levelMonogram: {
-    width: 72, minHeight: 86, paddingVertical: 8, borderRadius: 22,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.44)', shadowColor: '#4E57D8',
-    shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.26, shadowRadius: 16,
-  },
-  levelMonogramLabel: { color: 'rgba(235,243,255,0.72)', fontSize: 6.5, lineHeight: 8, fontWeight: '900', letterSpacing: 1 },
-  levelMonogramValue: { color: '#FFFFFF', fontSize: 30, lineHeight: 33, fontWeight: '900' },
-  levelMonogramMax: { color: 'rgba(235,243,255,0.72)', fontSize: 8, lineHeight: 10, fontWeight: '800' },
-  levelMonogramNotch: {
-    position: 'absolute', left: -4, top: 39, width: 8, height: 8, borderRadius: 4,
-    backgroundColor: '#E9EAFC', borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)',
-  },
-  progressBlock: { marginTop: 22 },
-  progressCopyRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
-  progressCopy: { flex: 1, minWidth: 0 },
+  displayName: { color: COLORS.text, fontSize: 19, lineHeight: 22, fontWeight: '900' },
+  levelName: { marginTop: 1, color: COLORS.muted, fontSize: 8.5, lineHeight: 12, fontWeight: '700' },
+  milestoneCopy: { marginTop: 17 },
   progressEyebrow: { color: COLORS.blue, fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 1.1 },
-  progressTitle: { marginTop: 3, color: COLORS.text, fontSize: 13, lineHeight: 18, fontWeight: '900' },
-  totalXp: { color: COLORS.purple, fontSize: 15, lineHeight: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  progressTrack: {
-    height: 10, marginTop: 12, overflow: 'hidden', borderRadius: 99,
-    backgroundColor: 'rgba(92,110,148,0.14)', borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.82)',
+  progressTitle: { marginTop: 3, color: COLORS.text, fontSize: 13, lineHeight: 17, fontWeight: '900' },
+  milestoneReward: { marginTop: 3, color: COLORS.muted, fontSize: 7.2, lineHeight: 10, fontWeight: '700' },
+  xpRunway: { marginTop: 16 },
+  runwayTrack: {
+    height: 4, borderRadius: 2, backgroundColor: 'rgba(91,108,142,0.15)',
+    borderWidth: 0.6, borderColor: 'rgba(255,255,255,0.8)',
   },
-  progressFill: { height: '100%', borderRadius: 99 },
-  progressMarker: {
-    position: 'absolute', top: -3, width: 15, height: 15, marginLeft: -7,
-    borderRadius: 8, backgroundColor: '#FFFFFF', borderWidth: 3, borderColor: '#7658E8',
-    shadowColor: '#7658E8', shadowOpacity: 0.32, shadowRadius: 7,
+  runwayFill: { height: '100%', borderRadius: 2 },
+  runwayStartNode: {
+    position: 'absolute', left: -2, top: -3, width: 10, height: 10, borderRadius: 5,
+    backgroundColor: '#28BFF5', borderWidth: 2, borderColor: '#FFFFFF',
   },
-  progressTicks: { marginTop: 5, flexDirection: 'row', justifyContent: 'space-between' },
-  progressTick: { width: 1, height: 3, backgroundColor: 'rgba(80,103,137,0.22)' },
-  identityActions: { marginTop: 16, flexDirection: 'row', gap: 9 },
+  runwayNowNode: {
+    position: 'absolute', top: -7, width: 17, height: 17, marginLeft: -8.5,
+    borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF',
+    borderWidth: 2.5, borderColor: '#6D5CE7', shadowColor: '#675CE5',
+    shadowOpacity: 0.3, shadowRadius: 7, elevation: 3,
+  },
+  runwayNowCore: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#6D5CE7' },
+  runwayEndNode: {
+    position: 'absolute', right: -2, top: -3, width: 10, height: 10, borderRadius: 5,
+    backgroundColor: 'rgba(255,255,255,0.95)', borderWidth: 2, borderColor: '#AEB8C8',
+  },
+  runwayLabels: { marginTop: 10, flexDirection: 'row', justifyContent: 'space-between' },
+  runwayCurrentLabel: { alignItems: 'center' },
+  runwayDestinationLabel: { alignItems: 'flex-end' },
+  runwayLabel: { color: COLORS.subtle, fontSize: 5.8, lineHeight: 8, fontWeight: '800' },
+  runwayValue: { marginTop: 1, color: COLORS.muted, fontSize: 7, lineHeight: 9, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  runwayValueActive: { color: COLORS.purple },
+  identityActions: { marginTop: 16, flexDirection: 'row', gap: 7 },
   continueButton: {
-    flex: 1, minHeight: 60, overflow: 'hidden', paddingHorizontal: 11,
-    flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 21,
+    flex: 1, minHeight: 43, overflow: 'hidden', paddingHorizontal: 10,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 16,
     borderWidth: 1, borderColor: 'rgba(168,223,255,0.65)', shadowColor: '#0875F7',
-    shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 18,
+    shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.22, shadowRadius: 15,
     elevation: 4,
   },
-  continueButtonCopy: { flex: 1, minWidth: 0 },
-  continueButtonTitle: { color: '#FFFFFF', fontSize: 12, lineHeight: 16, fontWeight: '900' },
-  continueButtonMeta: { marginTop: 2, color: 'rgba(230,242,255,0.76)', fontSize: 7.5, lineHeight: 10, fontWeight: '700' },
+  continueButtonTitle: { color: '#FFFFFF', fontSize: 10.5, lineHeight: 14, fontWeight: '900' },
   streakButton: {
-    width: 70, minHeight: 60, flexDirection: 'row', alignItems: 'center',
+    width: 55, minHeight: 43, flexDirection: 'row', alignItems: 'center',
     justifyContent: 'center', gap: 3, borderRadius: 21, backgroundColor: 'rgba(242,255,249,0.72)',
     borderWidth: 1, borderColor: 'rgba(70,183,132,0.26)',
   },
-  streakValue: { color: COLORS.green, fontSize: 17, lineHeight: 20, fontWeight: '900' },
-  streakLabel: { color: COLORS.green, fontSize: 8, lineHeight: 11, fontWeight: '800' },
-  passportFooter: {
-    marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-  },
+  streakValue: { color: COLORS.green, fontSize: 14, lineHeight: 17, fontWeight: '900' },
+  streakLabel: { color: COLORS.green, fontSize: 7, lineHeight: 9, fontWeight: '800' },
   passportSerial: {
-    color: 'rgba(70,91,120,0.52)', fontSize: 6.5, lineHeight: 9,
-    fontWeight: '900', letterSpacing: 1,
+    marginTop: 10, color: 'rgba(70,91,120,0.48)', fontSize: 5.8, lineHeight: 8,
+    fontWeight: '900', letterSpacing: 1.25,
   },
-  passportScan: { height: 10, flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
-  passportScanBar: { width: 2, borderRadius: 1, backgroundColor: 'rgba(62,82,116,0.38)' },
+  levelTicket: {
+    width: 98, minHeight: 266, overflow: 'hidden', paddingVertical: 15,
+    alignItems: 'center', borderRadius: 25, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.48)', shadowColor: '#3F54D5',
+    shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.3, shadowRadius: 21,
+    elevation: 7,
+  },
+  ticketGlow: {
+    position: 'absolute', width: 94, height: 94, top: 20, right: -28,
+    borderRadius: 47, backgroundColor: 'rgba(100,225,255,0.2)',
+  },
+  ticketPerforation: {
+    position: 'absolute', left: 0, top: 18, bottom: 18, borderLeftWidth: 1,
+    borderStyle: 'dashed', borderColor: 'rgba(255,255,255,0.34)',
+  },
+  ticketCutout: {
+    position: 'absolute', left: -6, width: 12, height: 12, borderRadius: 6,
+    backgroundColor: '#E7EEFB', borderWidth: 1, borderColor: 'rgba(255,255,255,0.86)',
+  },
+  ticketCutoutTop: { top: 43 },
+  ticketCutoutBottom: { bottom: 43 },
+  ticketEyebrow: {
+    color: 'rgba(238,245,255,0.76)', fontSize: 6.2, lineHeight: 8,
+    fontWeight: '900', letterSpacing: 1.25,
+  },
+  levelRing: { width: 76, height: 76, marginTop: 11, alignItems: 'center', justifyContent: 'center' },
+  levelRingCopy: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  levelMonogramValue: { color: '#FFFFFF', fontSize: 27, lineHeight: 29, fontWeight: '900' },
+  levelMonogramMax: { color: 'rgba(235,243,255,0.74)', fontSize: 7, lineHeight: 9, fontWeight: '800' },
+  ticketXpBlock: { marginTop: 12, alignItems: 'center' },
+  ticketXp: { color: '#FFFFFF', fontSize: 16, lineHeight: 19, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  ticketXpUnit: { marginTop: 1, color: 'rgba(235,243,255,0.68)', fontSize: 5.5, lineHeight: 8, fontWeight: '900', letterSpacing: 0.75 },
+  ticketOpen: { marginTop: 8, color: 'rgba(255,255,255,0.88)', fontSize: 6.8, lineHeight: 9, fontWeight: '900' },
+  passportScan: { height: 17, marginTop: 13, flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
+  passportScanBar: {
+    width: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.58)',
+  },
   signalSection: { gap: 10 },
   signalHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   signalTitle: { marginTop: 1, color: COLORS.text, fontSize: 20, lineHeight: 24, fontWeight: '900' },
