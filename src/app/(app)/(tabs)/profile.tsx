@@ -352,6 +352,34 @@ export default function ProfileScreen() {
 
             <View style={styles.boardingPassLayout}>
               <View style={styles.passportBody}>
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(255,255,255,0.58)', 'rgba(231,246,255,0.2)', 'rgba(244,237,255,0.32)', 'rgba(255,255,255,0.16)']}
+                  locations={[0, 0.32, 0.7, 1]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFillObject}
+                />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(65,209,255,0.34)', 'rgba(74,118,247,0.08)', 'rgba(255,255,255,0)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0.8 }}
+                  style={styles.glassPrismTop}
+                />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(255,255,255,0)', 'rgba(255,181,148,0.2)', 'rgba(122,87,232,0.18)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.glassPrismBottom}
+                />
+                <View pointerEvents="none" style={styles.glassContour} />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.9)', 'rgba(255,255,255,0)']}
+                  style={styles.glassSpecular}
+                />
                 <View style={styles.identityTopCompact}>
                   <View style={styles.avatarShell}>
                     <LinearGradient
@@ -364,7 +392,10 @@ export default function ProfileScreen() {
                     <View style={styles.avatarStatus} />
                   </View>
                   <View style={styles.identityCopy}>
-                    <Text style={styles.identityStatus}>ACTIVE LEARNING PASS</Text>
+                    <View style={styles.identityStatusPill}>
+                      <View style={styles.identityStatusDot} />
+                      <Text style={styles.identityStatus}>REAL DATA · ACTIVE PASS</Text>
+                    </View>
                     <Text numberOfLines={1} style={styles.displayName}>{displayName}</Text>
                     <Text style={styles.levelName}>{curLevel.name} · {activeBadge?.name ?? '成长学员'}</Text>
                   </View>
@@ -421,10 +452,17 @@ export default function ProfileScreen() {
                     style={styles.continueButton}
                   >
                     <LinearGradient
-                      colors={['#168CF7', '#4F67ED']}
+                      colors={['rgba(16,143,249,0.9)', 'rgba(78,101,236,0.82)']}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
                       style={StyleSheet.absoluteFillObject}
+                    />
+                    <LinearGradient
+                      pointerEvents="none"
+                      colors={['rgba(255,255,255,0.52)', 'rgba(255,255,255,0)']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 0, y: 1 }}
+                      style={styles.actionGlassHighlight}
                     />
                     <Target size={16} color="#FFFFFF" />
                     <Text style={styles.continueButtonTitle}>继续学习</Text>
@@ -974,7 +1012,30 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '18deg' }],
   },
   boardingPassLayout: { flex: 1, minHeight: 266, flexDirection: 'row', gap: 10 },
-  passportBody: { flex: 1, minWidth: 0, paddingTop: 5, paddingLeft: 5, paddingBottom: 2 },
+  passportBody: {
+    flex: 1, minWidth: 0, overflow: 'hidden', paddingTop: 11, paddingHorizontal: 11,
+    paddingBottom: 8, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1.2, borderColor: 'rgba(255,255,255,0.86)', shadowColor: '#5071B5',
+    shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.16, shadowRadius: 22,
+    elevation: 4, ...GLASS_WEB,
+  },
+  glassPrismTop: {
+    position: 'absolute', width: 190, height: 72, left: -58, top: -24,
+    transform: [{ rotate: '-8deg' }],
+  },
+  glassPrismBottom: {
+    position: 'absolute', width: 220, height: 94, right: -82, bottom: -34,
+    transform: [{ rotate: '9deg' }],
+  },
+  glassContour: {
+    position: 'absolute', width: 210, height: 94, right: -126, top: 54,
+    borderWidth: 1, borderColor: 'rgba(118,88,232,0.14)', borderRadius: 25,
+    transform: [{ rotate: '-17deg' }],
+  },
+  glassSpecular: {
+    position: 'absolute', width: 42, height: 330, left: 70, top: -48,
+    transform: [{ rotate: '19deg' }],
+  },
   identityTopCompact: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatarShell: {
     width: 51, height: 51, padding: 2.5, borderRadius: 17, overflow: 'hidden',
@@ -985,7 +1046,7 @@ const styles = StyleSheet.create({
   },
   avatarInner: {
     width: '100%', height: '100%', borderRadius: 14, alignItems: 'center',
-    justifyContent: 'center', backgroundColor: 'rgba(250,253,255,0.9)', borderWidth: 1,
+    justifyContent: 'center', backgroundColor: 'rgba(250,253,255,0.66)', borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.9)',
   },
   avatarInitial: { color: COLORS.blueDark, fontSize: 22, lineHeight: 26, fontWeight: '900' },
@@ -994,17 +1055,26 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.green, borderWidth: 2, borderColor: '#FFFFFF',
   },
   identityCopy: { flex: 1, minWidth: 0 },
-  identityStatus: {
-    marginBottom: 1, color: COLORS.blue, fontSize: 6, lineHeight: 8,
-    fontWeight: '900', letterSpacing: 0.95,
+  identityStatusPill: {
+    alignSelf: 'flex-start', minHeight: 17, paddingHorizontal: 6, flexDirection: 'row',
+    alignItems: 'center', gap: 4, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.38)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)',
   },
-  displayName: { color: COLORS.text, fontSize: 19, lineHeight: 22, fontWeight: '900' },
+  identityStatusDot: {
+    width: 4, height: 4, borderRadius: 2, backgroundColor: '#1DCB96',
+    shadowColor: '#1DCB96', shadowOpacity: 0.55, shadowRadius: 4,
+  },
+  identityStatus: {
+    color: COLORS.blueDark, fontSize: 5.3, lineHeight: 7,
+    fontWeight: '900', letterSpacing: 0.72,
+  },
+  displayName: { marginTop: 2, color: COLORS.text, fontSize: 19, lineHeight: 22, fontWeight: '900' },
   levelName: { marginTop: 1, color: COLORS.muted, fontSize: 8.5, lineHeight: 12, fontWeight: '700' },
-  milestoneCopy: { marginTop: 17 },
+  milestoneCopy: { marginTop: 14 },
   progressEyebrow: { color: COLORS.blue, fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 1.1 },
   progressTitle: { marginTop: 3, color: COLORS.text, fontSize: 13, lineHeight: 17, fontWeight: '900' },
   milestoneReward: { marginTop: 3, color: COLORS.muted, fontSize: 7.2, lineHeight: 10, fontWeight: '700' },
-  xpRunway: { marginTop: 16 },
+  xpRunway: { marginTop: 14 },
   runwayTrack: {
     height: 4, borderRadius: 2, backgroundColor: 'rgba(91,108,142,0.15)',
     borderWidth: 0.6, borderColor: 'rgba(255,255,255,0.8)',
@@ -1031,24 +1101,27 @@ const styles = StyleSheet.create({
   runwayLabel: { color: COLORS.subtle, fontSize: 5.8, lineHeight: 8, fontWeight: '800' },
   runwayValue: { marginTop: 1, color: COLORS.muted, fontSize: 7, lineHeight: 9, fontWeight: '900', fontVariant: ['tabular-nums'] },
   runwayValueActive: { color: COLORS.purple },
-  identityActions: { marginTop: 16, flexDirection: 'row', gap: 7 },
+  identityActions: { marginTop: 14, flexDirection: 'row', gap: 7 },
   continueButton: {
     flex: 1, minHeight: 43, overflow: 'hidden', paddingHorizontal: 10,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 16,
-    borderWidth: 1, borderColor: 'rgba(168,223,255,0.65)', shadowColor: '#0875F7',
-    shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.22, shadowRadius: 15,
+    borderWidth: 1.2, borderColor: 'rgba(224,247,255,0.86)', shadowColor: '#0875F7',
+    shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 17,
     elevation: 4,
+  },
+  actionGlassHighlight: {
+    position: 'absolute', left: 8, right: 8, top: 2, height: 14, borderRadius: 12,
   },
   continueButtonTitle: { color: '#FFFFFF', fontSize: 10.5, lineHeight: 14, fontWeight: '900' },
   streakButton: {
     width: 55, minHeight: 43, flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: 3, borderRadius: 21, backgroundColor: 'rgba(242,255,249,0.72)',
-    borderWidth: 1, borderColor: 'rgba(70,183,132,0.26)',
+    justifyContent: 'center', gap: 3, borderRadius: 21, backgroundColor: 'rgba(244,255,250,0.44)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.78)', ...GLASS_WEB,
   },
   streakValue: { color: COLORS.green, fontSize: 14, lineHeight: 17, fontWeight: '900' },
   streakLabel: { color: COLORS.green, fontSize: 7, lineHeight: 9, fontWeight: '800' },
   passportSerial: {
-    marginTop: 10, color: 'rgba(70,91,120,0.48)', fontSize: 5.8, lineHeight: 8,
+    marginTop: 8, color: 'rgba(70,91,120,0.48)', fontSize: 5.8, lineHeight: 8,
     fontWeight: '900', letterSpacing: 1.25,
   },
   levelTicket: {
