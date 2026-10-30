@@ -380,24 +380,44 @@ export default function ProfileScreen() {
                   colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.9)', 'rgba(255,255,255,0)']}
                   style={styles.glassSpecular}
                 />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(38,212,255,0)', '#22CFFF', '#4E72F2', '#7A58E8', 'rgba(122,88,232,0)']}
+                  style={styles.identityEdgeSignal}
+                />
                 <View style={styles.identityTopCompact}>
-                  <View style={styles.avatarShell}>
+                  <View style={styles.avatarSeal}>
                     <LinearGradient
-                      colors={['#48D8FF', '#287FF4', '#7B58E7']}
+                      colors={['rgba(255,255,255,0.96)', 'rgba(179,235,255,0.88)', 'rgba(108,91,232,0.84)']}
                       style={StyleSheet.absoluteFillObject}
                     />
-                    <View style={styles.avatarInner}>
+                    <View pointerEvents="none" style={styles.avatarOrbitOuter} />
+                    <View pointerEvents="none" style={styles.avatarOrbitInner} />
+                    <LinearGradient
+                      colors={['rgba(255,255,255,0.96)', 'rgba(225,244,255,0.72)', 'rgba(239,232,255,0.88)']}
+                      style={styles.avatarCore}
+                    >
                       <Text style={styles.avatarInitial}>{displayInitial}</Text>
+                    </LinearGradient>
+                    <View pointerEvents="none" style={styles.avatarGlint} />
+                    <View style={styles.avatarStatus}>
+                      <View style={styles.avatarStatusCore} />
                     </View>
-                    <View style={styles.avatarStatus} />
                   </View>
                   <View style={styles.identityCopy}>
-                    <View style={styles.identityStatusPill}>
-                      <View style={styles.identityStatusDot} />
-                      <Text style={styles.identityStatus}>REAL DATA · ACTIVE PASS</Text>
+                    <View style={styles.identityMetaRow}>
+                      <View style={styles.identityStatusPill}>
+                        <View style={styles.identityStatusDot} />
+                        <Text style={styles.identityStatus}>ACTIVE</Text>
+                      </View>
+                      <Text style={styles.identityCode}>VEC · {String(curLevel.level).padStart(2, '0')}</Text>
                     </View>
                     <Text numberOfLines={1} style={styles.displayName}>{displayName}</Text>
-                    <Text style={styles.levelName}>{curLevel.name} · {activeBadge?.name ?? '成长学员'}</Text>
+                    <View style={styles.identityTitleRow}>
+                      <Text style={styles.levelName}>{curLevel.name}</Text>
+                      <View style={styles.identityTitleDivider} />
+                      <Text numberOfLines={1} style={styles.identityBadgeName}>{activeBadge?.name ?? '成长学员'}</Text>
+                    </View>
                   </View>
                 </View>
 
@@ -1014,7 +1034,9 @@ const styles = StyleSheet.create({
   boardingPassLayout: { flex: 1, minHeight: 266, flexDirection: 'row', gap: 10 },
   passportBody: {
     flex: 1, minWidth: 0, overflow: 'hidden', paddingTop: 11, paddingHorizontal: 11,
-    paddingBottom: 8, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.16)',
+    paddingBottom: 8, borderTopLeftRadius: 31, borderTopRightRadius: 15,
+    borderBottomRightRadius: 30, borderBottomLeftRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.16)',
     borderWidth: 1.2, borderColor: 'rgba(255,255,255,0.86)', shadowColor: '#5071B5',
     shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.16, shadowRadius: 22,
     elevation: 4, ...GLASS_WEB,
@@ -1036,27 +1058,51 @@ const styles = StyleSheet.create({
     position: 'absolute', width: 42, height: 330, left: 70, top: -48,
     transform: [{ rotate: '19deg' }],
   },
+  identityEdgeSignal: {
+    position: 'absolute', left: 0, top: 31, width: 3, height: 114, borderRadius: 3,
+  },
   identityTopCompact: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  avatarShell: {
-    width: 51, height: 51, padding: 2.5, borderRadius: 17, overflow: 'hidden',
+  avatarSeal: {
+    width: 58, height: 58, padding: 3, borderRadius: 29, overflow: 'hidden',
     alignItems: 'center', justifyContent: 'center', borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.8)', shadowColor: '#4876DD',
-    shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.25, shadowRadius: 14,
-    elevation: 5,
+    borderColor: 'rgba(255,255,255,0.96)', shadowColor: '#347DE6',
+    shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 17,
+    elevation: 6,
   },
-  avatarInner: {
-    width: '100%', height: '100%', borderRadius: 14, alignItems: 'center',
-    justifyContent: 'center', backgroundColor: 'rgba(250,253,255,0.66)', borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.9)',
+  avatarOrbitOuter: {
+    position: 'absolute', width: 48, height: 48, borderRadius: 24,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)',
+    borderTopColor: 'rgba(31,164,249,0.86)', borderRightColor: 'rgba(121,88,232,0.82)',
+    transform: [{ rotate: '-24deg' }],
   },
-  avatarInitial: { color: COLORS.blueDark, fontSize: 22, lineHeight: 26, fontWeight: '900' },
+  avatarOrbitInner: {
+    position: 'absolute', width: 40, height: 40, borderRadius: 20,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)',
+    borderBottomColor: 'rgba(48,205,250,0.74)', transform: [{ rotate: '31deg' }],
+  },
+  avatarCore: {
+    width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.94)', shadowColor: '#5169DB',
+    shadowOpacity: 0.2, shadowRadius: 8,
+  },
+  avatarInitial: { color: COLORS.blueDark, fontSize: 20, lineHeight: 23, fontWeight: '900' },
+  avatarGlint: {
+    position: 'absolute', width: 22, height: 5, left: 10, top: 8, borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.78)', transform: [{ rotate: '-18deg' }],
+  },
   avatarStatus: {
-    position: 'absolute', right: 2, bottom: 2, width: 12, height: 12, borderRadius: 6,
-    backgroundColor: COLORS.green, borderWidth: 2, borderColor: '#FFFFFF',
+    position: 'absolute', right: 1, bottom: 2, width: 15, height: 15, borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1, borderColor: '#FFFFFF', shadowColor: COLORS.green,
+    shadowOpacity: 0.38, shadowRadius: 5,
   },
+  avatarStatusCore: { width: 9, height: 9, borderRadius: 5, backgroundColor: COLORS.green },
   identityCopy: { flex: 1, minWidth: 0 },
+  identityMetaRow: {
+    minHeight: 17, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 5,
+  },
   identityStatusPill: {
-    alignSelf: 'flex-start', minHeight: 17, paddingHorizontal: 6, flexDirection: 'row',
+    minHeight: 17, paddingHorizontal: 6, flexDirection: 'row',
     alignItems: 'center', gap: 4, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.38)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)',
   },
@@ -1068,8 +1114,15 @@ const styles = StyleSheet.create({
     color: COLORS.blueDark, fontSize: 5.3, lineHeight: 7,
     fontWeight: '900', letterSpacing: 0.72,
   },
-  displayName: { marginTop: 2, color: COLORS.text, fontSize: 19, lineHeight: 22, fontWeight: '900' },
-  levelName: { marginTop: 1, color: COLORS.muted, fontSize: 8.5, lineHeight: 12, fontWeight: '700' },
+  identityCode: {
+    color: 'rgba(52,80,116,0.58)', fontSize: 5.2, lineHeight: 7,
+    fontWeight: '900', letterSpacing: 0.72,
+  },
+  displayName: { marginTop: 2, color: COLORS.text, fontSize: 20, lineHeight: 23, fontWeight: '900' },
+  identityTitleRow: { marginTop: 2, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  identityTitleDivider: { width: 1, height: 8, backgroundColor: 'rgba(78,101,142,0.24)' },
+  levelName: { color: COLORS.muted, fontSize: 7.8, lineHeight: 11, fontWeight: '800' },
+  identityBadgeName: { flex: 1, color: COLORS.purple, fontSize: 7.8, lineHeight: 11, fontWeight: '900' },
   milestoneCopy: { marginTop: 14 },
   progressEyebrow: { color: COLORS.blue, fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 1.1 },
   progressTitle: { marginTop: 3, color: COLORS.text, fontSize: 13, lineHeight: 17, fontWeight: '900' },
