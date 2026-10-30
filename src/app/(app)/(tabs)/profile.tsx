@@ -210,6 +210,17 @@ export default function ProfileScreen() {
   const milestoneXp = nextLevel?.minXp ?? totalXp;
   const ringRadius = 29;
   const ringCircumference = 2 * Math.PI * ringRadius;
+  const energyT = Math.min(Math.max(progressPercent / 100, 0), 1);
+  const energyMarkerX =
+    (1 - energyT) ** 3 * 10
+    + 3 * (1 - energyT) ** 2 * energyT * 52
+    + 3 * (1 - energyT) * energyT ** 2 * 116
+    + energyT ** 3 * 164;
+  const energyMarkerY =
+    (1 - energyT) ** 3 * 34
+    + 3 * (1 - energyT) ** 2 * energyT * 8
+    + 3 * (1 - energyT) * energyT ** 2 * 52
+    + energyT ** 3 * 18;
 
   const weekData = useMemo(() => {
     const today = new Date();
@@ -329,236 +340,241 @@ export default function ProfileScreen() {
             style={styles.identityPanel}
           >
             <LinearGradient
-              colors={['#DDF4FF', '#EAE9FF', '#FFF3E8', '#E2F8EE']}
-              locations={[0, 0.36, 0.7, 1]}
+              colors={['#7EE7FF', '#4E83FF', '#A36BEE', '#FFB785', '#76E9C1']}
+              locations={[0, 0.25, 0.52, 0.76, 1]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={StyleSheet.absoluteFillObject}
             />
-            <View pointerEvents="none" style={styles.identityFineLineOne} />
-            <View pointerEvents="none" style={styles.identityFineLineTwo} />
-            <LinearGradient
-              pointerEvents="none"
-              colors={['#23C5F7', '#287EF4', '#7658E8', '#EF7C62']}
-              style={styles.identityColorRail}
-            />
-            <LinearGradient
-              pointerEvents="none"
-              colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.82)', 'rgba(255,255,255,0)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.identitySheen}
-            />
+            <View style={styles.holoSurface}>
+              <LinearGradient
+                pointerEvents="none"
+                colors={['rgba(255,255,255,0.82)', 'rgba(238,247,255,0.54)', 'rgba(249,240,255,0.48)', 'rgba(255,250,241,0.58)']}
+                locations={[0, 0.34, 0.68, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+              <LinearGradient
+                pointerEvents="none"
+                colors={['rgba(80,215,255,0.22)', 'rgba(255,255,255,0)', 'rgba(150,104,241,0.15)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0.7 }}
+                style={styles.holoFoilTop}
+              />
+              <LinearGradient
+                pointerEvents="none"
+                colors={['rgba(255,255,255,0)', 'rgba(255,181,140,0.18)', 'rgba(99,231,196,0.17)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.holoFoilBottom}
+              />
+              <LinearGradient
+                pointerEvents="none"
+                colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.94)', 'rgba(255,255,255,0)']}
+                style={styles.holoSpecular}
+              />
+              <View pointerEvents="none" style={styles.holoContourOne} />
+              <View pointerEvents="none" style={styles.holoContourTwo} />
 
-            <View style={styles.boardingPassLayout}>
-              <View style={styles.passportBody}>
-                <LinearGradient
-                  pointerEvents="none"
-                  colors={['rgba(255,255,255,0.58)', 'rgba(231,246,255,0.2)', 'rgba(244,237,255,0.32)', 'rgba(255,255,255,0.16)']}
-                  locations={[0, 0.32, 0.7, 1]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFillObject}
-                />
-                <LinearGradient
-                  pointerEvents="none"
-                  colors={['rgba(65,209,255,0.34)', 'rgba(74,118,247,0.08)', 'rgba(255,255,255,0)']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0.8 }}
-                  style={styles.glassPrismTop}
-                />
-                <LinearGradient
-                  pointerEvents="none"
-                  colors={['rgba(255,255,255,0)', 'rgba(255,181,148,0.2)', 'rgba(122,87,232,0.18)']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.glassPrismBottom}
-                />
-                <View pointerEvents="none" style={styles.glassContour} />
-                <LinearGradient
-                  pointerEvents="none"
-                  colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.9)', 'rgba(255,255,255,0)']}
-                  style={styles.glassSpecular}
-                />
-                <LinearGradient
-                  pointerEvents="none"
-                  colors={['rgba(38,212,255,0)', '#22CFFF', '#4E72F2', '#7A58E8', 'rgba(122,88,232,0)']}
-                  style={styles.identityEdgeSignal}
-                />
-                <View style={styles.identityTopCompact}>
-                  <View style={styles.avatarSeal}>
-                    <LinearGradient
-                      colors={['rgba(255,255,255,0.96)', 'rgba(179,235,255,0.88)', 'rgba(108,91,232,0.84)']}
-                      style={StyleSheet.absoluteFillObject}
-                    />
-                    <View pointerEvents="none" style={styles.avatarOrbitOuter} />
-                    <View pointerEvents="none" style={styles.avatarOrbitInner} />
-                    <LinearGradient
-                      colors={['rgba(255,255,255,0.96)', 'rgba(225,244,255,0.72)', 'rgba(239,232,255,0.88)']}
-                      style={styles.avatarCore}
-                    >
-                      <Text style={styles.avatarInitial}>{displayInitial}</Text>
-                    </LinearGradient>
-                    <View pointerEvents="none" style={styles.avatarGlint} />
-                    <View style={styles.avatarStatus}>
-                      <View style={styles.avatarStatusCore} />
-                    </View>
-                  </View>
-                  <View style={styles.identityCopy}>
-                    <View style={styles.identityMetaRow}>
-                      <View style={styles.identityStatusPill}>
-                        <View style={styles.identityStatusDot} />
-                        <Text style={styles.identityStatus}>ACTIVE</Text>
-                      </View>
-                      <Text style={styles.identityCode}>VEC · {String(curLevel.level).padStart(2, '0')}</Text>
-                    </View>
-                    <Text numberOfLines={1} style={styles.displayName}>{displayName}</Text>
-                    <View style={styles.identityTitleRow}>
-                      <Text style={styles.levelName}>{curLevel.name}</Text>
-                      <View style={styles.identityTitleDivider} />
-                      <Text numberOfLines={1} style={styles.identityBadgeName}>{activeBadge?.name ?? '成长学员'}</Text>
-                    </View>
-                  </View>
-                </View>
-
-                <View style={styles.milestoneCopy}>
-                  <Text style={styles.progressEyebrow}>NEXT CHECKPOINT</Text>
-                  <Text style={styles.progressTitle}>
-                    {nextLevel ? `前往 LV.${nextLevel.level}「${nextLevel.name}」` : '已抵达最高成长等级'}
-                  </Text>
-                  <Text numberOfLines={1} style={styles.milestoneReward}>
-                    {nextLevel ? `再积累 ${xpToNext} XP · ${nextLevel.reward}` : '继续保持真实场景表达'}
-                  </Text>
-                </View>
-
-                <View style={styles.xpRunway}>
-                  <View style={styles.runwayTrack}>
-                    <LinearGradient
-                      colors={['#1BC6F7', '#217FF4', '#7459E8']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={[styles.runwayFill, { width: `${Math.max(progressPercent, 3)}%` }]}
-                    />
-                    <View style={styles.runwayStartNode} />
-                    <View style={[styles.runwayNowNode, { left: `${Math.min(Math.max(progressPercent, 4), 94)}%` }]}>
-                      <View style={styles.runwayNowCore} />
-                    </View>
-                    <View style={styles.runwayEndNode} />
-                  </View>
-                  <View style={styles.runwayLabels}>
-                    <View>
-                      <Text style={styles.runwayLabel}>LV.{curLevel.level} 起点</Text>
-                      <Text style={styles.runwayValue}>{curLevel.minXp} XP</Text>
-                    </View>
-                    <View style={styles.runwayCurrentLabel}>
-                      <Text style={styles.runwayLabel}>当前航点</Text>
-                      <Text style={[styles.runwayValue, styles.runwayValueActive]}>{totalXp} XP</Text>
-                    </View>
-                    <View style={styles.runwayDestinationLabel}>
-                      <Text style={styles.runwayLabel}>目标</Text>
-                      <Text style={styles.runwayValue}>{milestoneXp} XP</Text>
-                    </View>
-                  </View>
-                </View>
-
-                <View style={styles.identityActions}>
-                  <MotionPressable
-                    onPress={() => router.push('/(app)/(tabs)/learning' as any)}
-                    accessibilityRole="button"
-                    accessibilityLabel="继续今天的学习"
-                    pressedScale={0.95}
-                    hoverLift={3}
-                    hoverTilt={1.4}
-                    style={styles.continueButton}
+              <View style={styles.holoHeader}>
+                <View style={styles.avatarMedallion}>
+                  <LinearGradient
+                    colors={['#5DE1FF', '#247FF4', '#7A5BEA', '#FF9C75']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+                  <View pointerEvents="none" style={styles.avatarHaloOuter} />
+                  <View pointerEvents="none" style={styles.avatarHaloInner} />
+                  <LinearGradient
+                    colors={['rgba(255,255,255,0.98)', 'rgba(223,246,255,0.92)', 'rgba(244,234,255,0.94)']}
+                    style={styles.avatarFace}
                   >
-                    <LinearGradient
-                      colors={['rgba(16,143,249,0.9)', 'rgba(78,101,236,0.82)']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={StyleSheet.absoluteFillObject}
-                    />
-                    <LinearGradient
-                      pointerEvents="none"
-                      colors={['rgba(255,255,255,0.52)', 'rgba(255,255,255,0)']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 0, y: 1 }}
-                      style={styles.actionGlassHighlight}
-                    />
-                    <Target size={16} color="#FFFFFF" />
-                    <Text style={styles.continueButtonTitle}>继续学习</Text>
-                    <ChevronRight size={16} color="#FFFFFF" />
-                  </MotionPressable>
-                  <MotionPressable
-                    onPress={() => router.push('/(app)/(tabs)/growth' as any)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`查看连续学习 ${streak} 天`}
-                    pressedScale={0.92}
-                    hoverLift={3}
-                    style={styles.streakButton}
-                  >
-                    <Flame size={15} color={COLORS.green} fill={COLORS.green} />
-                    <Text style={styles.streakValue}>{streak}</Text>
-                    <Text style={styles.streakLabel}>天</Text>
-                  </MotionPressable>
+                    <Text style={styles.avatarInitial}>{displayInitial}</Text>
+                  </LinearGradient>
+                  <LinearGradient
+                    pointerEvents="none"
+                    colors={['rgba(255,255,255,0.92)', 'rgba(255,255,255,0)']}
+                    style={styles.avatarGlint}
+                  />
+                  <View style={styles.avatarStatus}>
+                    <View style={styles.avatarStatusCore} />
+                  </View>
                 </View>
 
-                <Text style={styles.passportSerial}>
-                  VEC / {String(curLevel.level).padStart(2, '0')} / {String(totalXp).padStart(4, '0')}
-                </Text>
-              </View>
+                <View style={styles.holoIdentityCopy}>
+                  <View style={styles.identityMetaRow}>
+                    <View style={styles.identityStatusPill}>
+                      <View style={styles.identityStatusDot} />
+                      <Text style={styles.identityStatus}>LEARNING ID · ACTIVE</Text>
+                    </View>
+                  </View>
+                  <Text numberOfLines={1} style={styles.displayName}>{displayName}</Text>
+                  <View style={styles.identityTitleRow}>
+                    <Text style={styles.levelName}>LV.{curLevel.level} {curLevel.name}</Text>
+                    <View style={styles.identityTitleDivider} />
+                    <Text numberOfLines={1} style={styles.identityBadgeName}>{activeBadge?.name ?? '成长学员'}</Text>
+                  </View>
+                </View>
 
-              <MotionPressable
-                onPress={() => router.push('/(app)/(tabs)/growth' as any)}
-                accessibilityRole="button"
-                accessibilityLabel={`查看等级 ${curLevel.level} 的成长详情`}
-                pressedScale={0.96}
-                hoverLift={4}
-                hoverTilt={2}
-                style={styles.levelTicket}
-              >
-                <LinearGradient
-                  colors={['#138AF7', '#405EE9', '#7553DF']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 0.95, y: 1 }}
-                  style={StyleSheet.absoluteFillObject}
-                />
-                <View pointerEvents="none" style={styles.ticketGlow} />
-                <View pointerEvents="none" style={styles.ticketPerforation} />
-                <View pointerEvents="none" style={[styles.ticketCutout, styles.ticketCutoutTop]} />
-                <View pointerEvents="none" style={[styles.ticketCutout, styles.ticketCutoutBottom]} />
-                <Text style={styles.ticketEyebrow}>LEVEL PASS</Text>
-                <View style={styles.levelRing}>
-                  <Svg width="76" height="76" viewBox="0 0 76 76">
-                    <Circle cx="38" cy="38" r={ringRadius} fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" strokeWidth="5" />
+                <MotionPressable
+                  onPress={() => router.push('/(app)/(tabs)/growth' as any)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`查看等级 ${curLevel.level} 的成长详情`}
+                  pressedScale={0.94}
+                  hoverLift={4}
+                  hoverTilt={2.4}
+                  style={styles.levelLens}
+                >
+                  <LinearGradient
+                    colors={['rgba(18,143,249,0.94)', 'rgba(70,92,234,0.92)', 'rgba(121,79,220,0.9)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+                  <LinearGradient
+                    pointerEvents="none"
+                    colors={['rgba(255,255,255,0.78)', 'rgba(255,255,255,0)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0.8, y: 0.8 }}
+                    style={styles.levelLensShine}
+                  />
+                  <Svg width="70" height="70" viewBox="0 0 76 76">
+                    <Circle cx="38" cy="38" r={ringRadius} fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" strokeWidth="4.5" />
                     <Circle
                       cx="38"
                       cy="38"
                       r={ringRadius}
                       fill="none"
                       stroke="#FFFFFF"
-                      strokeWidth="5"
+                      strokeWidth="4.5"
                       strokeLinecap="round"
                       strokeDasharray={`${ringCircumference} ${ringCircumference}`}
                       strokeDashoffset={ringCircumference * (1 - progressPercent / 100)}
                       transform="rotate(-90 38 38)"
                     />
                   </Svg>
-                  <View style={styles.levelRingCopy}>
-                    <Text style={styles.levelMonogramValue}>{curLevel.level}</Text>
-                    <Text style={styles.levelMonogramMax}>/ 10</Text>
+                  <View style={styles.levelLensCopy}>
+                    <Text style={styles.levelLensLabel}>LEVEL</Text>
+                    <Text style={styles.levelLensValue}>{curLevel.level}</Text>
+                  </View>
+                </MotionPressable>
+              </View>
+
+              <View style={styles.energySection}>
+                <View style={styles.energyCopy}>
+                  <Text style={styles.energyEyebrow}>GROWTH ENERGY</Text>
+                  <View style={styles.energyValueRow}>
+                    <Text style={styles.energyValue}>{totalXp}</Text>
+                    <Text style={styles.energyUnit}>XP</Text>
+                  </View>
+                  <Text numberOfLines={1} style={styles.energyMessage}>
+                    {nextLevel ? `再积累 ${xpToNext} XP，抵达「${nextLevel.name}」` : '已抵达最高等级，继续拓展真实表达'}
+                  </Text>
+                </View>
+
+                <View style={styles.energyRoute}>
+                  <Svg width="100%" height="74" viewBox="0 0 174 60">
+                    <Defs>
+                      <SvgLinearGradient id="energyLine" x1="0" y1="0" x2="1" y2="0">
+                        <Stop offset="0" stopColor="#26C9F4" />
+                        <Stop offset="0.52" stopColor="#287FF4" />
+                        <Stop offset="1" stopColor="#7658E8" />
+                      </SvgLinearGradient>
+                    </Defs>
+                    <Path
+                      d="M 10 34 C 52 8 116 52 164 18"
+                      fill="none"
+                      stroke="rgba(86,112,150,0.16)"
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                    />
+                    <Path
+                      d="M 10 34 C 52 8 116 52 164 18"
+                      fill="none"
+                      stroke="url(#energyLine)"
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                      strokeDasharray={[Math.max(progressPercent, 2) * 1.72, 172]}
+                    />
+                    <Circle cx="10" cy="34" r="4" fill="#FFFFFF" stroke="#28BFF5" strokeWidth="3" />
+                    <Circle cx="164" cy="18" r="4" fill="#FFFFFF" stroke="#B7C2CF" strokeWidth="3" />
+                    <Circle cx={energyMarkerX} cy={energyMarkerY} r="8" fill="rgba(255,255,255,0.72)" stroke="rgba(255,255,255,0.9)" strokeWidth="2" />
+                    <Circle cx={energyMarkerX} cy={energyMarkerY} r="4.3" fill="#6E5BE7" />
+                  </Svg>
+                  <View pointerEvents="none" style={styles.energyNowPill}>
+                    <Sparkles size={9} color="#FFFFFF" />
+                    <Text style={styles.energyNowText}>{Math.round(progressPercent)}%</Text>
                   </View>
                 </View>
-                <View style={styles.ticketXpBlock}>
-                  <Text style={styles.ticketXp}>{totalXp}</Text>
-                  <Text style={styles.ticketXpUnit}>XP EARNED</Text>
+              </View>
+
+              <View style={styles.energyLabels}>
+                <View>
+                  <Text style={styles.energyLabel}>当前阶段</Text>
+                  <Text style={styles.energyLabelValue}>LV.{curLevel.level} · {curLevel.minXp} XP</Text>
                 </View>
-                <View style={styles.passportScan}>
-                  {[3, 1, 4, 2, 2, 5, 1, 3, 4, 2, 5, 2].map((height, index) => (
-                    <View key={index} style={[styles.passportScanBar, { height: height * 3 }]} />
+                <View style={styles.energyDestination}>
+                  <Text style={styles.energyLabel}>下一里程碑</Text>
+                  <Text style={[styles.energyLabelValue, styles.energyLabelValueActive]}>{milestoneXp} XP</Text>
+                </View>
+              </View>
+
+              <View style={styles.holoActionDock}>
+                <MotionPressable
+                  onPress={() => router.push('/(app)/(tabs)/learning' as any)}
+                  accessibilityRole="button"
+                  accessibilityLabel="继续今天的学习"
+                  pressedScale={0.96}
+                  hoverLift={3}
+                  hoverTilt={1.4}
+                  style={styles.continueButton}
+                >
+                  <LinearGradient
+                    colors={['rgba(14,154,249,0.94)', 'rgba(72,89,234,0.92)', 'rgba(119,77,222,0.9)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+                  <LinearGradient
+                    pointerEvents="none"
+                    colors={['rgba(255,255,255,0.6)', 'rgba(255,255,255,0)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0, y: 1 }}
+                    style={styles.actionGlassHighlight}
+                  />
+                  <Target size={16} color="#FFFFFF" />
+                  <View style={styles.continueButtonCopy}>
+                    <Text style={styles.continueButtonTitle}>继续今天的学习</Text>
+                    <Text style={styles.continueButtonSubtitle}>{nextLevel?.reward ?? '继续积累真实表达'}</Text>
+                  </View>
+                  <ChevronRight size={17} color="#FFFFFF" />
+                </MotionPressable>
+                <MotionPressable
+                  onPress={() => router.push('/(app)/(tabs)/growth' as any)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`查看连续学习 ${streak} 天`}
+                  pressedScale={0.92}
+                  hoverLift={3}
+                  style={styles.streakButton}
+                >
+                  <View style={styles.streakIconWell}>
+                    <Flame size={15} color={COLORS.green} fill={COLORS.green} />
+                  </View>
+                  <Text style={styles.streakValue}>{streak}</Text>
+                  <Text style={styles.streakLabel}>天</Text>
+                </MotionPressable>
+              </View>
+
+              <View style={styles.holoFooter}>
+                <Text style={styles.passportSerial}>VEC · {String(curLevel.level).padStart(2, '0')} · {String(totalXp).padStart(4, '0')}</Text>
+                <View style={styles.signalBars}>
+                  {[3, 1, 4, 2, 5, 2, 4, 1, 3].map((height, index) => (
+                    <View key={index} style={[styles.signalBar, { height: height * 2.2 }]} />
                   ))}
                 </View>
-                <Text style={styles.ticketOpen}>查看成长</Text>
-              </MotionPressable>
+              </View>
             </View>
           </Animated.View>
 
@@ -1008,101 +1024,78 @@ const styles = StyleSheet.create({
     elevation: 3, ...GLASS_WEB,
   },
   identityPanel: {
-    minHeight: 292, overflow: 'hidden', borderRadius: 30, borderWidth: 1.2,
-    borderColor: 'rgba(255,255,255,0.94)', padding: 13, shadowColor: '#426E98',
-    shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.2, shadowRadius: 38,
-    elevation: 8, ...GLASS_WEB,
+    minHeight: 332, overflow: 'hidden', borderRadius: 33, padding: 2,
+    shadowColor: '#315F91', shadowOffset: { width: 0, height: 22 },
+    shadowOpacity: 0.22, shadowRadius: 38, elevation: 9,
   },
-  identityFineLineOne: {
-    position: 'absolute', width: 310, height: 118, right: -108, top: 15,
-    borderWidth: 1, borderColor: 'rgba(82,104,219,0.14)', borderRadius: 18,
+  holoSurface: {
+    flex: 1, minHeight: 328, overflow: 'hidden', padding: 16, borderRadius: 31,
+    backgroundColor: 'rgba(246,250,255,0.56)', borderWidth: 1.2,
+    borderColor: 'rgba(255,255,255,0.92)', ...GLASS_WEB,
+  },
+  holoFoilTop: {
+    position: 'absolute', width: 310, height: 128, left: -106, top: -51,
+    borderRadius: 64, transform: [{ rotate: '-12deg' }],
+  },
+  holoFoilBottom: {
+    position: 'absolute', width: 340, height: 140, right: -138, bottom: -61,
+    borderRadius: 70, transform: [{ rotate: '8deg' }],
+  },
+  holoSpecular: {
+    position: 'absolute', width: 54, height: 460, left: '45%', top: -105,
+    transform: [{ rotate: '17deg' }],
+  },
+  holoContourOne: {
+    position: 'absolute', width: 310, height: 112, right: -166, top: 21,
+    borderWidth: 1, borderColor: 'rgba(80,112,229,0.14)', borderRadius: 29,
     transform: [{ rotate: '-14deg' }],
   },
-  identityFineLineTwo: {
-    position: 'absolute', width: 290, height: 96, right: -90, top: 38,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)', borderRadius: 18,
+  holoContourTwo: {
+    position: 'absolute', width: 272, height: 92, right: -128, top: 46,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.74)', borderRadius: 27,
     transform: [{ rotate: '-14deg' }],
   },
-  identityColorRail: {
-    position: 'absolute', left: 0, top: 28, bottom: 28, width: 4,
-    borderTopRightRadius: 5, borderBottomRightRadius: 5,
-  },
-  identitySheen: {
-    position: 'absolute', width: 86, height: 430, top: -130, left: '39%',
-    transform: [{ rotate: '18deg' }],
-  },
-  boardingPassLayout: { flex: 1, minHeight: 266, flexDirection: 'row', gap: 10 },
-  passportBody: {
-    flex: 1, minWidth: 0, overflow: 'hidden', paddingTop: 11, paddingHorizontal: 11,
-    paddingBottom: 8, borderTopLeftRadius: 31, borderTopRightRadius: 15,
-    borderBottomRightRadius: 30, borderBottomLeftRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderWidth: 1.2, borderColor: 'rgba(255,255,255,0.86)', shadowColor: '#5071B5',
-    shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.16, shadowRadius: 22,
-    elevation: 4, ...GLASS_WEB,
-  },
-  glassPrismTop: {
-    position: 'absolute', width: 190, height: 72, left: -58, top: -24,
-    transform: [{ rotate: '-8deg' }],
-  },
-  glassPrismBottom: {
-    position: 'absolute', width: 220, height: 94, right: -82, bottom: -34,
-    transform: [{ rotate: '9deg' }],
-  },
-  glassContour: {
-    position: 'absolute', width: 210, height: 94, right: -126, top: 54,
-    borderWidth: 1, borderColor: 'rgba(118,88,232,0.14)', borderRadius: 25,
-    transform: [{ rotate: '-17deg' }],
-  },
-  glassSpecular: {
-    position: 'absolute', width: 42, height: 330, left: 70, top: -48,
-    transform: [{ rotate: '19deg' }],
-  },
-  identityEdgeSignal: {
-    position: 'absolute', left: 0, top: 31, width: 3, height: 114, borderRadius: 3,
-  },
-  identityTopCompact: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  avatarSeal: {
-    width: 58, height: 58, padding: 3, borderRadius: 29, overflow: 'hidden',
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1,
+  holoHeader: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  avatarMedallion: {
+    width: 66, height: 66, overflow: 'hidden', padding: 4, borderRadius: 33,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1.2,
     borderColor: 'rgba(255,255,255,0.96)', shadowColor: '#347DE6',
-    shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 17,
+    shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.32, shadowRadius: 18,
     elevation: 6,
   },
-  avatarOrbitOuter: {
-    position: 'absolute', width: 48, height: 48, borderRadius: 24,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)',
-    borderTopColor: 'rgba(31,164,249,0.86)', borderRightColor: 'rgba(121,88,232,0.82)',
-    transform: [{ rotate: '-24deg' }],
+  avatarHaloOuter: {
+    position: 'absolute', width: 58, height: 58, borderRadius: 29, borderWidth: 1.4,
+    borderColor: 'rgba(255,255,255,0.72)', borderTopColor: 'rgba(255,255,255,0.98)',
+    borderRightColor: 'rgba(109,235,255,0.92)', transform: [{ rotate: '-31deg' }],
   },
-  avatarOrbitInner: {
-    position: 'absolute', width: 40, height: 40, borderRadius: 20,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)',
-    borderBottomColor: 'rgba(48,205,250,0.74)', transform: [{ rotate: '31deg' }],
+  avatarHaloInner: {
+    position: 'absolute', width: 49, height: 49, borderRadius: 25, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)', borderBottomColor: 'rgba(255,178,154,0.82)',
+    transform: [{ rotate: '24deg' }],
   },
-  avatarCore: {
-    width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.94)', shadowColor: '#5169DB',
-    shadowOpacity: 0.2, shadowRadius: 8,
+  avatarFace: {
+    width: 43, height: 43, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.98)', shadowColor: '#5169DB',
+    shadowOpacity: 0.21, shadowRadius: 9,
   },
-  avatarInitial: { color: COLORS.blueDark, fontSize: 20, lineHeight: 23, fontWeight: '900' },
+  avatarInitial: { color: COLORS.blueDark, fontSize: 22, lineHeight: 25, fontWeight: '900' },
   avatarGlint: {
-    position: 'absolute', width: 22, height: 5, left: 10, top: 8, borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.78)', transform: [{ rotate: '-18deg' }],
+    position: 'absolute', width: 31, height: 9, left: 10, top: 8, borderRadius: 7,
+    transform: [{ rotate: '-20deg' }],
   },
   avatarStatus: {
-    position: 'absolute', right: 1, bottom: 2, width: 15, height: 15, borderRadius: 8,
+    position: 'absolute', right: 1, bottom: 2, width: 17, height: 17, borderRadius: 9,
     alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.92)',
     borderWidth: 1, borderColor: '#FFFFFF', shadowColor: COLORS.green,
     shadowOpacity: 0.38, shadowRadius: 5,
   },
-  avatarStatusCore: { width: 9, height: 9, borderRadius: 5, backgroundColor: COLORS.green },
-  identityCopy: { flex: 1, minWidth: 0 },
+  avatarStatusCore: { width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.green },
+  holoIdentityCopy: { flex: 1, minWidth: 0 },
   identityMetaRow: {
-    minHeight: 17, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 5,
+    minHeight: 18, flexDirection: 'row', alignItems: 'center', gap: 5,
   },
   identityStatusPill: {
-    minHeight: 17, paddingHorizontal: 6, flexDirection: 'row',
+    minHeight: 18, paddingHorizontal: 7, flexDirection: 'row',
     alignItems: 'center', gap: 4, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.38)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)',
   },
@@ -1111,109 +1104,81 @@ const styles = StyleSheet.create({
     shadowColor: '#1DCB96', shadowOpacity: 0.55, shadowRadius: 4,
   },
   identityStatus: {
-    color: COLORS.blueDark, fontSize: 5.3, lineHeight: 7,
-    fontWeight: '900', letterSpacing: 0.72,
+    color: COLORS.blueDark, fontSize: 6.1, lineHeight: 8,
+    fontWeight: '900', letterSpacing: 0.75,
   },
-  identityCode: {
-    color: 'rgba(52,80,116,0.58)', fontSize: 5.2, lineHeight: 7,
-    fontWeight: '900', letterSpacing: 0.72,
-  },
-  displayName: { marginTop: 2, color: COLORS.text, fontSize: 20, lineHeight: 23, fontWeight: '900' },
+  displayName: { marginTop: 2, color: COLORS.text, fontSize: 21, lineHeight: 24, fontWeight: '900' },
   identityTitleRow: { marginTop: 2, flexDirection: 'row', alignItems: 'center', gap: 5 },
   identityTitleDivider: { width: 1, height: 8, backgroundColor: 'rgba(78,101,142,0.24)' },
-  levelName: { color: COLORS.muted, fontSize: 7.8, lineHeight: 11, fontWeight: '800' },
-  identityBadgeName: { flex: 1, color: COLORS.purple, fontSize: 7.8, lineHeight: 11, fontWeight: '900' },
-  milestoneCopy: { marginTop: 14 },
-  progressEyebrow: { color: COLORS.blue, fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 1.1 },
-  progressTitle: { marginTop: 3, color: COLORS.text, fontSize: 13, lineHeight: 17, fontWeight: '900' },
-  milestoneReward: { marginTop: 3, color: COLORS.muted, fontSize: 7.2, lineHeight: 10, fontWeight: '700' },
-  xpRunway: { marginTop: 14 },
-  runwayTrack: {
-    height: 4, borderRadius: 2, backgroundColor: 'rgba(91,108,142,0.15)',
-    borderWidth: 0.6, borderColor: 'rgba(255,255,255,0.8)',
+  levelName: { color: COLORS.muted, fontSize: 8.2, lineHeight: 11, fontWeight: '800' },
+  identityBadgeName: { flex: 1, color: COLORS.purple, fontSize: 8.2, lineHeight: 11, fontWeight: '900' },
+  levelLens: {
+    width: 76, height: 76, overflow: 'hidden', borderRadius: 25,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1.2,
+    borderColor: 'rgba(255,255,255,0.72)', shadowColor: '#4259D8',
+    shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.28, shadowRadius: 18,
+    elevation: 6,
   },
-  runwayFill: { height: '100%', borderRadius: 2 },
-  runwayStartNode: {
-    position: 'absolute', left: -2, top: -3, width: 10, height: 10, borderRadius: 5,
-    backgroundColor: '#28BFF5', borderWidth: 2, borderColor: '#FFFFFF',
+  levelLensShine: {
+    position: 'absolute', width: 70, height: 34, left: 3, top: 1,
+    borderRadius: 22, transform: [{ rotate: '-9deg' }],
   },
-  runwayNowNode: {
-    position: 'absolute', top: -7, width: 17, height: 17, marginLeft: -8.5,
-    borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF',
-    borderWidth: 2.5, borderColor: '#6D5CE7', shadowColor: '#675CE5',
-    shadowOpacity: 0.3, shadowRadius: 7, elevation: 3,
+  levelLensCopy: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  levelLensLabel: { color: 'rgba(255,255,255,0.72)', fontSize: 6, lineHeight: 8, fontWeight: '900', letterSpacing: 1 },
+  levelLensValue: { marginTop: -1, color: '#FFFFFF', fontSize: 25, lineHeight: 28, fontWeight: '900' },
+  energySection: { minHeight: 92, marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  energyCopy: { width: 164, minWidth: 0 },
+  energyEyebrow: { color: COLORS.blue, fontSize: 7.2, lineHeight: 10, fontWeight: '900', letterSpacing: 1.15 },
+  energyValueRow: { marginTop: 1, flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
+  energyValue: { color: COLORS.text, fontSize: 31, lineHeight: 34, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  energyUnit: { marginBottom: 4, color: COLORS.purple, fontSize: 10, lineHeight: 13, fontWeight: '900' },
+  energyMessage: { marginTop: 3, color: COLORS.muted, fontSize: 8, lineHeight: 11, fontWeight: '700' },
+  energyRoute: { flex: 1, minWidth: 0, height: 82, justifyContent: 'center' },
+  energyNowPill: {
+    position: 'absolute', right: 17, top: 0, minWidth: 43, height: 19,
+    paddingHorizontal: 7, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 3, borderRadius: 10, backgroundColor: '#6F59E4', borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.82)', shadowColor: '#6756DA', shadowOpacity: 0.24,
+    shadowRadius: 7,
   },
-  runwayNowCore: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#6D5CE7' },
-  runwayEndNode: {
-    position: 'absolute', right: -2, top: -3, width: 10, height: 10, borderRadius: 5,
-    backgroundColor: 'rgba(255,255,255,0.95)', borderWidth: 2, borderColor: '#AEB8C8',
-  },
-  runwayLabels: { marginTop: 10, flexDirection: 'row', justifyContent: 'space-between' },
-  runwayCurrentLabel: { alignItems: 'center' },
-  runwayDestinationLabel: { alignItems: 'flex-end' },
-  runwayLabel: { color: COLORS.subtle, fontSize: 5.8, lineHeight: 8, fontWeight: '800' },
-  runwayValue: { marginTop: 1, color: COLORS.muted, fontSize: 7, lineHeight: 9, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  runwayValueActive: { color: COLORS.purple },
-  identityActions: { marginTop: 14, flexDirection: 'row', gap: 7 },
+  energyNowText: { color: '#FFFFFF', fontSize: 7, lineHeight: 9, fontWeight: '900' },
+  energyLabels: { marginTop: -7, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  energyDestination: { alignItems: 'flex-end' },
+  energyLabel: { color: COLORS.subtle, fontSize: 6.2, lineHeight: 8, fontWeight: '800' },
+  energyLabelValue: { marginTop: 1, color: COLORS.muted, fontSize: 8, lineHeight: 10, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  energyLabelValueActive: { color: COLORS.purple },
+  holoActionDock: { marginTop: 13, flexDirection: 'row', gap: 8 },
   continueButton: {
-    flex: 1, minHeight: 43, overflow: 'hidden', paddingHorizontal: 10,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 16,
+    flex: 1, minHeight: 52, overflow: 'hidden', paddingHorizontal: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 18,
     borderWidth: 1.2, borderColor: 'rgba(224,247,255,0.86)', shadowColor: '#0875F7',
-    shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 17,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.25, shadowRadius: 18, elevation: 4,
   },
   actionGlassHighlight: {
-    position: 'absolute', left: 8, right: 8, top: 2, height: 14, borderRadius: 12,
+    position: 'absolute', left: 9, right: 9, top: 2, height: 17, borderRadius: 14,
   },
+  continueButtonCopy: { flex: 1, minWidth: 0 },
   continueButtonTitle: { color: '#FFFFFF', fontSize: 10.5, lineHeight: 14, fontWeight: '900' },
+  continueButtonSubtitle: { marginTop: 1, color: 'rgba(255,255,255,0.72)', fontSize: 6.4, lineHeight: 8, fontWeight: '700' },
   streakButton: {
-    width: 55, minHeight: 43, flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: 3, borderRadius: 21, backgroundColor: 'rgba(244,255,250,0.44)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.78)', ...GLASS_WEB,
+    width: 76, minHeight: 52, flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 3, borderRadius: 19, backgroundColor: 'rgba(240,255,248,0.48)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.84)', shadowColor: '#20A878',
+    shadowOpacity: 0.12, shadowRadius: 13, ...GLASS_WEB,
   },
-  streakValue: { color: COLORS.green, fontSize: 14, lineHeight: 17, fontWeight: '900' },
+  streakIconWell: {
+    width: 25, height: 25, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)',
+  },
+  streakValue: { color: COLORS.green, fontSize: 16, lineHeight: 19, fontWeight: '900' },
   streakLabel: { color: COLORS.green, fontSize: 7, lineHeight: 9, fontWeight: '800' },
+  holoFooter: { minHeight: 17, marginTop: 7, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
   passportSerial: {
-    marginTop: 8, color: 'rgba(70,91,120,0.48)', fontSize: 5.8, lineHeight: 8,
+    color: 'rgba(70,91,120,0.48)', fontSize: 5.8, lineHeight: 8,
     fontWeight: '900', letterSpacing: 1.25,
   },
-  levelTicket: {
-    width: 98, minHeight: 266, overflow: 'hidden', paddingVertical: 15,
-    alignItems: 'center', borderRadius: 25, borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.48)', shadowColor: '#3F54D5',
-    shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.3, shadowRadius: 21,
-    elevation: 7,
-  },
-  ticketGlow: {
-    position: 'absolute', width: 94, height: 94, top: 20, right: -28,
-    borderRadius: 47, backgroundColor: 'rgba(100,225,255,0.2)',
-  },
-  ticketPerforation: {
-    position: 'absolute', left: 0, top: 18, bottom: 18, borderLeftWidth: 1,
-    borderStyle: 'dashed', borderColor: 'rgba(255,255,255,0.34)',
-  },
-  ticketCutout: {
-    position: 'absolute', left: -6, width: 12, height: 12, borderRadius: 6,
-    backgroundColor: '#E7EEFB', borderWidth: 1, borderColor: 'rgba(255,255,255,0.86)',
-  },
-  ticketCutoutTop: { top: 43 },
-  ticketCutoutBottom: { bottom: 43 },
-  ticketEyebrow: {
-    color: 'rgba(238,245,255,0.76)', fontSize: 6.2, lineHeight: 8,
-    fontWeight: '900', letterSpacing: 1.25,
-  },
-  levelRing: { width: 76, height: 76, marginTop: 11, alignItems: 'center', justifyContent: 'center' },
-  levelRingCopy: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
-  levelMonogramValue: { color: '#FFFFFF', fontSize: 27, lineHeight: 29, fontWeight: '900' },
-  levelMonogramMax: { color: 'rgba(235,243,255,0.74)', fontSize: 7, lineHeight: 9, fontWeight: '800' },
-  ticketXpBlock: { marginTop: 12, alignItems: 'center' },
-  ticketXp: { color: '#FFFFFF', fontSize: 16, lineHeight: 19, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  ticketXpUnit: { marginTop: 1, color: 'rgba(235,243,255,0.68)', fontSize: 5.5, lineHeight: 8, fontWeight: '900', letterSpacing: 0.75 },
-  ticketOpen: { marginTop: 8, color: 'rgba(255,255,255,0.88)', fontSize: 6.8, lineHeight: 9, fontWeight: '900' },
-  passportScan: { height: 17, marginTop: 13, flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
-  passportScanBar: {
-    width: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.58)',
-  },
+  signalBars: { height: 14, flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
+  signalBar: { width: 2, borderRadius: 1, backgroundColor: 'rgba(57,104,151,0.42)' },
   signalSection: { gap: 10 },
   signalHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   signalTitle: { marginTop: 1, color: COLORS.text, fontSize: 20, lineHeight: 24, fontWeight: '900' },
