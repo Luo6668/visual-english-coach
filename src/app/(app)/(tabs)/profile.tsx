@@ -1,9 +1,15 @@
+import * as FileSystem from 'expo-file-system/legacy';
+import { Image } from 'expo-image';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { StatusBar } from 'expo-status-bar';
 import {
   Bookmark,
   BookOpen,
+  Camera,
   ChevronRight,
   Compass,
   Crown,
@@ -18,7 +24,7 @@ import {
   Sparkles,
   Target,
 } from 'lucide-react-native';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -40,6 +46,7 @@ import Svg, {
 import { MotionPressable } from '@/components/motion-pressable';
 import { useSession } from '@/ctx';
 import { fetchLearningRecords, fetchUserStats, fetchXpData } from '@/lib/api';
+import defaultAvatar from '../../../../assets/coach-avatar.png';
 
 const COLORS = {
   background: '#F5F8FC',
@@ -129,6 +136,13 @@ const BADGES = [
   },
 ];
 
+const GROWTH_PHASES = [
+  { label: '开口', icon: MessageCircle },
+  { label: '场景', icon: Target },
+  { label: '表达', icon: BookOpen },
+  { label: '流利', icon: Sparkles },
+] as const;
+
 function calcLevel(totalXp: number) {
   for (let index = LEVELS.length - 1; index >= 0; index -= 1) {
     if (totalXp >= LEVELS[index].minXp) return LEVELS[index];
@@ -160,6 +174,9 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarNotice, setAvatarNotice] = useState('');
 
   const loadProfile = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
@@ -200,27 +217,97 @@ export default function ProfileScreen() {
   const xpToNext = nextLevel ? Math.max(nextLevel.minXp - totalXp, 0) : 0;
   const email = session?.user?.email ?? '用户';
   const displayName = email.includes('@') ? email.split('@')[0] : email;
-  const displayInitial = displayName.trim().slice(0, 1).toUpperCase() || 'U';
+  const avatarOwner = (session?.user?.id === 'local-demo-user' ? email : session?.user?.id ?? email)
+    .replace(/[^a-z0-9._-]/gi, '_');
+  const avatarStorageKey = `vec.profile.avatar.${avatarOwner}`;
   const unlockedBadges = BADGES.filter((badge) => curLevel.level >= badge.level);
   const activeBadge = [...unlockedBadges].reverse()[0];
   const selectedBadge = BADGES[selectedBadgeIndex];
   const selectedUnlocked = curLevel.level >= selectedBadge.level;
   const selectedRequiredXp = LEVELS.find((level) => level.level === selectedBadge.level)?.minXp ?? 0;
   const selectedProgress = Math.min(totalXp / Math.max(selectedRequiredXp, 1), 1);
-  const milestoneXp = nextLevel?.minXp ?? totalXp;
   const ringRadius = 29;
   const ringCircumference = 2 * Math.PI * ringRadius;
-  const energyT = Math.min(Math.max(progressPercent / 100, 0), 1);
-  const energyMarkerX =
-    (1 - energyT) ** 3 * 10
-    + 3 * (1 - energyT) ** 2 * energyT * 52
-    + 3 * (1 - energyT) * energyT ** 2 * 116
-    + energyT ** 3 * 164;
-  const energyMarkerY =
-    (1 - energyT) ** 3 * 34
-    + 3 * (1 - energyT) ** 2 * energyT * 8
-    + 3 * (1 - energyT) * energyT ** 2 * 52
-    + energyT ** 3 * 18;
+  const growthPhaseIndex = curLevel.level <= 2 ? 0 : curLevel.level <= 4 ? 1 : curLevel.level <= 7 ? 2 : 3;
+  const overallProgressPercent = Math.min((totalXp / LEVELS.at(-1)!.minXp) * 100, 100);
+
+  useEffect(() => {
+    let active = true;
+    const restoreAvatar = async () => {
+      try {
+        const savedUri = Platform.OS === 'web'
+          ? localStorage.getItem(avatarStorageKey)
+          : await SecureStore.getItemAsync(avatarStorageKey);
+        if (active && savedUri) setAvatarUri(savedUri);
+      } catch {
+        if (active) setAvatarUri(null);
+      }
+    };
+    void restoreAvatar();
+    return () => {
+      active = false;
+    };
+  }, [avatarStorageKey]);
+
+  const clearStoredAvatar = useCallback(async () => {
+    setAvatarUri(null);
+    try {
+      if (Platform.OS === 'web') localStorage.removeItem(avatarStorageKey);
+      else await SecureStore.deleteItemAsync(avatarStorageKey);
+    } catch {
+      // The bundled default avatar remains available if local storage cannot be cleared.
+    }
+  }, [avatarStorageKey]);
+
+  const handleAvatarPick = useCallback(async () => {
+    if (avatarBusy) return;
+    setAvatarBusy(true);
+    setAvatarNotice('');
+    try {
+      if (Platform.OS !== 'web') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (permission.status !== 'granted') {
+          setAvatarNotice('请允许访问相册后再试');
+          return;
+        }
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: 'images' as any,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 1,
+      });
+      const selectedUri = result.canceled ? '' : result.assets[0]?.uri;
+      if (!selectedUri) return;
+
+      const optimized = await manipulateAsync(
+        selectedUri,
+        [{ resize: { width: 720, height: 720 } }],
+        { base64: Platform.OS === 'web', compress: 0.84, format: SaveFormat.JPEG },
+      );
+
+      let persistedUri = optimized.uri;
+      if (Platform.OS === 'web') {
+        persistedUri = optimized.base64
+          ? `data:image/jpeg;base64,${optimized.base64}`
+          : optimized.uri;
+        localStorage.setItem(avatarStorageKey, persistedUri);
+      } else {
+        if (!FileSystem.documentDirectory) throw new Error('当前设备无法保存头像文件。');
+        const targetUri = `${FileSystem.documentDirectory}profile-avatar-${avatarOwner}.jpg`;
+        await FileSystem.deleteAsync(targetUri, { idempotent: true });
+        await FileSystem.copyAsync({ from: optimized.uri, to: targetUri });
+        persistedUri = targetUri;
+        await SecureStore.setItemAsync(avatarStorageKey, persistedUri);
+      }
+      setAvatarUri(persistedUri);
+      setAvatarNotice('头像已更新');
+    } catch (error) {
+      setAvatarNotice(error instanceof Error ? error.message : '头像更新失败，请稍后重试');
+    } finally {
+      setAvatarBusy(false);
+    }
+  }, [avatarBusy, avatarOwner, avatarStorageKey]);
 
   const weekData = useMemo(() => {
     const today = new Date();
@@ -340,8 +427,8 @@ export default function ProfileScreen() {
             style={styles.identityPanel}
           >
             <LinearGradient
-              colors={['#7EE7FF', '#4E83FF', '#A36BEE', '#FFB785', '#76E9C1']}
-              locations={[0, 0.25, 0.52, 0.76, 1]}
+              colors={['#B8EEFF', '#7C9CFF', '#C6A7F5', '#FFC9B1', '#A6F0D5']}
+              locations={[0, 0.27, 0.52, 0.77, 1]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={StyleSheet.absoluteFillObject}
@@ -349,8 +436,8 @@ export default function ProfileScreen() {
             <View style={styles.holoSurface}>
               <LinearGradient
                 pointerEvents="none"
-                colors={['rgba(255,255,255,0.82)', 'rgba(238,247,255,0.54)', 'rgba(249,240,255,0.48)', 'rgba(255,250,241,0.58)']}
-                locations={[0, 0.34, 0.68, 1]}
+                colors={['rgba(255,255,255,0.92)', 'rgba(234,247,255,0.66)', 'rgba(245,239,255,0.58)', 'rgba(255,248,240,0.68)']}
+                locations={[0, 0.35, 0.7, 1]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFillObject}
@@ -360,62 +447,80 @@ export default function ProfileScreen() {
                 colors={['rgba(80,215,255,0.22)', 'rgba(255,255,255,0)', 'rgba(150,104,241,0.15)']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0.7 }}
-                style={styles.holoFoilTop}
+                style={styles.passFoilTop}
               />
               <LinearGradient
                 pointerEvents="none"
                 colors={['rgba(255,255,255,0)', 'rgba(255,181,140,0.18)', 'rgba(99,231,196,0.17)']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={styles.holoFoilBottom}
+                style={styles.passFoilBottom}
               />
               <LinearGradient
                 pointerEvents="none"
                 colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.94)', 'rgba(255,255,255,0)']}
-                style={styles.holoSpecular}
+                style={styles.passSpecular}
               />
-              <View pointerEvents="none" style={styles.holoContourOne} />
-              <View pointerEvents="none" style={styles.holoContourTwo} />
+              <View pointerEvents="none" style={styles.passContourOne} />
+              <View pointerEvents="none" style={styles.passContourTwo} />
 
-              <View style={styles.holoHeader}>
-                <View style={styles.avatarMedallion}>
+              <View style={styles.passHeader}>
+                <MotionPressable
+                  onPress={() => void handleAvatarPick()}
+                  accessibilityRole="button"
+                  accessibilityLabel="从相册选择头像"
+                  pressedScale={0.94}
+                  hoverLift={4}
+                  hoverTilt={2}
+                  disabled={avatarBusy}
+                  style={styles.avatarMedallion}
+                >
                   <LinearGradient
-                    colors={['#5DE1FF', '#247FF4', '#7A5BEA', '#FF9C75']}
+                    colors={['#70E5FF', '#2D83F4', '#7C5EE8', '#FFB391']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={StyleSheet.absoluteFillObject}
                   />
                   <View pointerEvents="none" style={styles.avatarHaloOuter} />
                   <View pointerEvents="none" style={styles.avatarHaloInner} />
-                  <LinearGradient
-                    colors={['rgba(255,255,255,0.98)', 'rgba(223,246,255,0.92)', 'rgba(244,234,255,0.94)']}
-                    style={styles.avatarFace}
-                  >
-                    <Text style={styles.avatarInitial}>{displayInitial}</Text>
-                  </LinearGradient>
+                  <View style={styles.avatarFace}>
+                    <Image
+                      source={avatarUri ? { uri: avatarUri } : defaultAvatar}
+                      placeholder={defaultAvatar}
+                      placeholderContentFit="cover"
+                      contentFit="cover"
+                      transition={180}
+                      onError={() => void clearStoredAvatar()}
+                      style={styles.avatarImage}
+                    />
+                  </View>
                   <LinearGradient
                     pointerEvents="none"
                     colors={['rgba(255,255,255,0.92)', 'rgba(255,255,255,0)']}
                     style={styles.avatarGlint}
                   />
+                  <View style={styles.avatarEditButton}>
+                    {avatarBusy
+                      ? <ActivityIndicator size="small" color="#FFFFFF" />
+                      : <Camera size={12} color="#FFFFFF" strokeWidth={2.5} />}
+                  </View>
                   <View style={styles.avatarStatus}>
                     <View style={styles.avatarStatusCore} />
                   </View>
-                </View>
+                </MotionPressable>
 
-                <View style={styles.holoIdentityCopy}>
-                  <View style={styles.identityMetaRow}>
-                    <View style={styles.identityStatusPill}>
-                      <View style={styles.identityStatusDot} />
-                      <Text style={styles.identityStatus}>LEARNING ID · ACTIVE</Text>
-                    </View>
-                  </View>
+                <View style={styles.passIdentityCopy}>
+                  <Text style={styles.passEyebrow}>成长身份卡 · ACTIVE</Text>
                   <Text numberOfLines={1} style={styles.displayName}>{displayName}</Text>
-                  <View style={styles.identityTitleRow}>
-                    <Text style={styles.levelName}>LV.{curLevel.level} {curLevel.name}</Text>
-                    <View style={styles.identityTitleDivider} />
-                    <Text numberOfLines={1} style={styles.identityBadgeName}>{activeBadge?.name ?? '成长学员'}</Text>
+                  <Text style={styles.passRole}>{curLevel.name} · LV.{curLevel.level}</Text>
+                  <View style={styles.onlinePill}>
+                    <View style={styles.onlineDot} />
+                    <Text style={styles.onlineText}>在线学习中</Text>
+                    <ChevronRight size={11} color={COLORS.muted} />
                   </View>
+                  {avatarNotice ? (
+                    <Text numberOfLines={1} style={styles.avatarNotice}>{avatarNotice}</Text>
+                  ) : null}
                 </View>
 
                 <MotionPressable
@@ -428,7 +533,7 @@ export default function ProfileScreen() {
                   style={styles.levelLens}
                 >
                   <LinearGradient
-                    colors={['rgba(18,143,249,0.94)', 'rgba(70,92,234,0.92)', 'rgba(121,79,220,0.9)']}
+                    colors={['rgba(209,248,255,0.92)', 'rgba(116,196,255,0.86)', 'rgba(126,104,235,0.9)']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={StyleSheet.absoluteFillObject}
@@ -440,8 +545,8 @@ export default function ProfileScreen() {
                     end={{ x: 0.8, y: 0.8 }}
                     style={styles.levelLensShine}
                   />
-                  <Svg width="70" height="70" viewBox="0 0 76 76">
-                    <Circle cx="38" cy="38" r={ringRadius} fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" strokeWidth="4.5" />
+                  <Svg width="72" height="72" viewBox="0 0 76 76">
+                    <Circle cx="38" cy="38" r={ringRadius} fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.54)" strokeWidth="4.5" />
                     <Circle
                       cx="38"
                       cy="38"
@@ -462,66 +567,112 @@ export default function ProfileScreen() {
                 </MotionPressable>
               </View>
 
-              <View style={styles.energySection}>
-                <View style={styles.energyCopy}>
-                  <Text style={styles.energyEyebrow}>GROWTH ENERGY</Text>
-                  <View style={styles.energyValueRow}>
-                    <Text style={styles.energyValue}>{totalXp}</Text>
-                    <Text style={styles.energyUnit}>XP</Text>
+              <View style={styles.growthJourney}>
+                <View style={styles.journeyHeading}>
+                  <View>
+                    <Text style={styles.journeyTitle}>成长轨迹</Text>
+                    <Text style={styles.journeySubtitle}>每一次真实表达，都在推动你向前</Text>
                   </View>
-                  <Text numberOfLines={1} style={styles.energyMessage}>
-                    {nextLevel ? `再积累 ${xpToNext} XP，抵达「${nextLevel.name}」` : '已抵达最高等级，继续拓展真实表达'}
-                  </Text>
+                  <MotionPressable
+                    onPress={() => router.push('/(app)/(tabs)/growth' as any)}
+                    accessibilityRole="button"
+                    accessibilityLabel="查看完整成长轨迹"
+                    pressedScale={0.9}
+                    style={styles.journeyMore}
+                  >
+                    <ChevronRight size={15} color={COLORS.blueDark} />
+                  </MotionPressable>
                 </View>
 
-                <View style={styles.energyRoute}>
-                  <Svg width="100%" height="74" viewBox="0 0 174 60">
+                <View style={styles.journeyCanvas}>
+                  <Svg pointerEvents="none" width="100%" height="72" viewBox="0 0 360 72" style={styles.journeyPath}>
                     <Defs>
-                      <SvgLinearGradient id="energyLine" x1="0" y1="0" x2="1" y2="0">
-                        <Stop offset="0" stopColor="#26C9F4" />
-                        <Stop offset="0.52" stopColor="#287FF4" />
-                        <Stop offset="1" stopColor="#7658E8" />
+                      <SvgLinearGradient id="journeyLine" x1="0" y1="0" x2="1" y2="0">
+                        <Stop offset="0" stopColor="#32CCF4" />
+                        <Stop offset="0.48" stopColor="#2D89F4" />
+                        <Stop offset="1" stopColor="#EF7E73" />
                       </SvgLinearGradient>
                     </Defs>
                     <Path
-                      d="M 10 34 C 52 8 116 52 164 18"
+                      d="M 22 44 C 72 14 100 58 132 38 S 210 18 240 34 S 300 52 338 22"
                       fill="none"
-                      stroke="rgba(86,112,150,0.16)"
-                      strokeWidth="5"
+                      stroke="rgba(93,128,164,0.16)"
+                      strokeWidth="4"
                       strokeLinecap="round"
                     />
                     <Path
-                      d="M 10 34 C 52 8 116 52 164 18"
+                      d="M 22 44 C 72 14 100 58 132 38 S 210 18 240 34 S 300 52 338 22"
                       fill="none"
-                      stroke="url(#energyLine)"
-                      strokeWidth="5"
+                      stroke="url(#journeyLine)"
+                      strokeWidth="4"
                       strokeLinecap="round"
-                      strokeDasharray={[Math.max(progressPercent, 2) * 1.72, 172]}
+                      strokeDasharray={[Math.max(overallProgressPercent, 3) * 3.55, 355]}
                     />
-                    <Circle cx="10" cy="34" r="4" fill="#FFFFFF" stroke="#28BFF5" strokeWidth="3" />
-                    <Circle cx="164" cy="18" r="4" fill="#FFFFFF" stroke="#B7C2CF" strokeWidth="3" />
-                    <Circle cx={energyMarkerX} cy={energyMarkerY} r="8" fill="rgba(255,255,255,0.72)" stroke="rgba(255,255,255,0.9)" strokeWidth="2" />
-                    <Circle cx={energyMarkerX} cy={energyMarkerY} r="4.3" fill="#6E5BE7" />
                   </Svg>
-                  <View pointerEvents="none" style={styles.energyNowPill}>
-                    <Sparkles size={9} color="#FFFFFF" />
-                    <Text style={styles.energyNowText}>{Math.round(progressPercent)}%</Text>
+                  {GROWTH_PHASES.map((phase, index) => {
+                    const PhaseIcon = phase.icon;
+                    const active = index === growthPhaseIndex;
+                    const completed = index < growthPhaseIndex;
+                    return (
+                      <MotionPressable
+                        key={phase.label}
+                        onPress={() => router.push('/(app)/(tabs)/growth' as any)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`查看${phase.label}成长阶段`}
+                        pressedScale={0.9}
+                        hoverLift={4}
+                        style={[
+                          styles.journeyNodeWrap,
+                          index === 0 && styles.journeyNodeOne,
+                          index === 1 && styles.journeyNodeTwo,
+                          index === 2 && styles.journeyNodeThree,
+                          index === 3 && styles.journeyNodeFour,
+                        ]}
+                      >
+                        {active && <Text style={styles.currentPhasePill}>当前</Text>}
+                        <View style={[
+                          styles.journeyNode,
+                          completed && styles.journeyNodeCompleted,
+                          active && styles.journeyNodeActive,
+                        ]}>
+                          <LinearGradient
+                            colors={active
+                              ? ['rgba(255,166,140,0.96)', 'rgba(244,102,111,0.94)']
+                              : completed
+                                ? ['rgba(92,219,250,0.94)', 'rgba(50,126,241,0.92)']
+                                : ['rgba(255,255,255,0.84)', 'rgba(224,239,251,0.72)']}
+                            style={StyleSheet.absoluteFillObject}
+                          />
+                          <PhaseIcon size={17} color={active || completed ? '#FFFFFF' : '#71839A'} strokeWidth={2.4} />
+                        </View>
+                        <Text style={[styles.journeyNodeLabel, active && styles.journeyNodeLabelActive]}>{phase.label}</Text>
+                      </MotionPressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.xpSummaryRow}>
+                <View style={styles.xpReading}>
+                  <Text style={styles.xpValue}>{totalXp}</Text>
+                  <Text style={styles.xpUnit}>XP</Text>
+                </View>
+                <View style={styles.xpProgressCopy}>
+                  <View style={styles.xpProgressTrack}>
+                    <LinearGradient
+                      colors={['#2FCBF3', '#2A82F3', '#7658E8']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={[styles.xpProgressFill, { width: `${Math.max(progressPercent, 3)}%` }]}
+                    />
                   </View>
+                  <Text style={styles.xpProgressText}>
+                    {nextLevel ? `距离下一等级 ${xpToNext} XP` : '已达到最高等级'}
+                  </Text>
                 </View>
               </View>
 
-              <View style={styles.energyLabels}>
-                <View>
-                  <Text style={styles.energyLabel}>当前阶段</Text>
-                  <Text style={styles.energyLabelValue}>LV.{curLevel.level} · {curLevel.minXp} XP</Text>
-                </View>
-                <View style={styles.energyDestination}>
-                  <Text style={styles.energyLabel}>下一里程碑</Text>
-                  <Text style={[styles.energyLabelValue, styles.energyLabelValueActive]}>{milestoneXp} XP</Text>
-                </View>
-              </View>
-
-              <View style={styles.holoActionDock}>
+              <View style={styles.passActionDock}>
                 <MotionPressable
                   onPress={() => router.push('/(app)/(tabs)/learning' as any)}
                   accessibilityRole="button"
@@ -529,10 +680,10 @@ export default function ProfileScreen() {
                   pressedScale={0.96}
                   hoverLift={3}
                   hoverTilt={1.4}
-                  style={styles.continueButton}
+                  style={styles.passPrimaryButton}
                 >
                   <LinearGradient
-                    colors={['rgba(14,154,249,0.94)', 'rgba(72,89,234,0.92)', 'rgba(119,77,222,0.9)']}
+                    colors={['rgba(36,146,250,0.96)', 'rgba(67,117,238,0.94)', 'rgba(106,83,226,0.92)']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={StyleSheet.absoluteFillObject}
@@ -542,13 +693,12 @@ export default function ProfileScreen() {
                     colors={['rgba(255,255,255,0.6)', 'rgba(255,255,255,0)']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 0, y: 1 }}
-                    style={styles.actionGlassHighlight}
+                    style={styles.passButtonHighlight}
                   />
-                  <Target size={16} color="#FFFFFF" />
-                  <View style={styles.continueButtonCopy}>
-                    <Text style={styles.continueButtonTitle}>继续今天的学习</Text>
-                    <Text style={styles.continueButtonSubtitle}>{nextLevel?.reward ?? '继续积累真实表达'}</Text>
+                  <View style={styles.passPlayOrb}>
+                    <Target size={16} color="#FFFFFF" />
                   </View>
+                  <Text style={styles.passPrimaryText}>继续今天的学习</Text>
                   <ChevronRight size={17} color="#FFFFFF" />
                 </MotionPressable>
                 <MotionPressable
@@ -557,23 +707,16 @@ export default function ProfileScreen() {
                   accessibilityLabel={`查看连续学习 ${streak} 天`}
                   pressedScale={0.92}
                   hoverLift={3}
-                  style={styles.streakButton}
+                  style={styles.passStreakButton}
                 >
-                  <View style={styles.streakIconWell}>
+                  <View style={styles.passStreakIcon}>
                     <Flame size={15} color={COLORS.green} fill={COLORS.green} />
                   </View>
-                  <Text style={styles.streakValue}>{streak}</Text>
-                  <Text style={styles.streakLabel}>天</Text>
+                  <Text style={styles.passStreakLabel}>连续</Text>
+                  <Text style={styles.passStreakValue}>{streak}</Text>
+                  <Text style={styles.passStreakUnit}>天</Text>
+                  <ChevronRight size={14} color={COLORS.muted} />
                 </MotionPressable>
-              </View>
-
-              <View style={styles.holoFooter}>
-                <Text style={styles.passportSerial}>VEC · {String(curLevel.level).padStart(2, '0')} · {String(totalXp).padStart(4, '0')}</Text>
-                <View style={styles.signalBars}>
-                  {[3, 1, 4, 2, 5, 2, 4, 1, 3].map((height, index) => (
-                    <View key={index} style={[styles.signalBar, { height: height * 2.2 }]} />
-                  ))}
-                </View>
               </View>
             </View>
           </Animated.View>
@@ -1024,61 +1167,62 @@ const styles = StyleSheet.create({
     elevation: 3, ...GLASS_WEB,
   },
   identityPanel: {
-    minHeight: 332, overflow: 'hidden', borderRadius: 33, padding: 2,
+    minHeight: 418, overflow: 'hidden', borderRadius: 34, padding: 2,
     shadowColor: '#315F91', shadowOffset: { width: 0, height: 22 },
     shadowOpacity: 0.22, shadowRadius: 38, elevation: 9,
   },
   holoSurface: {
-    flex: 1, minHeight: 328, overflow: 'hidden', padding: 16, borderRadius: 31,
+    flex: 1, minHeight: 414, overflow: 'hidden', padding: 15, borderRadius: 32,
     backgroundColor: 'rgba(246,250,255,0.56)', borderWidth: 1.2,
     borderColor: 'rgba(255,255,255,0.92)', ...GLASS_WEB,
   },
-  holoFoilTop: {
-    position: 'absolute', width: 310, height: 128, left: -106, top: -51,
-    borderRadius: 64, transform: [{ rotate: '-12deg' }],
+  passFoilTop: {
+    position: 'absolute', width: 340, height: 154, left: -126, top: -62,
+    borderRadius: 80, transform: [{ rotate: '-11deg' }],
   },
-  holoFoilBottom: {
-    position: 'absolute', width: 340, height: 140, right: -138, bottom: -61,
-    borderRadius: 70, transform: [{ rotate: '8deg' }],
+  passFoilBottom: {
+    position: 'absolute', width: 380, height: 160, right: -145, bottom: -70,
+    borderRadius: 82, transform: [{ rotate: '8deg' }],
   },
-  holoSpecular: {
-    position: 'absolute', width: 54, height: 460, left: '45%', top: -105,
-    transform: [{ rotate: '17deg' }],
+  passSpecular: {
+    position: 'absolute', width: 58, height: 560, left: '44%', top: -126,
+    transform: [{ rotate: '17deg' }], opacity: 0.72,
   },
-  holoContourOne: {
-    position: 'absolute', width: 310, height: 112, right: -166, top: 21,
-    borderWidth: 1, borderColor: 'rgba(80,112,229,0.14)', borderRadius: 29,
+  passContourOne: {
+    position: 'absolute', width: 332, height: 124, right: -176, top: 18,
+    borderWidth: 1, borderColor: 'rgba(80,112,229,0.14)', borderRadius: 30,
     transform: [{ rotate: '-14deg' }],
   },
-  holoContourTwo: {
-    position: 'absolute', width: 272, height: 92, right: -128, top: 46,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.74)', borderRadius: 27,
+  passContourTwo: {
+    position: 'absolute', width: 292, height: 98, right: -134, top: 48,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.78)', borderRadius: 29,
     transform: [{ rotate: '-14deg' }],
   },
-  holoHeader: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  passHeader: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 11 },
   avatarMedallion: {
-    width: 66, height: 66, overflow: 'hidden', padding: 4, borderRadius: 33,
+    width: 78, height: 78, overflow: 'hidden', padding: 5, borderRadius: 39,
     alignItems: 'center', justifyContent: 'center', borderWidth: 1.2,
     borderColor: 'rgba(255,255,255,0.96)', shadowColor: '#347DE6',
     shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.32, shadowRadius: 18,
     elevation: 6,
   },
   avatarHaloOuter: {
-    position: 'absolute', width: 58, height: 58, borderRadius: 29, borderWidth: 1.4,
+    position: 'absolute', width: 69, height: 69, borderRadius: 35, borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.72)', borderTopColor: 'rgba(255,255,255,0.98)',
     borderRightColor: 'rgba(109,235,255,0.92)', transform: [{ rotate: '-31deg' }],
   },
   avatarHaloInner: {
-    position: 'absolute', width: 49, height: 49, borderRadius: 25, borderWidth: 1,
+    position: 'absolute', width: 60, height: 60, borderRadius: 30, borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.7)', borderBottomColor: 'rgba(255,178,154,0.82)',
     transform: [{ rotate: '24deg' }],
   },
   avatarFace: {
-    width: 43, height: 43, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
+    width: 54, height: 54, overflow: 'hidden', borderRadius: 27,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: '#DFF1FF',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.98)', shadowColor: '#5169DB',
     shadowOpacity: 0.21, shadowRadius: 9,
   },
-  avatarInitial: { color: COLORS.blueDark, fontSize: 22, lineHeight: 25, fontWeight: '900' },
+  avatarImage: { width: '100%', height: '100%' },
   avatarGlint: {
     position: 'absolute', width: 31, height: 9, left: 10, top: 8, borderRadius: 7,
     transform: [{ rotate: '-20deg' }],
@@ -1090,30 +1234,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.38, shadowRadius: 5,
   },
   avatarStatusCore: { width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.green },
-  holoIdentityCopy: { flex: 1, minWidth: 0 },
-  identityMetaRow: {
-    minHeight: 18, flexDirection: 'row', alignItems: 'center', gap: 5,
+  avatarEditButton: {
+    position: 'absolute', right: 2, top: 3, width: 25, height: 25, borderRadius: 13,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(16,111,235,0.88)',
+    borderWidth: 1.2, borderColor: 'rgba(255,255,255,0.94)', shadowColor: '#116EE8',
+    shadowOpacity: 0.4, shadowRadius: 7,
   },
-  identityStatusPill: {
-    minHeight: 18, paddingHorizontal: 7, flexDirection: 'row',
-    alignItems: 'center', gap: 4, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.38)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)',
-  },
-  identityStatusDot: {
-    width: 4, height: 4, borderRadius: 2, backgroundColor: '#1DCB96',
-    shadowColor: '#1DCB96', shadowOpacity: 0.55, shadowRadius: 4,
-  },
-  identityStatus: {
-    color: COLORS.blueDark, fontSize: 6.1, lineHeight: 8,
-    fontWeight: '900', letterSpacing: 0.75,
-  },
+  passIdentityCopy: { flex: 1, minWidth: 0 },
+  passEyebrow: { color: COLORS.blueDark, fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 1.1 },
   displayName: { marginTop: 2, color: COLORS.text, fontSize: 21, lineHeight: 24, fontWeight: '900' },
-  identityTitleRow: { marginTop: 2, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  identityTitleDivider: { width: 1, height: 8, backgroundColor: 'rgba(78,101,142,0.24)' },
-  levelName: { color: COLORS.muted, fontSize: 8.2, lineHeight: 11, fontWeight: '800' },
-  identityBadgeName: { flex: 1, color: COLORS.purple, fontSize: 8.2, lineHeight: 11, fontWeight: '900' },
+  passRole: { marginTop: 1, color: COLORS.muted, fontSize: 9, lineHeight: 12, fontWeight: '800' },
+  onlinePill: {
+    minHeight: 21, marginTop: 5, alignSelf: 'flex-start', paddingHorizontal: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.52)', borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.82)',
+  },
+  onlineDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: COLORS.green },
+  onlineText: { color: COLORS.muted, fontSize: 7, lineHeight: 9, fontWeight: '800' },
+  avatarNotice: { marginTop: 3, color: COLORS.blueDark, fontSize: 6.5, lineHeight: 8, fontWeight: '800' },
   levelLens: {
-    width: 76, height: 76, overflow: 'hidden', borderRadius: 25,
+    width: 76, height: 76, overflow: 'hidden', borderRadius: 38,
     alignItems: 'center', justifyContent: 'center', borderWidth: 1.2,
     borderColor: 'rgba(255,255,255,0.72)', shadowColor: '#4259D8',
     shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.28, shadowRadius: 18,
@@ -1126,59 +1267,85 @@ const styles = StyleSheet.create({
   levelLensCopy: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
   levelLensLabel: { color: 'rgba(255,255,255,0.72)', fontSize: 6, lineHeight: 8, fontWeight: '900', letterSpacing: 1 },
   levelLensValue: { marginTop: -1, color: '#FFFFFF', fontSize: 25, lineHeight: 28, fontWeight: '900' },
-  energySection: { minHeight: 92, marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  energyCopy: { width: 164, minWidth: 0 },
-  energyEyebrow: { color: COLORS.blue, fontSize: 7.2, lineHeight: 10, fontWeight: '900', letterSpacing: 1.15 },
-  energyValueRow: { marginTop: 1, flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
-  energyValue: { color: COLORS.text, fontSize: 31, lineHeight: 34, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  energyUnit: { marginBottom: 4, color: COLORS.purple, fontSize: 10, lineHeight: 13, fontWeight: '900' },
-  energyMessage: { marginTop: 3, color: COLORS.muted, fontSize: 8, lineHeight: 11, fontWeight: '700' },
-  energyRoute: { flex: 1, minWidth: 0, height: 82, justifyContent: 'center' },
-  energyNowPill: {
-    position: 'absolute', right: 17, top: 0, minWidth: 43, height: 19,
-    paddingHorizontal: 7, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 3, borderRadius: 10, backgroundColor: '#6F59E4', borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.82)', shadowColor: '#6756DA', shadowOpacity: 0.24,
-    shadowRadius: 7,
+  growthJourney: {
+    minHeight: 142, marginTop: 11, paddingHorizontal: 10, paddingTop: 9, borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.26)', borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.56)',
   },
-  energyNowText: { color: '#FFFFFF', fontSize: 7, lineHeight: 9, fontWeight: '900' },
-  energyLabels: { marginTop: -7, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
-  energyDestination: { alignItems: 'flex-end' },
-  energyLabel: { color: COLORS.subtle, fontSize: 6.2, lineHeight: 8, fontWeight: '800' },
-  energyLabelValue: { marginTop: 1, color: COLORS.muted, fontSize: 8, lineHeight: 10, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  energyLabelValueActive: { color: COLORS.purple },
-  holoActionDock: { marginTop: 13, flexDirection: 'row', gap: 8 },
-  continueButton: {
-    flex: 1, minHeight: 52, overflow: 'hidden', paddingHorizontal: 12,
-    flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 18,
-    borderWidth: 1.2, borderColor: 'rgba(224,247,255,0.86)', shadowColor: '#0875F7',
-    shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.25, shadowRadius: 18, elevation: 4,
+  journeyHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  journeyTitle: { color: COLORS.text, fontSize: 13, lineHeight: 16, fontWeight: '900' },
+  journeySubtitle: { marginTop: 1, color: COLORS.muted, fontSize: 7.5, lineHeight: 10, fontWeight: '700' },
+  journeyMore: {
+    width: 27, height: 27, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.56)', borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.88)',
   },
-  actionGlassHighlight: {
-    position: 'absolute', left: 9, right: 9, top: 2, height: 17, borderRadius: 14,
+  journeyCanvas: { height: 94, marginTop: 3, position: 'relative' },
+  journeyPath: { position: 'absolute', left: 0, right: 0, top: 7 },
+  journeyNodeWrap: { position: 'absolute', width: 50, alignItems: 'center', zIndex: 2 },
+  journeyNodeOne: { left: 0, top: 37 },
+  journeyNodeTwo: { left: '28%', top: 17 },
+  journeyNodeThree: { left: '57%', top: 31 },
+  journeyNodeFour: { right: 0, top: 9 },
+  currentPhasePill: {
+    position: 'absolute', top: -14, zIndex: 3, minWidth: 31, height: 16,
+    paddingHorizontal: 5, borderRadius: 8, textAlign: 'center', color: '#FFFFFF',
+    backgroundColor: '#F06F70', fontSize: 6.5, lineHeight: 16, fontWeight: '900',
+    overflow: 'hidden', shadowColor: '#EE6670', shadowOpacity: 0.25, shadowRadius: 5,
   },
-  continueButtonCopy: { flex: 1, minWidth: 0 },
-  continueButtonTitle: { color: '#FFFFFF', fontSize: 10.5, lineHeight: 14, fontWeight: '900' },
-  continueButtonSubtitle: { marginTop: 1, color: 'rgba(255,255,255,0.72)', fontSize: 6.4, lineHeight: 8, fontWeight: '700' },
-  streakButton: {
-    width: 76, minHeight: 52, flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: 3, borderRadius: 19, backgroundColor: 'rgba(240,255,248,0.48)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.84)', shadowColor: '#20A878',
-    shadowOpacity: 0.12, shadowRadius: 13, ...GLASS_WEB,
+  journeyNode: {
+    width: 40, height: 40, overflow: 'hidden', borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.92)', shadowColor: '#3F6D97',
+    shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.14, shadowRadius: 10,
   },
-  streakIconWell: {
-    width: 25, height: 25, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)',
+  journeyNodeCompleted: { shadowColor: '#1785F4', shadowOpacity: 0.3 },
+  journeyNodeActive: {
+    width: 46, height: 46, borderRadius: 23, borderWidth: 2.5,
+    shadowColor: '#ED6A72', shadowOpacity: 0.38, shadowRadius: 13,
   },
-  streakValue: { color: COLORS.green, fontSize: 16, lineHeight: 19, fontWeight: '900' },
-  streakLabel: { color: COLORS.green, fontSize: 7, lineHeight: 9, fontWeight: '800' },
-  holoFooter: { minHeight: 17, marginTop: 7, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
-  passportSerial: {
-    color: 'rgba(70,91,120,0.48)', fontSize: 5.8, lineHeight: 8,
-    fontWeight: '900', letterSpacing: 1.25,
+  journeyNodeLabel: { marginTop: 3, color: COLORS.muted, fontSize: 7, lineHeight: 9, fontWeight: '800' },
+  journeyNodeLabelActive: { color: '#D85763', fontWeight: '900' },
+  xpSummaryRow: { minHeight: 40, marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  xpReading: { width: 78, flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
+  xpValue: { color: COLORS.text, fontSize: 22, lineHeight: 24, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  xpUnit: { marginBottom: 2, color: COLORS.purple, fontSize: 8, lineHeight: 11, fontWeight: '900' },
+  xpProgressCopy: { flex: 1, minWidth: 0 },
+  xpProgressTrack: {
+    height: 7, overflow: 'hidden', borderRadius: 4, backgroundColor: 'rgba(104,126,150,0.14)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.66)',
   },
-  signalBars: { height: 14, flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
-  signalBar: { width: 2, borderRadius: 1, backgroundColor: 'rgba(57,104,151,0.42)' },
+  xpProgressFill: { height: '100%', borderRadius: 4 },
+  xpProgressText: { marginTop: 3, color: COLORS.muted, fontSize: 7, lineHeight: 9, fontWeight: '800' },
+  passActionDock: { marginTop: 9, flexDirection: 'row', gap: 8 },
+  passPrimaryButton: {
+    flex: 1, minHeight: 53, overflow: 'hidden', paddingHorizontal: 11,
+    flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 19,
+    borderWidth: 1.2, borderColor: 'rgba(224,247,255,0.9)', shadowColor: '#0875F7',
+    shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.27, shadowRadius: 18, elevation: 4,
+  },
+  passButtonHighlight: { position: 'absolute', left: 9, right: 9, top: 2, height: 18, borderRadius: 14 },
+  passPlayOrb: {
+    width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.17)', borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.48)',
+  },
+  passPrimaryText: { flex: 1, color: '#FFFFFF', fontSize: 10.5, lineHeight: 14, fontWeight: '900' },
+  passStreakButton: {
+    width: 126, minHeight: 53, paddingHorizontal: 8, flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: 19,
+    backgroundColor: 'rgba(238,255,248,0.5)', borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.88)', shadowColor: '#20A878',
+    shadowOpacity: 0.14, shadowRadius: 14, ...GLASS_WEB,
+  },
+  passStreakIcon: {
+    width: 27, height: 27, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.66)', borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.92)',
+  },
+  passStreakLabel: { color: COLORS.muted, fontSize: 7, lineHeight: 9, fontWeight: '800' },
+  passStreakValue: { color: COLORS.green, fontSize: 17, lineHeight: 20, fontWeight: '900' },
+  passStreakUnit: { color: COLORS.green, fontSize: 7, lineHeight: 9, fontWeight: '900' },
   signalSection: { gap: 10 },
   signalHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   signalTitle: { marginTop: 1, color: COLORS.text, fontSize: 20, lineHeight: 24, fontWeight: '900' },
