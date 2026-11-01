@@ -24,7 +24,7 @@ import {
   Sparkles,
   Target,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -136,13 +136,6 @@ const BADGES = [
   },
 ];
 
-const GROWTH_PHASES = [
-  { label: '开口', icon: MessageCircle },
-  { label: '场景', icon: Target },
-  { label: '表达', icon: BookOpen },
-  { label: '流利', icon: Sparkles },
-] as const;
-
 function calcLevel(totalXp: number) {
   for (let index = LEVELS.length - 1; index >= 0; index -= 1) {
     if (totalXp >= LEVELS[index].minXp) return LEVELS[index];
@@ -228,8 +221,15 @@ export default function ProfileScreen() {
   const selectedProgress = Math.min(totalXp / Math.max(selectedRequiredXp, 1), 1);
   const ringRadius = 29;
   const ringCircumference = 2 * Math.PI * ringRadius;
-  const growthPhaseIndex = curLevel.level <= 2 ? 0 : curLevel.level <= 4 ? 1 : curLevel.level <= 7 ? 2 : 3;
-  const overallProgressPercent = Math.min((totalXp / LEVELS.at(-1)!.minXp) * 100, 100);
+  const abilityMetrics = [
+    { label: '场景', value: recordCount, unit: '次', progress: Math.min(recordCount / 24, 1), color: '#167CF3' },
+    { label: '表达', value: totalWords, unit: '词', progress: Math.min(totalWords / 30, 1), color: '#22B7C7' },
+    { label: '坚持', value: streak, unit: '天', progress: Math.min(streak / 14, 1), color: '#16A873' },
+    { label: '等级', value: curLevel.level, unit: '级', progress: curLevel.level / 10, color: '#F17768' },
+  ];
+  const abilityScore = Math.round(
+    abilityMetrics.reduce((sum, metric) => sum + metric.progress, 0) / abilityMetrics.length * 100,
+  );
 
   useEffect(() => {
     let active = true;
@@ -427,8 +427,8 @@ export default function ProfileScreen() {
             style={styles.identityPanel}
           >
             <LinearGradient
-              colors={['#B8EEFF', '#7C9CFF', '#C6A7F5', '#FFC9B1', '#A6F0D5']}
-              locations={[0, 0.27, 0.52, 0.77, 1]}
+              colors={['#FFFFFF', '#DCEBFA', '#FFFFFF']}
+              locations={[0, 0.5, 1]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={StyleSheet.absoluteFillObject}
@@ -436,22 +436,22 @@ export default function ProfileScreen() {
             <View style={styles.holoSurface}>
               <LinearGradient
                 pointerEvents="none"
-                colors={['rgba(255,255,255,0.92)', 'rgba(234,247,255,0.66)', 'rgba(245,239,255,0.58)', 'rgba(255,248,240,0.68)']}
-                locations={[0, 0.35, 0.7, 1]}
+                colors={['rgba(255,255,255,0.99)', 'rgba(255,255,255,0.96)', 'rgba(248,251,255,0.98)']}
+                locations={[0, 0.58, 1]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFillObject}
               />
               <LinearGradient
                 pointerEvents="none"
-                colors={['rgba(80,215,255,0.22)', 'rgba(255,255,255,0)', 'rgba(150,104,241,0.15)']}
+                colors={['rgba(65,176,255,0.12)', 'rgba(255,255,255,0)', 'rgba(98,124,238,0.08)']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0.7 }}
                 style={styles.passFoilTop}
               />
               <LinearGradient
                 pointerEvents="none"
-                colors={['rgba(255,255,255,0)', 'rgba(255,181,140,0.18)', 'rgba(99,231,196,0.17)']}
+                colors={['rgba(255,255,255,0)', 'rgba(255,184,148,0.08)', 'rgba(77,202,172,0.08)']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.passFoilBottom}
@@ -475,14 +475,6 @@ export default function ProfileScreen() {
                   disabled={avatarBusy}
                   style={styles.avatarMedallion}
                 >
-                  <LinearGradient
-                    colors={['#70E5FF', '#2D83F4', '#7C5EE8', '#FFB391']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={StyleSheet.absoluteFillObject}
-                  />
-                  <View pointerEvents="none" style={styles.avatarHaloOuter} />
-                  <View pointerEvents="none" style={styles.avatarHaloInner} />
                   <View style={styles.avatarFace}>
                     <Image
                       source={avatarUri ? { uri: avatarUri } : defaultAvatar}
@@ -494,18 +486,10 @@ export default function ProfileScreen() {
                       style={styles.avatarImage}
                     />
                   </View>
-                  <LinearGradient
-                    pointerEvents="none"
-                    colors={['rgba(255,255,255,0.92)', 'rgba(255,255,255,0)']}
-                    style={styles.avatarGlint}
-                  />
                   <View style={styles.avatarEditButton}>
                     {avatarBusy
                       ? <ActivityIndicator size="small" color="#FFFFFF" />
                       : <Camera size={12} color="#FFFFFF" strokeWidth={2.5} />}
-                  </View>
-                  <View style={styles.avatarStatus}>
-                    <View style={styles.avatarStatusCore} />
                   </View>
                 </MotionPressable>
 
@@ -567,88 +551,91 @@ export default function ProfileScreen() {
                 </MotionPressable>
               </View>
 
-              <View style={styles.growthJourney}>
-                <View style={styles.journeyHeading}>
+              <View style={styles.abilitySpectrum}>
+                <View style={styles.spectrumHeading}>
                   <View>
-                    <Text style={styles.journeyTitle}>成长轨迹</Text>
-                    <Text style={styles.journeySubtitle}>每一次真实表达，都在推动你向前</Text>
+                    <Text style={styles.spectrumEyebrow}>ABILITY SPECTRUM</Text>
+                    <Text style={styles.spectrumTitle}>成长光谱</Text>
+                    <Text style={styles.spectrumSubtitle}>四个维度来自你的真实学习记录</Text>
                   </View>
                   <MotionPressable
                     onPress={() => router.push('/(app)/(tabs)/growth' as any)}
                     accessibilityRole="button"
-                    accessibilityLabel="查看完整成长轨迹"
+                    accessibilityLabel="查看完整成长光谱"
                     pressedScale={0.9}
-                    style={styles.journeyMore}
+                    style={styles.spectrumMore}
                   >
                     <ChevronRight size={15} color={COLORS.blueDark} />
                   </MotionPressable>
                 </View>
+                <View style={styles.spectrumBody}>
+                  <MotionPressable
+                    onPress={() => router.push('/(app)/(tabs)/growth' as any)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`成长综合值 ${abilityScore}`}
+                    pressedScale={0.95}
+                    hoverLift={3}
+                    hoverTilt={2}
+                    style={styles.spectrumDial}
+                  >
+                    <Svg pointerEvents="none" width="120" height="120" viewBox="0 0 120 120">
+                      {abilityMetrics.map((metric, index) => {
+                        const radius = 49 - index * 9;
+                        const circumference = 2 * Math.PI * radius;
+                        return (
+                          <Fragment key={metric.label}>
+                            <Circle
+                              cx="60"
+                              cy="60"
+                              r={radius}
+                              fill="none"
+                              stroke="rgba(90,113,143,0.1)"
+                              strokeWidth="6"
+                            />
+                            <Circle
+                              cx="60"
+                              cy="60"
+                              r={radius}
+                              fill="none"
+                              stroke={metric.color}
+                              strokeWidth="6"
+                              strokeLinecap="round"
+                              strokeDasharray={`${circumference} ${circumference}`}
+                              strokeDashoffset={circumference * (1 - Math.max(metric.progress, 0.03))}
+                              transform="rotate(-90 60 60)"
+                            />
+                          </Fragment>
+                        );
+                      })}
+                    </Svg>
+                    <View style={styles.spectrumDialCore}>
+                      <Text style={styles.spectrumScore}>{abilityScore}</Text>
+                      <Text style={styles.spectrumScoreLabel}>综合值</Text>
+                    </View>
+                  </MotionPressable>
 
-                <View style={styles.journeyCanvas}>
-                  <Svg pointerEvents="none" width="100%" height="72" viewBox="0 0 360 72" style={styles.journeyPath}>
-                    <Defs>
-                      <SvgLinearGradient id="journeyLine" x1="0" y1="0" x2="1" y2="0">
-                        <Stop offset="0" stopColor="#32CCF4" />
-                        <Stop offset="0.48" stopColor="#2D89F4" />
-                        <Stop offset="1" stopColor="#EF7E73" />
-                      </SvgLinearGradient>
-                    </Defs>
-                    <Path
-                      d="M 22 44 C 72 14 100 58 132 38 S 210 18 240 34 S 300 52 338 22"
-                      fill="none"
-                      stroke="rgba(93,128,164,0.16)"
-                      strokeWidth="4"
-                      strokeLinecap="round"
-                    />
-                    <Path
-                      d="M 22 44 C 72 14 100 58 132 38 S 210 18 240 34 S 300 52 338 22"
-                      fill="none"
-                      stroke="url(#journeyLine)"
-                      strokeWidth="4"
-                      strokeLinecap="round"
-                      strokeDasharray={[Math.max(overallProgressPercent, 3) * 3.55, 355]}
-                    />
-                  </Svg>
-                  {GROWTH_PHASES.map((phase, index) => {
-                    const PhaseIcon = phase.icon;
-                    const active = index === growthPhaseIndex;
-                    const completed = index < growthPhaseIndex;
-                    return (
+                  <View style={styles.metricGrid}>
+                    {abilityMetrics.map((metric) => (
                       <MotionPressable
-                        key={phase.label}
+                        key={metric.label}
                         onPress={() => router.push('/(app)/(tabs)/growth' as any)}
                         accessibilityRole="button"
-                        accessibilityLabel={`查看${phase.label}成长阶段`}
-                        pressedScale={0.9}
-                        hoverLift={4}
-                        style={[
-                          styles.journeyNodeWrap,
-                          index === 0 && styles.journeyNodeOne,
-                          index === 1 && styles.journeyNodeTwo,
-                          index === 2 && styles.journeyNodeThree,
-                          index === 3 && styles.journeyNodeFour,
-                        ]}
+                        accessibilityLabel={`${metric.label} ${metric.value} ${metric.unit}`}
+                        pressedScale={0.95}
+                        hoverLift={2}
+                        style={styles.metricCell}
                       >
-                        {active && <Text style={styles.currentPhasePill}>当前</Text>}
-                        <View style={[
-                          styles.journeyNode,
-                          completed && styles.journeyNodeCompleted,
-                          active && styles.journeyNodeActive,
-                        ]}>
-                          <LinearGradient
-                            colors={active
-                              ? ['rgba(255,166,140,0.96)', 'rgba(244,102,111,0.94)']
-                              : completed
-                                ? ['rgba(92,219,250,0.94)', 'rgba(50,126,241,0.92)']
-                                : ['rgba(255,255,255,0.84)', 'rgba(224,239,251,0.72)']}
-                            style={StyleSheet.absoluteFillObject}
-                          />
-                          <PhaseIcon size={17} color={active || completed ? '#FFFFFF' : '#71839A'} strokeWidth={2.4} />
+                        <View style={[styles.metricSignal, { backgroundColor: metric.color }]} />
+                        <View style={styles.metricCopy}>
+                          <Text style={styles.metricLabel}>{metric.label}</Text>
+                          <View style={styles.metricValueRow}>
+                            <Text style={styles.metricValue}>{metric.value}</Text>
+                            <Text style={styles.metricUnit}>{metric.unit}</Text>
+                          </View>
                         </View>
-                        <Text style={[styles.journeyNodeLabel, active && styles.journeyNodeLabelActive]}>{phase.label}</Text>
                       </MotionPressable>
-                    );
-                  })}
+                    ))}
+                  </View>
                 </View>
               </View>
 
@@ -1167,14 +1154,14 @@ const styles = StyleSheet.create({
     elevation: 3, ...GLASS_WEB,
   },
   identityPanel: {
-    minHeight: 418, overflow: 'hidden', borderRadius: 34, padding: 2,
-    shadowColor: '#315F91', shadowOffset: { width: 0, height: 22 },
-    shadowOpacity: 0.22, shadowRadius: 38, elevation: 9,
+    minHeight: 423, overflow: 'hidden', borderRadius: 32, padding: 1.5,
+    shadowColor: '#476A8F', shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.16, shadowRadius: 34, elevation: 8,
   },
   holoSurface: {
-    flex: 1, minHeight: 414, overflow: 'hidden', padding: 15, borderRadius: 32,
-    backgroundColor: 'rgba(246,250,255,0.56)', borderWidth: 1.2,
-    borderColor: 'rgba(255,255,255,0.92)', ...GLASS_WEB,
+    flex: 1, minHeight: 420, overflow: 'hidden', padding: 15, borderRadius: 30.5,
+    backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.98)', ...GLASS_WEB,
   },
   passFoilTop: {
     position: 'absolute', width: 340, height: 154, left: -126, top: -62,
@@ -1190,7 +1177,7 @@ const styles = StyleSheet.create({
   },
   passContourOne: {
     position: 'absolute', width: 332, height: 124, right: -176, top: 18,
-    borderWidth: 1, borderColor: 'rgba(80,112,229,0.14)', borderRadius: 30,
+    borderWidth: 1, borderColor: 'rgba(84,135,196,0.08)', borderRadius: 30,
     transform: [{ rotate: '-14deg' }],
   },
   passContourTwo: {
@@ -1200,45 +1187,21 @@ const styles = StyleSheet.create({
   },
   passHeader: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 11 },
   avatarMedallion: {
-    width: 78, height: 78, overflow: 'hidden', padding: 5, borderRadius: 39,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1.2,
-    borderColor: 'rgba(255,255,255,0.96)', shadowColor: '#347DE6',
-    shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.32, shadowRadius: 18,
-    elevation: 6,
-  },
-  avatarHaloOuter: {
-    position: 'absolute', width: 69, height: 69, borderRadius: 35, borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.72)', borderTopColor: 'rgba(255,255,255,0.98)',
-    borderRightColor: 'rgba(109,235,255,0.92)', transform: [{ rotate: '-31deg' }],
-  },
-  avatarHaloInner: {
-    position: 'absolute', width: 60, height: 60, borderRadius: 30, borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)', borderBottomColor: 'rgba(255,178,154,0.82)',
-    transform: [{ rotate: '24deg' }],
+    width: 76, height: 76, overflow: 'visible', borderRadius: 38,
+    alignItems: 'center', justifyContent: 'center', shadowColor: '#54769A',
+    shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 14,
+    elevation: 4,
   },
   avatarFace: {
-    width: 54, height: 54, overflow: 'hidden', borderRadius: 27,
+    width: 72, height: 72, overflow: 'hidden', borderRadius: 36,
     alignItems: 'center', justifyContent: 'center', backgroundColor: '#DFF1FF',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.98)', shadowColor: '#5169DB',
-    shadowOpacity: 0.21, shadowRadius: 9,
   },
   avatarImage: { width: '100%', height: '100%' },
-  avatarGlint: {
-    position: 'absolute', width: 31, height: 9, left: 10, top: 8, borderRadius: 7,
-    transform: [{ rotate: '-20deg' }],
-  },
-  avatarStatus: {
-    position: 'absolute', right: 1, bottom: 2, width: 17, height: 17, borderRadius: 9,
-    alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.92)',
-    borderWidth: 1, borderColor: '#FFFFFF', shadowColor: COLORS.green,
-    shadowOpacity: 0.38, shadowRadius: 5,
-  },
-  avatarStatusCore: { width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.green },
   avatarEditButton: {
-    position: 'absolute', right: 2, top: 3, width: 25, height: 25, borderRadius: 13,
-    alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(16,111,235,0.88)',
-    borderWidth: 1.2, borderColor: 'rgba(255,255,255,0.94)', shadowColor: '#116EE8',
-    shadowOpacity: 0.4, shadowRadius: 7,
+    position: 'absolute', right: -1, bottom: -1, width: 25, height: 25, borderRadius: 13,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: '#167CF3',
+    borderWidth: 2, borderColor: '#FFFFFF', shadowColor: '#116EE8',
+    shadowOpacity: 0.24, shadowRadius: 6,
   },
   passIdentityCopy: { flex: 1, minWidth: 0 },
   passEyebrow: { color: COLORS.blueDark, fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 1.1 },
@@ -1267,45 +1230,46 @@ const styles = StyleSheet.create({
   levelLensCopy: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
   levelLensLabel: { color: 'rgba(255,255,255,0.72)', fontSize: 6, lineHeight: 8, fontWeight: '900', letterSpacing: 1 },
   levelLensValue: { marginTop: -1, color: '#FFFFFF', fontSize: 25, lineHeight: 28, fontWeight: '900' },
-  growthJourney: {
-    minHeight: 142, marginTop: 11, paddingHorizontal: 10, paddingTop: 9, borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.26)', borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.56)',
+  abilitySpectrum: {
+    minHeight: 156, marginTop: 12, padding: 11, borderRadius: 21,
+    backgroundColor: 'rgba(246,250,255,0.8)', borderWidth: 1,
+    borderColor: 'rgba(218,230,244,0.82)', shadowColor: '#7090B2',
+    shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.08, shadowRadius: 16,
   },
-  journeyHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  journeyTitle: { color: COLORS.text, fontSize: 13, lineHeight: 16, fontWeight: '900' },
-  journeySubtitle: { marginTop: 1, color: COLORS.muted, fontSize: 7.5, lineHeight: 10, fontWeight: '700' },
-  journeyMore: {
+  spectrumHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  spectrumEyebrow: { color: COLORS.blue, fontSize: 6.2, lineHeight: 8, fontWeight: '900', letterSpacing: 1.05 },
+  spectrumTitle: { marginTop: 1, color: COLORS.text, fontSize: 14, lineHeight: 17, fontWeight: '900' },
+  spectrumSubtitle: { marginTop: 1, color: COLORS.muted, fontSize: 7.2, lineHeight: 9, fontWeight: '700' },
+  spectrumMore: {
     width: 27, height: 27, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.56)', borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.88)',
+    backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(213,226,241,0.92)',
+    shadowColor: '#6684A6', shadowOpacity: 0.1, shadowRadius: 8,
   },
-  journeyCanvas: { height: 94, marginTop: 3, position: 'relative' },
-  journeyPath: { position: 'absolute', left: 0, right: 0, top: 7 },
-  journeyNodeWrap: { position: 'absolute', width: 50, alignItems: 'center', zIndex: 2 },
-  journeyNodeOne: { left: 0, top: 37 },
-  journeyNodeTwo: { left: '28%', top: 17 },
-  journeyNodeThree: { left: '57%', top: 31 },
-  journeyNodeFour: { right: 0, top: 9 },
-  currentPhasePill: {
-    position: 'absolute', top: -14, zIndex: 3, minWidth: 31, height: 16,
-    paddingHorizontal: 5, borderRadius: 8, textAlign: 'center', color: '#FFFFFF',
-    backgroundColor: '#F06F70', fontSize: 6.5, lineHeight: 16, fontWeight: '900',
-    overflow: 'hidden', shadowColor: '#EE6670', shadowOpacity: 0.25, shadowRadius: 5,
+  spectrumBody: { minHeight: 104, marginTop: 2, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  spectrumDial: {
+    width: 120, height: 120, alignItems: 'center', justifyContent: 'center',
   },
-  journeyNode: {
-    width: 40, height: 40, overflow: 'hidden', borderRadius: 20,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.92)', shadowColor: '#3F6D97',
-    shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.14, shadowRadius: 10,
+  spectrumDialCore: {
+    position: 'absolute', width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF',
+    shadowColor: '#5B7DA0', shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.13, shadowRadius: 10,
   },
-  journeyNodeCompleted: { shadowColor: '#1785F4', shadowOpacity: 0.3 },
-  journeyNodeActive: {
-    width: 46, height: 46, borderRadius: 23, borderWidth: 2.5,
-    shadowColor: '#ED6A72', shadowOpacity: 0.38, shadowRadius: 13,
+  spectrumScore: { color: COLORS.text, fontSize: 18, lineHeight: 20, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  spectrumScoreLabel: { color: COLORS.muted, fontSize: 5.5, lineHeight: 7, fontWeight: '800' },
+  metricGrid: { flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  metricCell: {
+    width: '47%', minHeight: 43, paddingHorizontal: 8, flexDirection: 'row',
+    alignItems: 'center', gap: 7, borderRadius: 13, backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: 'rgba(218,230,244,0.84)', shadowColor: '#6784A3',
+    shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 8,
   },
-  journeyNodeLabel: { marginTop: 3, color: COLORS.muted, fontSize: 7, lineHeight: 9, fontWeight: '800' },
-  journeyNodeLabelActive: { color: '#D85763', fontWeight: '900' },
+  metricSignal: { width: 5, height: 24, borderRadius: 3 },
+  metricCopy: { flex: 1, minWidth: 0 },
+  metricLabel: { color: COLORS.muted, fontSize: 6.5, lineHeight: 8, fontWeight: '800' },
+  metricValueRow: { marginTop: 1, flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
+  metricValue: { color: COLORS.text, fontSize: 14, lineHeight: 16, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  metricUnit: { marginBottom: 1, color: COLORS.subtle, fontSize: 6, lineHeight: 8, fontWeight: '800' },
   xpSummaryRow: { minHeight: 40, marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 11 },
   xpReading: { width: 78, flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
   xpValue: { color: COLORS.text, fontSize: 22, lineHeight: 24, fontWeight: '900', fontVariant: ['tabular-nums'] },
