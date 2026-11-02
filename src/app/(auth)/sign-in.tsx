@@ -72,8 +72,8 @@ export default function SignIn() {
     setLoading(true);
     setError('');
     try {
-      const signInError = await signIn(normalizedEmail, password);
-      if (signInError) setError(getAuthErrorMessage(signInError));
+      const result = await signIn(normalizedEmail, password);
+      if (result.error) setError(getAuthErrorMessage(result.error));
       else router.replace('/');
     } catch (signInError) {
       setError(getAuthErrorMessage(signInError));
@@ -91,8 +91,8 @@ export default function SignIn() {
     setQuickLoading(true);
     setError('');
     try {
-      const signInError = await startQuickExperience();
-      if (signInError) setError(getAuthErrorMessage(signInError));
+      const result = await startQuickExperience();
+      if (result.error) setError(getAuthErrorMessage(result.error));
       else router.replace('/');
     } catch (signInError) {
       setError(getAuthErrorMessage(signInError));
@@ -248,6 +248,17 @@ export default function SignIn() {
                     : <Eye size={21} color="#778BA9" strokeWidth={2} />}
                 </MotionPressable>
               </View>
+
+              <MotionPressable
+                onPress={() => router.push('/(auth)/forgot-password')}
+                accessibilityRole="button"
+                accessibilityLabel="忘记密码"
+                pressedScale={0.95}
+                haptic={false}
+                style={styles.forgotButton}
+              >
+                <Text style={styles.forgotText}>忘记密码？</Text>
+              </MotionPressable>
 
               {error ? (
                 <View style={styles.errorBox} accessibilityLiveRegion="polite">
@@ -453,6 +464,8 @@ const styles = StyleSheet.create({
   },
   input: { flex: 1, minWidth: 0, height: 51, padding: 0, color: COLORS.ink, fontSize: 15, lineHeight: 20, fontWeight: '700', outlineStyle: 'none' } as any,
   eyeButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 19 },
+  forgotButton: { alignSelf: 'flex-end', minHeight: 30, paddingHorizontal: 3, justifyContent: 'center' },
+  forgotText: { color: COLORS.blueStrong, fontSize: 12, lineHeight: 16, fontWeight: '800' },
   errorBox: {
     minHeight: 30, marginTop: 9, paddingHorizontal: 11, paddingVertical: 7,
     justifyContent: 'center', borderRadius: 11, backgroundColor: 'rgba(236,75,87,0.08)',

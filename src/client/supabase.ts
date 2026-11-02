@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import 'expo-sqlite/localStorage/install';
+import { Platform } from 'react-native'
 
 const supabaseUrl: string = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() || 'https://placeholder.supabase.co'
 const supabaseAnonKey: string = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim() || 'placeholder'
@@ -18,6 +19,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storage: localStorage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: Platform.OS === 'web',
   },
 })

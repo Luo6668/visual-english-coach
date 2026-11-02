@@ -1,4 +1,5 @@
 import { Session } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 
@@ -28,10 +29,18 @@ type SessionContextType = {
   isLoading: boolean;
   isDemoMode: boolean;
   isQuickExperience: boolean;
-  signIn: (email: string, password: string) => Promise<string | null>;
-  signUp: (email: string, password: string) => Promise<string | null>;
-  startQuickExperience: () => Promise<string | null>;
+  signIn: (email: string, password: string) => Promise<AuthActionResult>;
+  signUp: (email: string, password: string) => Promise<AuthActionResult>;
+  startQuickExperience: () => Promise<AuthActionResult>;
+  requestPasswordReset: (email: string) => Promise<AuthActionResult>;
+  updatePassword: (password: string) => Promise<AuthActionResult>;
   signOut: () => Promise<void>;
+};
+
+export type AuthActionResult = {
+  error: string | null;
+  message?: string;
+  needsEmailConfirmation?: boolean;
 };
 
 const SessionContext = createContext<SessionContextType>({
@@ -39,9 +48,11 @@ const SessionContext = createContext<SessionContextType>({
   isLoading: true,
   isDemoMode: Boolean(supabaseConfigError),
   isQuickExperience: false,
-  signIn: async () => null,
-  signUp: async () => null,
-  startQuickExperience: async () => null,
+  signIn: async () => ({ error: null }),
+  signUp: async () => ({ error: null }),
+  startQuickExperience: async () => ({ error: null }),
+  requestPasswordReset: async () => ({ error: null }),
+  updatePassword: async () => ({ error: null }),
   signOut: async () => {},
 });
 
@@ -96,25 +107,57 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     if (supabaseConfigError) {
       setDemoSession(email);
-      return null;
+      return { error: null };
     }
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    return error?.message ?? null;
+    return { error: error?.message ?? null };
   };
 
   const signUp = async (email: string, password: string) => {
     if (supabaseConfigError) {
       setDemoSession(email);
-      return null;
+      return { error: null };
     }
-    const { error } = await supabase.auth.signUp({ email: email.trim(), password });
-    return error?.message ?? null;
+    const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
+    return {
+      error: error?.message ?? null,
+      needsEmailConfirmation: !error && !data.session,
+    };
   };
 
   const startQuickExperience = async () => {
-    if (!supabaseConfigError) return '快速体验仅在本地演示模式可用';
+    if (!supabaseConfigError) return { error: '快速体验仅在本地演示模式可用' };
     setDemoSession('guest@visualcoach.local', quickDemoOwner());
-    return null;
+    return { error: null };
+  };
+
+  const requestPasswordReset = async (email: string) => {
+    if (supabaseConfigError) {
+      return {
+        error: null,
+        message: '当前是本地演示模式，不会发送邮件。返回登录页后输入这个邮箱即可继续。',
+      };
+    }
+
+    const redirectTo = Platform.OS === 'web' && typeof window !== 'undefined'
+      ? `${window.location.origin}/reset-password`
+      : Linking.createURL('reset-password');
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+    return {
+      error: error?.message ?? null,
+      message: error ? undefined : '重置链接已发送，请查看邮箱并在链接有效期内设置新密码。',
+    };
+  };
+
+  const updatePassword = async (password: string) => {
+    if (supabaseConfigError) {
+      return { error: null, message: '本地演示账号无需重置密码。' };
+    }
+    const { error } = await supabase.auth.updateUser({ password });
+    return {
+      error: error?.message ?? null,
+      message: error ? undefined : '密码已更新，你可以继续使用 Visual English Coach。',
+    };
   };
 
   const signOut = async () => {
@@ -135,6 +178,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       signIn,
       signUp,
       startQuickExperience,
+      requestPasswordReset,
+      updatePassword,
       signOut,
     }}>
       {children}
