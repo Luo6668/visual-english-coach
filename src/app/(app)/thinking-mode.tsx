@@ -4,9 +4,10 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { AlertCircle, Bookmark, Camera, Check, ChevronLeft, Languages, MessageCircle, Mic, PencilLine, RefreshCw, ScanLine, Volume2, WifiOff } from 'lucide-react-native';
+import { AlertCircle, Bookmark, Camera, Check, ChevronLeft, Languages, MessageCircle, Mic, PencilLine, RefreshCw, ScanLine, Volume2 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { AsyncStatusBanner } from '@/components/async-status-banner';
 import { createHighFreqWord, createLearningRecord, createSentence, invokeEdgeFunction, updateLearningRecord, upsertScene } from '@/lib/api';
 import { consumePendingUri } from '@/lib/imageStore';
 import { isLocalServiceMode } from '@/lib/serviceConfig';
@@ -550,28 +551,22 @@ export default function ThinkingModeScreen() {
             </View>
           </View>
 
-          <View style={{ borderRadius: 16, backgroundColor: error ? '#FFF1F2' : '#ECF9F3', paddingHorizontal: 18, paddingVertical: 20, flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>
-            <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: error ? '#E5484D' : '#20AA72', alignItems: 'center', justifyContent: 'center' }}>
-              {error ? <AlertCircle size={23} color="#FFFFFF" /> : imageReady || completed ? <Check size={24} color="#FFFFFF" strokeWidth={2.6} /> : <ActivityIndicator size="small" color="#FFFFFF" />}
-            </View>
-            <View style={{ flex: 1, paddingTop: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: '800', color: '#152235' }}>{statusTitle}</Text>
-              <Text style={{ marginTop: 5, fontSize: 13, lineHeight: 20, color: error ? '#A33A43' : '#637083' }}>{statusText}</Text>
-            </View>
-          </View>
-
-          {isLocalServiceMode && (
-            <View style={{ borderRadius: 16, backgroundColor: '#FFF7E6', paddingHorizontal: 18, paddingVertical: 20, flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>
-              <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: '#FFC857', alignItems: 'center', justifyContent: 'center' }}>
-                <WifiOff size={21} color="#162033" strokeWidth={2.2} />
+          {error ? (
+            <AsyncStatusBanner tone="error" title={statusTitle} message={statusText} onRetry={() => generate(difficulty)} />
+          ) : (
+            <View style={{ borderRadius: 16, backgroundColor: '#ECF9F3', paddingHorizontal: 18, paddingVertical: 20, flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>
+              <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: '#20AA72', alignItems: 'center', justifyContent: 'center' }}>
+                {imageReady || completed ? <Check size={24} color="#FFFFFF" strokeWidth={2.6} /> : <ActivityIndicator size="small" color="#FFFFFF" />}
               </View>
               <View style={{ flex: 1, paddingTop: 1 }}>
-                <Text style={{ fontSize: 16, fontWeight: '800', color: '#152235' }}>已切换到本地服务模式</Text>
-                <Text style={{ marginTop: 5, fontSize: 13, lineHeight: 20, color: '#6F7887' }}>
-                  当前由本机服务处理识别请求，学习记录会保存在本地。
-                </Text>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#152235' }}>{statusTitle}</Text>
+                <Text style={{ marginTop: 5, fontSize: 13, lineHeight: 20, color: '#637083' }}>{statusText}</Text>
               </View>
             </View>
+          )}
+
+          {isLocalServiceMode && (
+            <AsyncStatusBanner tone="offline" title="已切换到本地服务模式" message="当前由本机服务处理识别请求，学习记录会保存在本地。" />
           )}
 
           <View style={{ borderWidth: 1, borderColor: '#DDE3EC', borderRadius: 16, backgroundColor: '#FFFFFF', padding: 16 }}>

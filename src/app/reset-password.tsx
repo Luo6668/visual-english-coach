@@ -2,11 +2,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { CheckCircle2, Eye, EyeOff, KeyRound } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { AuthSceneShell } from '@/components/auth-scene-shell';
 import { MotionPressable } from '@/components/motion-pressable';
 import { useSession } from '@/ctx';
 import { getAuthErrorMessage } from '@/lib/authError';
+import { APP_COLORS, APP_RADIUS, APP_SHADOW } from '@/lib/design-system';
 
 export default function ResetPassword() {
   const router = useRouter();
@@ -42,8 +44,7 @@ export default function ResetPassword() {
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.page}>
-      <LinearGradient colors={['#F8FCFF', '#EAF4FF', '#F7F5FF']} style={StyleSheet.absoluteFillObject} />
+    <AuthSceneShell onBack={() => router.replace('/(auth)/sign-in')} panelLabel="设置新密码">
       <View style={styles.card}>
         <View style={styles.iconShell}>
           {complete ? <CheckCircle2 size={34} color="#16A36A" /> : <KeyRound size={32} color="#1478F5" />}
@@ -68,7 +69,7 @@ export default function ResetPassword() {
           </MotionPressable>
         )}
       </View>
-    </KeyboardAvoidingView>
+    </AuthSceneShell>
   );
 }
 
@@ -102,16 +103,15 @@ function PasswordField({ label, value, onChange, visible, toggle, onSubmit }: {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 22, backgroundColor: '#F4F9FF' },
-  card: { width: '100%', maxWidth: 390, padding: 27, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.9)', borderWidth: 1, borderColor: '#FFFFFF', shadowColor: '#365F89', shadowOpacity: 0.16, shadowRadius: 32, shadowOffset: { width: 0, height: 18 } },
+  card: { width: '100%', paddingVertical: 8 },
   iconShell: { width: 68, height: 68, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', borderRadius: 23, backgroundColor: '#EAF4FF', borderWidth: 1, borderColor: '#FFFFFF' },
-  title: { marginTop: 20, color: '#07162E', fontSize: 28, lineHeight: 34, fontWeight: '900', textAlign: 'center' },
-  subtitle: { marginTop: 9, marginBottom: 12, color: '#687B99', fontSize: 14, lineHeight: 22, fontWeight: '600', textAlign: 'center' },
-  inputShell: { height: 56, marginTop: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1.2, borderColor: 'rgba(91,143,213,0.3)' },
+  title: { marginTop: 16, color: APP_COLORS.ink, fontSize: 26, lineHeight: 32, fontWeight: '900', textAlign: 'center' },
+  subtitle: { marginTop: 7, marginBottom: 12, color: APP_COLORS.muted, fontSize: 13, lineHeight: 20, fontWeight: '600', textAlign: 'center' },
+  inputShell: { height: 56, marginTop: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: APP_RADIUS.control, backgroundColor: 'rgba(255,255,255,0.74)', borderWidth: 1.2, borderColor: APP_COLORS.border },
   input: { flex: 1, height: 53, padding: 0, color: '#07162E', fontSize: 15, fontWeight: '700', outlineStyle: 'none' } as any,
   eyeButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  error: { marginTop: 10, color: '#C83D4B', fontSize: 12, lineHeight: 17, fontWeight: '700' },
-  primaryButton: { height: 56, marginTop: 18, overflow: 'hidden', borderRadius: 28, shadowColor: '#116FF2', shadowOpacity: 0.28, shadowRadius: 18, shadowOffset: { width: 0, height: 10 } },
+  error: { marginTop: 10, color: APP_COLORS.danger, fontSize: 12, lineHeight: 17, fontWeight: '700' },
+  primaryButton: { height: 56, marginTop: 18, overflow: 'hidden', borderRadius: 28, ...APP_SHADOW.floating },
   primaryGradient: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 28 },
   primaryText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
 });

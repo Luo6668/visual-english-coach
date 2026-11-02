@@ -18,11 +18,12 @@ import Svg, { Circle as SvgCircle } from 'react-native-svg';
 import { MotionPressable } from '@/components/motion-pressable';
 import { fetchSceneMapProgress, fetchSceneProgress, fetchXpData } from '@/lib/api';
 import { setPendingUri } from '@/lib/imageStore';
+import { invalidateQueries, QUERY_KEYS } from '@/lib/query-cache';
 import { ALL_SCENES, type SceneNode } from '@/lib/sceneMapData';
 
 declare const require: (assetPath: string) => number;
 
-const HOTEL_SCENE_IMAGE = require('../../../../assets/growth-hotel-scene.png');
+const HOTEL_SCENE_IMAGE = require('../../../../assets/growth-hotel-scene.webp');
 const GLASS_WEB = Platform.OS === 'web'
   ? ({ backdropFilter: 'blur(22px) saturate(1.45)', WebkitBackdropFilter: 'blur(22px) saturate(1.45)', isolation: 'isolate' } as any)
   : null;
@@ -196,7 +197,10 @@ export default function GrowthScreen() {
   const [selectedWeekKey, setSelectedWeekKey] = useState('');
 
   const loadData = useCallback(async (refresh = false) => {
-    if (refresh) setRefreshing(true);
+    if (refresh) {
+      setRefreshing(true);
+      invalidateQueries([QUERY_KEYS.xpData, QUERY_KEYS.sceneProgress, QUERY_KEYS.sceneMapProgress]);
+    }
     else setLoading(true);
     setLoadError('');
     try {

@@ -1037,7 +1037,7 @@ export default function HomeScreen() {
             style={[styles.hero, { height: heroHeight }]}
           >
             <AnimatedImage
-              source={require('../../../../assets/home-cafe-hero.png')}
+              source={require('../../../../assets/home-cafe-hero.webp')}
               style={[styles.heroImage, heroImageAnimatedStyle]}
               contentFit="cover"
               contentPosition="center"

@@ -324,7 +324,7 @@ export default function RecordDetailScreen() {
         <AnimatedImage
           source={record.scene_image && !record.scene_image.startsWith('blob:') && !imageFailed
             ? { uri: record.scene_image }
-            : require('../../../../assets/home-cafe-hero.png')}
+            : require('../../../../assets/home-cafe-hero.webp')}
           style={[StyleSheet.absoluteFillObject, heroImageStyle]}
           contentFit="cover"
           transition={300}

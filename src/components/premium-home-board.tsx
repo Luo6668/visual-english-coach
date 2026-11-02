@@ -41,6 +41,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, Path, RadialGradient, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
+import { AsyncStatusBanner } from '@/components/async-status-banner';
 import { MotionPressable } from '@/components/motion-pressable';
 import { IOS_MOTION, resistedOffset } from '@/lib/ios-motion';
 import { ALL_SCENES, type SceneNode } from '@/lib/sceneMapData';
@@ -53,6 +54,7 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const webGlass = (filter: string) => Platform.OS === 'web'
   ? ({ backdropFilter: filter, WebkitBackdropFilter: filter, isolation: 'isolate' } as any)
   : null;
+const scaledText = (u: number, value: number) => Math.max(value * u, 9);
 
 type RecordItem = {
   id: string;
@@ -169,11 +171,11 @@ type VocabularyItem = {
 };
 
 const ASSETS = {
-  defaultRecentScene: require('../../assets/home-cafe-hero.png'),
+  defaultRecentScene: require('../../assets/home-cafe-hero.webp'),
   hero: require('../../assets/home-premium/hero-photo.png'),
   lessonCity: require('../../assets/home-premium/lesson-city.png'),
   lessonAirport: require('../../assets/home-premium/lesson-airport.png'),
-  orb: require('../../assets/home-premium/orb-clean.png'),
+  orb: require('../../assets/home-premium/orb-clean.webp'),
   coffee: require('../../assets/home-premium/coffee.png'),
   city: require('../../assets/home-premium/city.png'),
   plane: require('../../assets/home-premium/plane.png'),
@@ -318,15 +320,13 @@ function Glass({
 }) {
   const filter = level === 'primary'
     ? 'blur(24px) saturate(1.45)'
-    : level === 'utility'
-      ? 'blur(14px) saturate(1.16)'
-      : 'blur(20px) saturate(1.3)';
+    : 'blur(18px) saturate(1.26)';
   return (
     <View style={[
       styles.glassShell,
       level === 'primary' ? styles.glassPrimary : null,
       level === 'utility' ? styles.glassUtility : null,
-      webGlass(filter),
+      level === 'utility' ? null : webGlass(filter),
       style,
     ]}>
       <LinearGradient colors={tint as any} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
@@ -479,14 +479,14 @@ function GoalRing({ u, stats }: { u: number; stats: DailyStats }) {
       </Svg>
       <Animated.View pointerEvents="none" style={[styles.goalFlash, { width: 42 * u, height: 170 * u }, flashStyle]} />
       <View style={styles.goalRingCopy}>
-        <Text style={[styles.goalNumber, { fontSize: 37 * u, lineHeight: 45 * u }]}>{displayCount}/3</Text>
+        <Text style={[styles.goalNumber, { fontSize: scaledText(u, 37), lineHeight: scaledText(u, 45) }]}>{displayCount}/3</Text>
         <View style={{ gap: 4 * u }}>
           {goals.map(goal => (
             <View key={goal.label} style={[styles.goalLine, { gap: 6 * u }]}>
               <View style={[styles.goalCheck, { width: 18 * u, height: 18 * u, borderRadius: 9 * u }, goal.done ? styles.goalCheckDone : null]}>
                 {goal.done ? <Check size={12 * u} color="#fff" strokeWidth={3} /> : null}
               </View>
-              <Text style={[styles.goalLabel, { fontSize: 16 * u, lineHeight: 20 * u }, goal.done ? styles.goalLabelDone : null]}>{goal.label}</Text>
+              <Text style={[styles.goalLabel, { fontSize: scaledText(u, 16), lineHeight: scaledText(u, 20) }, goal.done ? styles.goalLabelDone : null]}>{goal.label}</Text>
             </View>
           ))}
         </View>
@@ -725,18 +725,18 @@ function LessonStack({ u, records, loading, onOpenRecord, onOpenLearning }: {
           <LinearGradient colors={['rgba(255,255,255,0.9)', 'rgba(250,250,246,0.76)', 'rgba(221,240,255,0.72)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
           <Animated.View pointerEvents="none" style={[styles.lessonDynamicReflection, { width: 145 * u, height: 470 * u }, reflectionStyle]}><LinearGradient colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.58)', 'rgba(124,211,255,0.12)', 'rgba(255,255,255,0)']} locations={[0, 0.42, 0.64, 1]} style={StyleSheet.absoluteFillObject} /></Animated.View>
           <View pointerEvents="none" style={{ position: 'absolute', left: 28 * u, top: 24 * u, zIndex: 2 }}>
-            <Text style={[styles.lessonKicker, { fontSize: 20 * u, lineHeight: 26 * u }]}>{active.kicker}</Text>
-            <Text style={[styles.lessonTitle, { fontSize: 39 * u, lineHeight: 48 * u, marginTop: 7 * u }]}>{active.title}</Text>
-            <Text style={[styles.lessonScene, { fontSize: 23 * u, lineHeight: 30 * u, marginTop: 4 * u }]}>{active.scene}</Text>
-            <Text style={[styles.lessonDescription, { fontSize: 17 * u, lineHeight: 25 * u, marginTop: 6 * u }]}>{active.description}</Text>
+            <Text style={[styles.lessonKicker, { fontSize: scaledText(u, 20), lineHeight: scaledText(u, 26) }]}>{active.kicker}</Text>
+            <Text style={[styles.lessonTitle, { fontSize: scaledText(u, 39), lineHeight: scaledText(u, 48), marginTop: 7 * u }]}>{active.title}</Text>
+            <Text style={[styles.lessonScene, { fontSize: scaledText(u, 23), lineHeight: scaledText(u, 30), marginTop: 4 * u }]}>{active.scene}</Text>
+            <Text style={[styles.lessonDescription, { fontSize: scaledText(u, 17), lineHeight: scaledText(u, 25), marginTop: 6 * u }]}>{active.description}</Text>
           </View>
           <Image source={active.image} style={{ position: 'absolute', right: -8 * u, top: 105 * u, width: 190 * u, height: 154 * u, borderRadius: 77 * u }} contentFit="cover" />
           <View pointerEvents="none" style={[styles.continuePill, { left: 15 * u, bottom: 16 * u, width: 279 * u, height: 74 * u, borderRadius: 38 * u, paddingRight: 18 * u, gap: 14 * u }]}>
             <LinearGradient colors={['rgba(255,255,255,0.98)', 'rgba(238,248,255,0.92)']} style={[StyleSheet.absoluteFillObject, { borderRadius: 38 * u }]} />
             <View style={[styles.playOrb, { width: 72 * u, height: 72 * u, borderRadius: 36 * u }]}><LinearGradient colors={['#43DBFF', '#087CFF', '#0752DF']} style={[StyleSheet.absoluteFillObject, { borderRadius: 36 * u }]} /><Svg width={31 * u} height={34 * u} viewBox="0 0 31 34" style={{ zIndex: 3, marginLeft: 4 * u }}><Path d="M4 2.8C4 1.1 5.9.1 7.3 1l20.2 13.9c1.3.9 1.3 2.8 0 3.7L7.3 32.5C5.9 33.4 4 32.4 4 30.7V2.8Z" fill="#FFFFFF" /></Svg></View>
-            <Text style={[styles.continueText, { fontSize: 24 * u }]}>继续学习</Text><ChevronRight size={25 * u} color={BLUE_DARK} />
+            <Text style={[styles.continueText, { fontSize: scaledText(u, 24) }]}>继续学习</Text><ChevronRight size={25 * u} color={BLUE_DARK} />
           </View>
-          <View pointerEvents="none" style={{ position: 'absolute', right: 25 * u, bottom: 24 * u, width: 105 * u, alignItems: 'flex-end' }}><Text style={[styles.lessonCount, { fontSize: 18 * u }]}>{active.status}</Text><View style={[styles.lessonProgressTrack, { width: 100 * u, height: 9 * u, borderRadius: 5 * u, marginTop: 7 * u }]}><View style={{ width: `${active.progress * 100}%`, height: '100%', borderRadius: 5 * u, backgroundColor: BLUE }} /></View></View>
+          <View pointerEvents="none" style={{ position: 'absolute', right: 25 * u, bottom: 24 * u, width: 105 * u, alignItems: 'flex-end' }}><Text style={[styles.lessonCount, { fontSize: scaledText(u, 18) }]}>{active.status}</Text><View style={[styles.lessonProgressTrack, { width: 100 * u, height: 9 * u, borderRadius: 5 * u, marginTop: 7 * u }]}><View style={{ width: `${active.progress * 100}%`, height: '100%', borderRadius: 5 * u, backgroundColor: BLUE }} /></View></View>
           {loading ? <ActivityIndicator color={BLUE} style={styles.lessonLoader} /> : null}
         </Animated.View>
       </GestureDetector>
@@ -816,19 +816,19 @@ function VocabularyDeck({ u, items, onSpeak }: { u: number; items: VocabularyIte
     <>
       <View style={[styles.wordBack, { right: 21 * u, bottom: 16 * u, width: 216 * u, height: 121 * u, borderRadius: 14 * u, transform: [{ rotate: '-3deg' }] }]}>
         <LinearGradient colors={['#F7FBFF', '#AEDDFF']} style={StyleSheet.absoluteFillObject} />
-        <Text style={[styles.wordChinese, { fontSize: 21 * u, right: 32 * u, top: 25 * u }]}>{items[(index + 1) % items.length]?.chinese}</Text>
+        <Text style={[styles.wordChinese, { fontSize: scaledText(u, 21), right: 32 * u, top: 25 * u }]}>{items[(index + 1) % items.length]?.chinese}</Text>
         <Image source={ASSETS.latte} style={{ position: 'absolute', right: 40 * u, bottom: 16 * u, width: 45 * u, height: 38 * u }} contentFit="contain" />
       </View>
       <GestureDetector gesture={gesture}>
         <Animated.View accessible accessibilityRole="button" accessibilityLabel={`${word.english} 词汇卡，点击翻面，左右滑动切换`} style={[styles.wordFlipCard, Platform.OS === 'web' ? ({ touchAction: 'pan-y', transformStyle: 'preserve-3d', WebkitBackfaceVisibility: 'hidden' } as any) : null, { left: 19 * u, bottom: 23 * u, width: 238 * u, height: 119 * u }, cardStyle]}>
           <Animated.View style={[styles.wordFront, styles.wordFace, { borderRadius: 15 * u, padding: 17 * u }, frontStyle]}>
-            <Text style={[styles.wordEnglish, { fontSize: 42 * u, lineHeight: 51 * u }]}>{word.english}</Text>
-            <View style={[styles.pronunciation, { gap: 10 * u }]}><Text style={[styles.pronunciationText, { fontSize: 20 * u }]}>{word.pronunciation}</Text></View>
+            <Text style={[styles.wordEnglish, { fontSize: scaledText(u, 42), lineHeight: scaledText(u, 51) }]}>{word.english}</Text>
+            <View style={[styles.pronunciation, { gap: 10 * u }]}><Text style={[styles.pronunciationText, { fontSize: scaledText(u, 20) }]}>{word.pronunciation}</Text></View>
           </Animated.View>
           <Animated.View style={[styles.wordFront, styles.wordFace, styles.wordFaceBack, { borderRadius: 15 * u, padding: 15 * u }, backStyle]}>
-            <Text style={[styles.wordBackTitle, { fontSize: 23 * u }]}>{word.chinese}</Text>
-            <Text style={[styles.wordExample, { fontSize: 14 * u, lineHeight: 19 * u }]}>{word.example}</Text>
-            <Text style={[styles.wordFlipHint, { fontSize: 12 * u }]}>点击翻回</Text>
+            <Text style={[styles.wordBackTitle, { fontSize: scaledText(u, 23) }]}>{word.chinese}</Text>
+            <Text style={[styles.wordExample, { fontSize: scaledText(u, 14), lineHeight: scaledText(u, 19) }]}>{word.example}</Text>
+            <Text style={[styles.wordFlipHint, { fontSize: scaledText(u, 12) }]}>点击翻回</Text>
           </Animated.View>
           <Animated.View pointerEvents="none" style={[styles.wordEdgeFlash, { left: 3 * u, right: 3 * u, top: 1 * u, height: 3 * u, borderRadius: 3 * u }, edgeStyle]} />
         </Animated.View>
@@ -971,22 +971,22 @@ function SpatialOverlay({ overlay, u, recState, recSeconds, sceneText, onRecord,
           <CircleX size={29 * u} color="#10213A" />
         </MotionPressable>
         <Animated.View style={[styles.overlayCopy, { left: 34 * u, right: 34 * u, top: (isCoach ? 420 : 455) * u }, detailStyle]}>
-          <Text style={[styles.overlayEyebrow, { fontSize: 15 * u }]}>{isCoach ? 'AI CONVERSATION' : isHero ? 'IMMERSIVE SCENE' : 'SCENE PRACTICE'}</Text>
-          <Text style={[styles.overlayTitle, { fontSize: 42 * u, lineHeight: 52 * u }]}>{isCoach ? 'AI 教练对话空间' : isHero ? `${overlay.scene.title}场景探索` : overlay.scene.title}</Text>
-          <Text style={[styles.overlayDescription, { fontSize: 20 * u, lineHeight: 30 * u }]}>{isCoach ? (sceneText || (recState === 'recording' ? `正在录音 ${recSeconds}s，松开后识别内容` : '点击下方麦克风开始真实语音对话，识别结果会在这里出现。')) : overlay.scene.description}</Text>
+          <Text style={[styles.overlayEyebrow, { fontSize: scaledText(u, 15) }]}>{isCoach ? 'AI CONVERSATION' : isHero ? 'IMMERSIVE SCENE' : 'SCENE PRACTICE'}</Text>
+          <Text style={[styles.overlayTitle, { fontSize: scaledText(u, 42), lineHeight: scaledText(u, 52) }]}>{isCoach ? 'AI 教练对话空间' : isHero ? `${overlay.scene.title}场景探索` : overlay.scene.title}</Text>
+          <Text style={[styles.overlayDescription, { fontSize: scaledText(u, 20), lineHeight: scaledText(u, 30) }]}>{isCoach ? (sceneText || (recState === 'recording' ? `正在录音 ${recSeconds}s，松开后识别内容` : '点击下方麦克风开始真实语音对话，识别结果会在这里出现。')) : overlay.scene.description}</Text>
           {isCoach ? (
             <View style={[styles.coachOverlayActions, { marginTop: 24 * u, gap: 15 * u }]}>
-              <MotionPressable onPress={onRecord} style={[styles.overlayPrimary, { height: 66 * u, borderRadius: 34 * u }]}><LinearGradient colors={['#31D8FF', BLUE, '#0752DF']} style={StyleSheet.absoluteFillObject} /><Mic size={26 * u} color="#fff" /><Text style={[styles.overlayPrimaryText, { fontSize: 20 * u }]}>{recState === 'recording' ? '停止并识别' : recState === 'idle' ? '开始录音' : '正在处理'}</Text></MotionPressable>
-              <View style={[styles.coachStateCard, { minHeight: 86 * u, borderRadius: 22 * u, padding: 17 * u }]}><Headphones size={24 * u} color={BLUE} /><View style={{ flex: 1 }}><Text style={[styles.coachStateTitle, { fontSize: 17 * u }]}>状态反馈</Text><Text style={[styles.coachStateText, { fontSize: 15 * u }]}>{recState === 'recording' ? '正在收音，动画仅表示录音状态' : recState === 'transcribing' ? '语音已发送，正在识别' : '准备好后开始对话'}</Text></View></View>
+              <MotionPressable onPress={onRecord} style={[styles.overlayPrimary, { height: 66 * u, borderRadius: 34 * u }]}><LinearGradient colors={['#31D8FF', BLUE, '#0752DF']} style={StyleSheet.absoluteFillObject} /><Mic size={26 * u} color="#fff" /><Text style={[styles.overlayPrimaryText, { fontSize: scaledText(u, 20) }]}>{recState === 'recording' ? '停止并识别' : recState === 'idle' ? '开始录音' : '正在处理'}</Text></MotionPressable>
+              <View style={[styles.coachStateCard, { minHeight: 86 * u, borderRadius: 22 * u, padding: 17 * u }]}><Headphones size={24 * u} color={BLUE} /><View style={{ flex: 1 }}><Text style={[styles.coachStateTitle, { fontSize: scaledText(u, 17) }]}>状态反馈</Text><Text style={[styles.coachStateText, { fontSize: scaledText(u, 15) }]}>{recState === 'recording' ? '正在收音，动画仅表示录音状态' : recState === 'transcribing' ? '语音已发送，正在识别' : '准备好后开始对话'}</Text></View></View>
             </View>
           ) : (
             <View style={{ gap: 12 * u, marginTop: 22 * u }}>
               {overlay.scene.phrases.map(([english, chinese]) => (
                 <MotionPressable key={english} onPress={() => onSpeak(english)} haptic={false} style={[styles.phraseCard, { minHeight: 74 * u, borderRadius: 22 * u, paddingHorizontal: 20 * u }]}>
-                  <View style={{ flex: 1 }}><Text style={[styles.phraseEnglish, { fontSize: 19 * u }]}>{english}</Text><Text style={[styles.phraseChinese, { fontSize: 15 * u }]}>{chinese}</Text></View><Volume2 size={23 * u} color={BLUE} />
+                  <View style={{ flex: 1 }}><Text style={[styles.phraseEnglish, { fontSize: scaledText(u, 19) }]}>{english}</Text><Text style={[styles.phraseChinese, { fontSize: scaledText(u, 15) }]}>{chinese}</Text></View><Volume2 size={23 * u} color={BLUE} />
                 </MotionPressable>
               ))}
-              <MotionPressable onPress={onStart} style={[styles.overlayPrimary, { height: 66 * u, borderRadius: 34 * u, marginTop: 6 * u }]}><LinearGradient colors={['#31D8FF', BLUE, '#0752DF']} style={StyleSheet.absoluteFillObject} /><Text style={[styles.overlayPrimaryText, { fontSize: 20 * u }]}>进入英语练习</Text><ChevronRight size={24 * u} color="#fff" /></MotionPressable>
+              <MotionPressable onPress={onStart} style={[styles.overlayPrimary, { height: 66 * u, borderRadius: 34 * u, marginTop: 6 * u }]}><LinearGradient colors={['#31D8FF', BLUE, '#0752DF']} style={StyleSheet.absoluteFillObject} /><Text style={[styles.overlayPrimaryText, { fontSize: scaledText(u, 20) }]}>进入英语练习</Text><ChevronRight size={24 * u} color="#fff" /></MotionPressable>
             </View>
           )}
         </Animated.View>
@@ -995,7 +995,7 @@ function SpatialOverlay({ overlay, u, recState, recSeconds, sceneText, onRecord,
             {[[275, 255, 'latte'], [116, 320, 'espresso'], [615, 245, 'menu']].map(([x, y, label], index) => (
               <MotionPressable key={String(label)} onPress={() => setHotspot(index)} style={[styles.hotspot, { left: Number(x) * u, top: Number(y) * u, width: 34 * u, height: 34 * u, borderRadius: 17 * u }]} accessibilityLabel={`查看 ${label}`}><View style={[styles.hotspotCore, { width: 10 * u, height: 10 * u, borderRadius: 5 * u }]} /></MotionPressable>
             ))}
-            {hotspot !== null ? <Animated.View entering={FadeInDown.duration(220)} exiting={FadeOut.duration(150)} style={[styles.hotspotCard, { left: 230 * u, top: 310 * u, width: 330 * u, minHeight: 120 * u, borderRadius: 24 * u, padding: 18 * u }]}><Text style={[styles.hotspotWord, { fontSize: 27 * u }]}>{['latte', 'espresso', 'menu'][hotspot]}</Text><Text style={[styles.hotspotTranslation, { fontSize: 16 * u }]}>{['拿铁', '浓缩咖啡', '菜单'][hotspot]}</Text><MotionPressable onPress={() => onSpeak(['latte', 'espresso', 'menu'][hotspot])} style={[styles.hotspotSpeak, { width: 42 * u, height: 42 * u, borderRadius: 21 * u }]}><Volume2 size={22 * u} color={BLUE} /></MotionPressable></Animated.View> : null}
+            {hotspot !== null ? <Animated.View entering={FadeInDown.duration(220)} exiting={FadeOut.duration(150)} style={[styles.hotspotCard, { left: 230 * u, top: 310 * u, width: 330 * u, minHeight: 120 * u, borderRadius: 24 * u, padding: 18 * u }]}><Text style={[styles.hotspotWord, { fontSize: scaledText(u, 27) }]}>{['latte', 'espresso', 'menu'][hotspot]}</Text><Text style={[styles.hotspotTranslation, { fontSize: scaledText(u, 16) }]}>{['拿铁', '浓缩咖啡', '菜单'][hotspot]}</Text><MotionPressable onPress={() => onSpeak(['latte', 'espresso', 'menu'][hotspot])} style={[styles.hotspotSpeak, { width: 42 * u, height: 42 * u, borderRadius: 21 * u }]}><Volume2 size={22 * u} color={BLUE} /></MotionPressable></Animated.View> : null}
           </View>
         ) : null}
       </Animated.View>
@@ -1096,7 +1096,7 @@ export function PremiumHomeBoard(props: Props) {
   const utilitySecondRowOffset = smallScreen ? 24 : 0;
   const journeyOffset = smallScreen ? 36 : 0;
   const boardHeight = 1678 * u + journeyOffset;
-  const fs = (value: number) => value * u;
+  const fs = (value: number) => scaledText(u, value);
   const openOverlay = useCallback((next: Omit<SpatialOverlayState, 'scrollOffset'>) => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
       focusReturnRef.current = document.activeElement as { focus?: () => void } | null;
@@ -1321,7 +1321,11 @@ export function PremiumHomeBoard(props: Props) {
           onCloseComplete={closeOverlay}
         />
       ) : null}
-      {props.recError ? <Text style={[styles.error, { left: 584 * u, top: 720 * u, width: 235 * u, fontSize: fs(12) }]}>{props.recError}</Text> : null}
+      {props.recError ? (
+        <View style={{ position: 'absolute', left: 575 * u, top: 704 * u, width: 245 * u, zIndex: 12 }}>
+          <AsyncStatusBanner tone="error" title="语音没有完成" message={props.recError} onRetry={props.onRecord} compact />
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -101,9 +101,9 @@ const SCENE_ICONS: Record<string, any> = {
 };
 
 const SCENE_IMAGES: Record<string, any> = {
-  'coffee-shop': require('../../../assets/home-cafe-hero.png'),
+  'coffee-shop': require('../../../assets/home-cafe-hero.webp'),
   airport: require('../../../assets/home-premium/lesson-airport.png'),
-  hotel: require('../../../assets/growth-hotel-scene.png'),
+  hotel: require('../../../assets/growth-hotel-scene.webp'),
   restaurant: { uri: 'https://miaoda-site-img.cdn.bcebos.com/images/baidu_image_search_157d6c03-4833-4540-8013-efe631da980e.jpg' },
   supermarket: { uri: 'https://miaoda-site-img.cdn.bcebos.com/images/baidu_image_search_786fd9c5-ee8d-4f3e-9abf-2f648de066e3.jpg' },
   hospital: { uri: 'https://miaoda-site-img.cdn.bcebos.com/images/baidu_image_search_e1c389d1-40c1-4c63-ad3a-87b734c0181c.jpg' },

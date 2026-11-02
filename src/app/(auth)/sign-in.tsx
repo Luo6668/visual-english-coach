@@ -144,7 +144,7 @@ export default function SignIn() {
 
           <View style={styles.sceneFrame}>
             <Image
-              source={require('../../../assets/home-cafe-hero.png')}
+              source={require('../../../assets/home-cafe-hero.webp')}
               contentFit="cover"
               contentPosition="center"
               transition={240}

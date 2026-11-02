@@ -1,6 +1,6 @@
+import { useAudioPlayer } from 'expo-audio';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useAudioPlayer } from 'expo-audio';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { AlertCircle, AlignLeft, ArrowRight, BookMarked, Bookmark, CalendarDays, ChevronRight, MapPin, Mic2, RefreshCw, Search, Sparkles, Star, Volume2, X } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
@@ -8,6 +8,7 @@ import { ActivityIndicator, FlatList, Platform, RefreshControl, StyleSheet, Text
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MotionPressable } from '@/components/motion-pressable';
 import { fetchDiaries, fetchLearningRecords, fetchScenes, fetchSentences, fetchWords, invokeEdgeFunction, updateLearningRecord } from '@/lib/api';
+import { invalidateQueries, QUERY_KEYS } from '@/lib/query-cache';
 import { speakWithTTS, stopLocalSpeech } from '@/lib/speech';
 
 const BLUE = '#1677F0';
@@ -39,7 +40,7 @@ const TAB_META: Record<TabKey, { title: string; subtitle: string; empty: string;
 
 function validImageSource(uri?: string | null) {
   if (uri && !uri.startsWith('blob:')) return { uri };
-  return require('../../../../assets/home-cafe-hero.png');
+  return require('../../../../assets/home-cafe-hero.webp');
 }
 
 function formatDate(value?: string | null) {
@@ -80,7 +81,10 @@ export default function LearningScreen() {
 
   const loadData = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
     if (mode === 'initial') setLoading(true);
-    else setRefreshing(true);
+    else {
+      setRefreshing(true);
+      invalidateQueries([QUERY_KEYS.scenes, QUERY_KEYS.words, QUERY_KEYS.sentences, QUERY_KEYS.diaries, QUERY_KEYS.learningRecords]);
+    }
     setError('');
     try {
       const [sceneRows, wordRows, sentenceRows, diaryRows, recordRows] = await Promise.all([

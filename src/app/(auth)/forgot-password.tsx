@@ -1,12 +1,14 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CheckCircle2, Mail, Send } from 'lucide-react-native';
+import { CheckCircle2, Mail, Send } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { AuthSceneShell } from '@/components/auth-scene-shell';
 import { MotionPressable } from '@/components/motion-pressable';
 import { useSession } from '@/ctx';
 import { getAuthErrorMessage } from '@/lib/authError';
+import { APP_COLORS, APP_RADIUS, APP_SHADOW } from '@/lib/design-system';
 
 export default function ForgotPassword() {
   const router = useRouter();
@@ -37,12 +39,7 @@ export default function ForgotPassword() {
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.page}>
-      <LinearGradient colors={['#F7FBFF', '#EAF4FF', '#FAFCFF']} style={StyleSheet.absoluteFillObject} />
-      <MotionPressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="返回" style={styles.backButton} pressedScale={0.9}>
-        <ArrowLeft size={22} color="#07162E" />
-      </MotionPressable>
-
+    <AuthSceneShell onBack={() => router.back()} panelLabel="找回密码">
       <View style={styles.card}>
         <View style={styles.iconShell}>
           {message ? <CheckCircle2 size={32} color="#1478F5" /> : <Mail size={31} color="#1478F5" />}
@@ -82,21 +79,19 @@ export default function ForgotPassword() {
           <Text style={styles.loginText}>返回登录</Text>
         </MotionPressable>
       </View>
-    </KeyboardAvoidingView>
+    </AuthSceneShell>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 22, backgroundColor: '#F4F9FF' },
-  backButton: { position: 'absolute', left: 22, top: 30, width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.86)', borderWidth: 1, borderColor: '#FFFFFF', shadowColor: '#416D9E', shadowOpacity: 0.14, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
-  card: { width: '100%', maxWidth: 390, padding: 26, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.86)', borderWidth: 1, borderColor: '#FFFFFF', shadowColor: '#365F89', shadowOpacity: 0.16, shadowRadius: 32, shadowOffset: { width: 0, height: 18 } },
+  card: { width: '100%', paddingVertical: 8 },
   iconShell: { width: 68, height: 68, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', borderRadius: 23, backgroundColor: '#EAF4FF', borderWidth: 1, borderColor: '#FFFFFF' },
-  title: { marginTop: 20, color: '#07162E', fontSize: 28, lineHeight: 34, fontWeight: '900', textAlign: 'center' },
-  subtitle: { marginTop: 9, color: '#687B99', fontSize: 14, lineHeight: 22, fontWeight: '600', textAlign: 'center' },
-  inputShell: { height: 56, marginTop: 24, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1.2, borderColor: 'rgba(91,143,213,0.3)' },
+  title: { marginTop: 16, color: APP_COLORS.ink, fontSize: 26, lineHeight: 32, fontWeight: '900', textAlign: 'center' },
+  subtitle: { marginTop: 7, color: APP_COLORS.muted, fontSize: 13, lineHeight: 20, fontWeight: '600', textAlign: 'center' },
+  inputShell: { height: 56, marginTop: 20, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: APP_RADIUS.control, backgroundColor: 'rgba(255,255,255,0.74)', borderWidth: 1.2, borderColor: APP_COLORS.border },
   input: { flex: 1, height: 53, padding: 0, color: '#07162E', fontSize: 15, fontWeight: '700', outlineStyle: 'none' } as any,
-  error: { marginTop: 10, color: '#C83D4B', fontSize: 12, lineHeight: 17, fontWeight: '700' },
-  submitButton: { height: 56, marginTop: 16, overflow: 'hidden', borderRadius: 28, shadowColor: '#116FF2', shadowOpacity: 0.28, shadowRadius: 18, shadowOffset: { width: 0, height: 10 } },
+  error: { marginTop: 10, color: APP_COLORS.danger, fontSize: 12, lineHeight: 17, fontWeight: '700' },
+  submitButton: { height: 56, marginTop: 16, overflow: 'hidden', borderRadius: 28, ...APP_SHADOW.floating },
   submitGradient: { flex: 1, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 28 },
   submitText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
   loginButton: { height: 44, marginTop: 12, alignItems: 'center', justifyContent: 'center' },

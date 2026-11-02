@@ -12,6 +12,7 @@ import {
   readDemoIdentity,
   saveDemoIdentity,
 } from '@/lib/demoSession';
+import { invalidateQueries } from '@/lib/query-cache';
 
 function createDemoSession(email: string, ownerId: string): Session {
   return {
@@ -60,6 +61,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const appState = useRef(AppState.currentState);
+
+  useEffect(() => {
+    invalidateQueries();
+  }, [session?.user.id]);
 
   useEffect(() => {
     if (supabaseConfigError) {

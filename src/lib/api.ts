@@ -1,6 +1,7 @@
 import { supabase, supabaseConfigError } from '@/client/supabase';
 import { mysqlData } from '@/lib/data';
 import { getDemoDataOwner } from '@/lib/demoSession';
+import { cachedQuery, invalidateQueries, QUERY_KEYS, queryKey } from '@/lib/query-cache';
 import { functionUrl, localFunctionsBaseUrl } from '@/lib/serviceConfig';
 import { formatLocalDate } from '@/lib/utils';
 
@@ -39,33 +40,33 @@ export async function invokeEdgeFunction(name: string, body: any) {
 }
 
 export async function fetchLearningRecords() {
-  return mysqlData<any[]>('learning_records', { orderBy: 'created_at' });
+  return cachedQuery(QUERY_KEYS.learningRecords, () => mysqlData<any[]>('learning_records', { orderBy: 'created_at' }));
 }
 
 export async function fetchScenes() {
-  return mysqlData<any[]>('scenes', { orderBy: 'practice_count' });
+  return cachedQuery(QUERY_KEYS.scenes, () => mysqlData<any[]>('scenes', { orderBy: 'practice_count' }));
 }
 
 export async function fetchWords() {
-  return mysqlData<any[]>('words', { orderBy: 'learned_at' });
+  return cachedQuery(QUERY_KEYS.words, () => mysqlData<any[]>('words', { orderBy: 'learned_at' }));
 }
 
 export async function fetchSentences() {
-  return mysqlData<any[]>('sentences', { orderBy: 'created_at' });
+  return cachedQuery(QUERY_KEYS.sentences, () => mysqlData<any[]>('sentences', { orderBy: 'created_at' }));
 }
 
 export async function fetchUserStats() {
-  return mysqlData('user_stats', { single: true });
+  return cachedQuery(QUERY_KEYS.userStats, () => mysqlData('user_stats', { single: true }));
 }
 
 export async function fetchDailyStats(date?: string) {
   const targetDate = date || formatLocalDate();
-  return mysqlData('daily_stats', { filters: { study_date: targetDate }, single: true });
+  return cachedQuery(queryKey(QUERY_KEYS.dailyStats, targetDate), () => mysqlData('daily_stats', { filters: { study_date: targetDate }, single: true }));
 }
 
 export async function fetchHighFreqWords() {
   const today = formatLocalDate();
-  return mysqlData<any[]>('high_freq_words', { filters: { study_date: today }, orderBy: 'count', limit: 20 });
+  return cachedQuery(queryKey(QUERY_KEYS.highFreqWords, today), () => mysqlData<any[]>('high_freq_words', { filters: { study_date: today }, orderBy: 'count', limit: 20 }));
 }
 
 export async function createLearningRecord(record: any) {
@@ -74,22 +75,28 @@ export async function createLearningRecord(record: any) {
     recordActivity('scene'),
     addXp(`scene_analysis_${created.id}`),
   ]);
+  invalidateQueries([QUERY_KEYS.learningRecords, QUERY_KEYS.dailyStats, QUERY_KEYS.userStats, QUERY_KEYS.xpData]);
   return created;
 }
 
 export async function updateLearningRecord(id: string, updates: any) {
-  return mysqlData('learning_records', { action: 'update', filters: { id }, values: updates });
+  const result = await mysqlData('learning_records', { action: 'update', filters: { id }, values: updates });
+  invalidateQueries([QUERY_KEYS.learningRecords]);
+  return result;
 }
 
 export async function createWord(word: any) {
   const existing = await mysqlData<any>('words', { filters: { word: word.word }, single: true });
   const saved = await mysqlData('words', { action: 'upsert', values: word });
   if (!existing) await recordActivity('word').catch(() => {});
+  invalidateQueries([QUERY_KEYS.words, QUERY_KEYS.userStats, QUERY_KEYS.dailyStats, QUERY_KEYS.xpData]);
   return saved;
 }
 
 export async function createSentence(sentence: any) {
-  return mysqlData('sentences', { action: 'insert', values: sentence });
+  const result = await mysqlData('sentences', { action: 'insert', values: sentence });
+  invalidateQueries([QUERY_KEYS.sentences]);
+  return result;
 }
 
 export async function upsertScene(scene: any) {
@@ -99,11 +106,12 @@ export async function upsertScene(scene: any) {
   } else {
     await mysqlData('scenes', { action: 'insert', values: scene });
   }
+  invalidateQueries([QUERY_KEYS.scenes, QUERY_KEYS.sceneProgress]);
 }
 
 // ── 场景解锁进度 ──────────────────────────────────────
 export async function fetchSceneProgress() {
-  return mysqlData<any[]>('scene_progress');
+  return cachedQuery(QUERY_KEYS.sceneProgress, () => mysqlData<any[]>('scene_progress'));
 }
 
 export async function unlockScene(sceneKey: string) {
@@ -113,6 +121,7 @@ export async function unlockScene(sceneKey: string) {
     last_visited_at: new Date().toISOString(),
     visit_count: 1,
   } });
+  invalidateQueries([QUERY_KEYS.sceneProgress]);
 }
 
 export async function incrementSceneProgress(sceneKey: string) {
@@ -128,6 +137,7 @@ export async function incrementSceneProgress(sceneKey: string) {
     mastery: parseFloat(mastery.toFixed(2)),
     last_visited_at: new Date().toISOString(),
   } });
+  invalidateQueries([QUERY_KEYS.sceneProgress]);
 }
 
 export async function incrementUserStats(field: string) {
@@ -136,6 +146,7 @@ export async function incrementUserStats(field: string) {
     const updates: any = {};
     updates[field] = (stats[field] || 0) + 1;
     await mysqlData('user_stats', { action: 'update', values: updates });
+    invalidateQueries([QUERY_KEYS.userStats, QUERY_KEYS.xpData]);
   }
 }
 
@@ -151,6 +162,7 @@ export async function incrementDailyStats(field: string) {
     insert[field] = 1;
     await mysqlData('daily_stats', { action: 'insert', values: insert });
   }
+  invalidateQueries([QUERY_KEYS.dailyStats]);
 }
 
 export async function createHighFreqWord(word: string) {
@@ -161,49 +173,61 @@ export async function createHighFreqWord(word: string) {
   } else {
     await mysqlData('high_freq_words', { action: 'insert', values: { word, study_date: today, count: 1 } });
   }
+  invalidateQueries([QUERY_KEYS.highFreqWords]);
 }
 
 // ── 日记相关 ──────────────────────────────────────────────
 
 export async function fetchDiaries(type?: 'daily' | 'weekly') {
-  return mysqlData<any[]>('diaries', { filters: type ? { diary_type: type } : {}, orderBy: 'created_at' });
+  return cachedQuery(queryKey(QUERY_KEYS.diaries, type ?? 'all'), () => mysqlData<any[]>('diaries', { filters: type ? { diary_type: type } : {}, orderBy: 'created_at' }));
 }
 
 export async function saveDiary(payload: { diary_type: 'daily' | 'weekly'; content: string; study_date?: string; week_start?: string }) {
-  return mysqlData('diaries', { action: 'insert', values: payload });
+  const result = await mysqlData('diaries', { action: 'insert', values: payload });
+  invalidateQueries([QUERY_KEYS.diaries]);
+  return result;
 }
 
 export async function updateDiary(id: string, payload: { content: string }) {
-  return mysqlData('diaries', { action: 'update', filters: { id }, values: payload });
+  const result = await mysqlData('diaries', { action: 'update', filters: { id }, values: payload });
+  invalidateQueries([QUERY_KEYS.diaries]);
+  return result;
 }
 
 export async function deleteDiary(id: string) {
-  return mysqlData('diaries', { action: 'delete', filters: { id } });
+  const result = await mysqlData('diaries', { action: 'delete', filters: { id } });
+  invalidateQueries([QUERY_KEYS.diaries]);
+  return result;
 }
 
 // ── XP / 成长系统 ─────────────────────────────────────────
 
 export async function fetchXpData() {
-  const [stats, logs] = await Promise.all([
-    mysqlData<any>('user_stats', { single: true }),
-    mysqlData<any[]>('xp_logs', { orderBy: 'created_at', limit: 20 }),
-  ]);
-  return {
-    stats: stats ?? { total_xp: 0, current_level: 1, streak_days: 0, last_checkin_date: null },
-    logs,
-  };
+  return cachedQuery(QUERY_KEYS.xpData, async () => {
+    const [stats, logs] = await Promise.all([
+      mysqlData<any>('user_stats', { single: true }),
+      mysqlData<any[]>('xp_logs', { orderBy: 'created_at', limit: 20 }),
+    ]);
+    return { stats: stats ?? { total_xp: 0, current_level: 1, streak_days: 0, last_checkin_date: null }, logs };
+  });
 }
 
 export async function addXp(source: string) {
-  return invokeEdgeFunction('add-xp', { source });
+  const result = await invokeEdgeFunction('add-xp', { source });
+  invalidateQueries([QUERY_KEYS.xpData, QUERY_KEYS.userStats, QUERY_KEYS.dailyStats]);
+  return result;
 }
 
 export async function recordActivity(kind: 'scene' | 'word' | 'shadowing' | 'dialogue') {
-  return invokeEdgeFunction('record-activity', { kind });
+  const result = await invokeEdgeFunction('record-activity', { kind });
+  invalidateQueries([QUERY_KEYS.xpData, QUERY_KEYS.userStats, QUERY_KEYS.dailyStats]);
+  return result;
 }
 
 export async function clearLocalLearningData() {
-  return invokeEdgeFunction('clear-local-data', {});
+  const result = await invokeEdgeFunction('clear-local-data', {});
+  invalidateQueries();
+  return result;
 }
 
 export async function fetchLocalServiceStatus() {
@@ -221,13 +245,15 @@ export async function fetchLocalServiceStatus() {
 }
 
 export async function fetchLearningRecord(id: string) {
-  return mysqlData<any>('learning_records', { filters: { id }, single: true });
+  return cachedQuery(queryKey(QUERY_KEYS.learningRecords, id), () => mysqlData<any>('learning_records', { filters: { id }, single: true }));
 }
 
 export async function fetchSceneMapProgress(sceneId?: string) {
-  return mysqlData<any[]>('scene_map_progress', { filters: sceneId ? { scene_id: sceneId } : {} });
+  return cachedQuery(queryKey(QUERY_KEYS.sceneMapProgress, sceneId ?? 'all'), () => mysqlData<any[]>('scene_map_progress', { filters: sceneId ? { scene_id: sceneId } : {} }));
 }
 
 export async function upsertSceneMapProgress(values: Record<string, unknown>) {
-  return mysqlData('scene_map_progress', { action: 'upsert', values });
+  const result = await mysqlData('scene_map_progress', { action: 'upsert', values });
+  invalidateQueries([QUERY_KEYS.sceneMapProgress, QUERY_KEYS.xpData]);
+  return result;
 }

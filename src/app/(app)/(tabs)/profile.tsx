@@ -46,6 +46,7 @@ import Svg, {
 import { MotionPressable } from '@/components/motion-pressable';
 import { useSession } from '@/ctx';
 import { fetchLearningRecords, fetchUserStats, fetchXpData } from '@/lib/api';
+import { invalidateQueries, QUERY_KEYS } from '@/lib/query-cache';
 import defaultAvatar from '../../../../assets/coach-avatar.png';
 
 const COLORS = {
@@ -172,7 +173,10 @@ export default function ProfileScreen() {
   const [avatarNotice, setAvatarNotice] = useState('');
 
   const loadProfile = useCallback(async (refresh = false) => {
-    if (refresh) setRefreshing(true);
+    if (refresh) {
+      setRefreshing(true);
+      invalidateQueries([QUERY_KEYS.userStats, QUERY_KEYS.xpData, QUERY_KEYS.learningRecords]);
+    }
     else setLoading(true);
     setLoadError('');
     try {

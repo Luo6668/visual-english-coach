@@ -20,6 +20,7 @@ import Animated, {
   useSharedValue, withRepeat, withSequence, withTiming,
 } from 'react-native-reanimated';
 import { supabase } from '@/client/supabase';
+import { AsyncStatusBanner } from '@/components/async-status-banner';
 import { addXp, recordActivity } from '@/lib/api';
 import {
   arrayBufferToBase64,
@@ -827,8 +828,8 @@ export default function AiCoachScreen() {
           )}
 
           {micError ? (
-            <View style={{ marginHorizontal: 18, marginBottom: 6, borderRadius: 10, backgroundColor: '#FEF2F2', paddingHorizontal: 12, paddingVertical: 8 }}>
-              <Text style={{ fontSize: 12, lineHeight: 17, color: '#B91C1C' }}>{micError}</Text>
+            <View style={{ marginHorizontal: 18, marginBottom: 6 }}>
+              <AsyncStatusBanner tone="error" title="麦克风没有完成" message={micError} onRetry={handleMicPress} compact />
             </View>
           ) : null}
 

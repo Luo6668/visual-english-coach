@@ -1,10 +1,10 @@
-import { BookOpen, ChartNoAxesColumnIncreasing, Home, Sparkles, User } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BookOpen, ChartNoAxesColumnIncreasing, Home, Sparkles, User } from 'lucide-react-native';
 import { useEffect } from 'react';
 import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
-  useAnimatedStyle,
   interpolateColor,
+  useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withSequence,
@@ -95,7 +95,7 @@ function AnimatedTabItem({
         )}
       </Animated.View>
       {!isCoach ? (
-        <Animated.Text style={[styles.tabLabel, { fontSize: 17 * scale, lineHeight: 21 * scale }, labelStyle]}>
+        <Animated.Text style={[styles.tabLabel, { fontSize: Math.max(17 * scale, 9), lineHeight: Math.max(21 * scale, 11) }, labelStyle]}>
           {config.label}
         </Animated.Text>
       ) : (

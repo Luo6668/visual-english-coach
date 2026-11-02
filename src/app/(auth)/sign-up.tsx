@@ -1,9 +1,14 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react-native';
+import { CheckCircle2, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, UserPlus } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
+
+import { AuthSceneShell } from '@/components/auth-scene-shell';
+import { MotionPressable } from '@/components/motion-pressable';
 import { useSession } from '@/ctx';
 import { getAuthErrorMessage } from '@/lib/authError';
+import { APP_COLORS, APP_RADIUS, APP_SHADOW } from '@/lib/design-system';
 
 export default function SignUp() {
   const router = useRouter();
@@ -19,37 +24,18 @@ export default function SignUp() {
 
   const handleSignUp = async () => {
     const normalizedEmail = email.trim();
-    if (!normalizedEmail || !password || !confirmPassword) {
-      setError('请输入邮箱和密码');
-      return;
-    }
-    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
-      setError('请输入有效的邮箱地址');
-      return;
-    }
-    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
-      setError('密码至少 8 位，并同时包含字母和数字');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError('两次输入的密码不一致');
-      return;
-    }
-    if (!agreed) {
-      setError('请同意用户协议');
-      return;
-    }
+    if (!normalizedEmail || !password || !confirmPassword) return setError('请输入邮箱和密码');
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) return setError('请输入有效的邮箱地址');
+    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) return setError('密码至少 8 位，并同时包含字母和数字');
+    if (password !== confirmPassword) return setError('两次输入的密码不一致');
+    if (!agreed) return setError('请先同意用户协议和隐私政策');
     setLoading(true);
     setError('');
     try {
       const result = await signUp(normalizedEmail, password);
-      if (result.error) {
-        setError(getAuthErrorMessage(result.error));
-      } else if (result.needsEmailConfirmation) {
-        setConfirmationSent(true);
-      } else {
-        router.replace('/');
-      }
+      if (result.error) setError(getAuthErrorMessage(result.error));
+      else if (result.needsEmailConfirmation) setConfirmationSent(true);
+      else router.replace('/');
     } catch (signUpError) {
       setError(getAuthErrorMessage(signUpError));
     } finally {
@@ -58,109 +44,83 @@ export default function SignUp() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={process.env.EXPO_OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1"
-    >
-      <ScrollView
-        contentContainerClassName="flex-grow justify-center px-6"
-        keyboardShouldPersistTaps="handled"
-      >
-        <Pressable className="absolute top-12 left-4" onPress={() => router.back()}>
-          <ArrowLeft size={24} className="text-foreground" />
-        </Pressable>
-
-        {confirmationSent ? (
-          <View className="items-center rounded-3xl border border-blue-100 bg-white px-6 py-8 shadow-sm">
-            <View className="h-16 w-16 items-center justify-center rounded-full bg-blue-50">
-              <CheckCircle2 size={34} color="#1478F5" />
-            </View>
-            <Text className="mt-5 text-2xl font-bold text-foreground">验证邮件已发送</Text>
-            <Text className="mt-3 text-center text-sm leading-6 text-muted-foreground">
-              请打开发送到 {email.trim()} 的邮件完成验证，然后返回登录。
-            </Text>
-            <Pressable
-              className="mt-6 w-full items-center rounded-xl bg-primary py-4 active:opacity-80"
-              onPress={() => router.replace('/(auth)/sign-in')}
-            >
-              <Text className="font-semibold text-primary-foreground">返回登录</Text>
-            </Pressable>
-          </View>
-        ) : <>
-        <Text className="text-3xl font-bold text-foreground mb-2">创建账号</Text>
-        <Text className="text-sm text-muted-foreground mb-8">注册 Visual English Coach 开始学习</Text>
-        {isDemoMode ? <Text className="text-sm text-primary mb-4">本地演示模式：账号仅保存在当前设备</Text> : null}
-
-        <Text className="text-sm font-medium text-foreground mb-2">邮箱</Text>
-        <TextInput
-          className="border border-input rounded-lg px-4 py-3 text-base text-foreground bg-card"
-          placeholder="请输入邮箱"
-          placeholderTextColor="#9ca3af"
-          value={email}
-          onChangeText={(value) => { setEmail(value); setError(''); }}
-          autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-        />
-
-        <Text className="text-sm font-medium text-foreground mt-4 mb-2">密码</Text>
-        <View className="flex-row border border-input rounded-lg px-4 py-3 bg-card items-center">
-          <TextInput
-            className="flex-1 text-base text-foreground"
-            placeholder="至少 8 位，包含字母和数字"
-            placeholderTextColor="#9ca3af"
-            value={password}
-            onChangeText={(value) => { setPassword(value); setError(''); }}
-            autoComplete="new-password"
-            secureTextEntry={!showPassword}
-          />
-          <Pressable onPress={() => setShowPassword(!showPassword)}>
-            {showPassword ? <EyeOff size={20} className="text-muted-foreground" /> : <Eye size={20} className="text-muted-foreground" />}
-          </Pressable>
+    <AuthSceneShell onBack={() => router.back()} panelLabel="创建账号">
+      {confirmationSent ? (
+        <View style={styles.confirmation}>
+          <View style={styles.successIcon}><CheckCircle2 size={33} color={APP_COLORS.success} /></View>
+          <Text style={styles.title}>验证邮件已发送</Text>
+          <Text style={styles.subtitle}>请打开 {email.trim()} 收到的邮件完成验证，然后返回登录。</Text>
+          <PrimaryButton label="返回登录" loading={false} onPress={() => router.replace('/(auth)/sign-in')} />
         </View>
+      ) : (
+        <>
+          <View style={styles.headingIcon}><UserPlus size={22} color={APP_COLORS.blue} /></View>
+          <Text style={styles.title}>创建你的学习护照</Text>
+          <Text style={styles.subtitle}>{isDemoMode ? '账号安全保存在当前设备，随时可以继续学习。' : '保存场景、表达和成长记录，在每台设备继续学习。'}</Text>
+          <Field icon={<Mail size={19} color="#7186A5" />} value={email} onChange={(value: string) => { setEmail(value); setError(''); }} placeholder="邮箱" autoComplete="email" keyboardType="email-address" />
+          <Field icon={<LockKeyhole size={19} color="#7186A5" />} value={password} onChange={(value: string) => { setPassword(value); setError(''); }} placeholder="至少 8 位，包含字母和数字" secure={!showPassword} suffix={(
+            <MotionPressable onPress={() => setShowPassword((visible) => !visible)} style={styles.eyeButton} pressedScale={0.9} haptic={false}>
+              {showPassword ? <EyeOff size={20} color="#7186A5" /> : <Eye size={20} color="#7186A5" />}
+            </MotionPressable>
+          )} />
+          <Field icon={<ShieldCheck size={19} color="#7186A5" />} value={confirmPassword} onChange={(value: string) => { setConfirmPassword(value); setError(''); }} placeholder="再次输入密码" secure={!showPassword} onSubmit={handleSignUp} />
 
-        <Text className="text-sm font-medium text-foreground mt-4 mb-2">确认密码</Text>
-        <View className="flex-row border border-input rounded-lg px-4 py-3 bg-card items-center">
-          <TextInput
-            className="flex-1 text-base text-foreground"
-            placeholder="再次输入密码"
-            placeholderTextColor="#9ca3af"
-            value={confirmPassword}
-            onChangeText={(value) => { setConfirmPassword(value); setError(''); }}
-            autoComplete="new-password"
-            secureTextEntry={!showPassword}
-            returnKeyType="done"
-            onSubmitEditing={handleSignUp}
-          />
-        </View>
-
-        <Pressable className="flex-row items-center gap-2 mt-4" onPress={() => setAgreed(!agreed)}>
-          <View className={`w-5 h-5 rounded border ${agreed ? 'bg-primary border-primary' : 'border-input'} items-center justify-center`}>
-            {agreed && <Text className="text-primary-foreground text-xs">✓</Text>}
-          </View>
-          <Text className="text-sm text-muted-foreground">
-            我已同意<Text className="text-foreground">用户协议</Text>和<Text className="text-foreground">隐私政策</Text>
-          </Text>
-        </Pressable>
-
-        {error ? <Text className="text-destructive text-sm mt-3">{error}</Text> : null}
-
-        <Pressable
-          className="bg-primary rounded-xl py-4 items-center mt-6 active:opacity-80"
-          android_ripple={{ color: "rgba(0,0,0,0.1)" }}
-          onPress={handleSignUp}
-          disabled={loading}
-        >
-          {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-primary-foreground font-semibold text-base">注册</Text>}
-        </Pressable>
-
-        <Pressable className="mt-4 items-center" onPress={() => router.push('/(auth)/sign-in')}>
-          <Text className="text-sm text-muted-foreground">
-            已有账号？<Text className="text-primary font-medium">去登录</Text>
-          </Text>
-        </Pressable>
-        </>}
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <MotionPressable onPress={() => { setAgreed((value) => !value); setError(''); }} style={styles.agreement} pressedScale={0.98} haptic={false}>
+            <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>{agreed ? <Text style={styles.checkmark}>✓</Text> : null}</View>
+            <Text style={styles.agreementText}>我已阅读并同意<Text style={styles.agreementLink}>用户协议</Text>与<Text style={styles.agreementLink}>隐私政策</Text></Text>
+          </MotionPressable>
+          {error ? <View style={styles.errorBox}><Text style={styles.error}>{error}</Text></View> : null}
+          <PrimaryButton label="创建账号" loading={loading} onPress={handleSignUp} />
+          <MotionPressable onPress={() => router.replace('/(auth)/sign-in')} style={styles.secondaryButton} pressedScale={0.97} haptic={false}>
+            <Text style={styles.secondaryText}>已有账号？<Text style={styles.secondaryLink}>返回登录</Text></Text>
+          </MotionPressable>
+        </>
+      )}
+    </AuthSceneShell>
   );
 }
+
+function PrimaryButton({ label, loading, onPress }: { label: string; loading: boolean; onPress: () => void }) {
+  return (
+    <MotionPressable onPress={onPress} disabled={loading} style={styles.primaryButton} pressedScale={0.97} hoverLift={3}>
+      <LinearGradient colors={['#2997FF', '#0968F1', '#2967F6']} style={styles.primaryGradient}>
+        {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>{label}</Text>}
+      </LinearGradient>
+    </MotionPressable>
+  );
+}
+
+function Field({ icon, value, onChange, placeholder, secure, suffix, onSubmit, autoComplete, keyboardType }: any) {
+  return (
+    <View style={styles.inputShell}>
+      {icon}
+      <TextInput value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor="#8999B1" autoCapitalize="none" autoComplete={autoComplete ?? 'new-password'} keyboardType={keyboardType} secureTextEntry={secure} returnKeyType={onSubmit ? 'done' : 'next'} onSubmitEditing={onSubmit} style={styles.input} />
+      {suffix}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  confirmation: { alignItems: 'center', paddingVertical: 18 },
+  headingIcon: { width: 48, height: 48, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', borderRadius: 17, backgroundColor: 'rgba(20,120,245,0.09)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' },
+  successIcon: { width: 68, height: 68, alignItems: 'center', justifyContent: 'center', borderRadius: 23, backgroundColor: 'rgba(22,163,106,0.09)' },
+  title: { marginTop: 12, color: APP_COLORS.ink, fontSize: 25, lineHeight: 31, fontWeight: '900', textAlign: 'center' },
+  subtitle: { marginTop: 5, marginBottom: 8, color: APP_COLORS.muted, fontSize: 12, lineHeight: 18, fontWeight: '600', textAlign: 'center' },
+  inputShell: { height: 54, marginTop: 10, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: APP_RADIUS.control, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1.2, borderColor: APP_COLORS.border },
+  input: { flex: 1, minWidth: 0, height: 51, padding: 0, color: APP_COLORS.ink, fontSize: 14, fontWeight: '700', outlineStyle: 'none' } as any,
+  eyeButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 19 },
+  agreement: { marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  checkbox: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderWidth: 1.2, borderColor: APP_COLORS.border, backgroundColor: 'rgba(255,255,255,0.7)' },
+  checkboxChecked: { borderColor: APP_COLORS.blue, backgroundColor: APP_COLORS.blue },
+  checkmark: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' },
+  agreementText: { flex: 1, color: APP_COLORS.muted, fontSize: 10.5, lineHeight: 15, fontWeight: '600' },
+  agreementLink: { color: APP_COLORS.blueStrong, fontWeight: '800' },
+  errorBox: { marginTop: 9, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 11, backgroundColor: 'rgba(200,61,75,0.08)', borderWidth: 1, borderColor: 'rgba(200,61,75,0.18)' },
+  error: { color: APP_COLORS.danger, fontSize: 11, lineHeight: 15, fontWeight: '700' },
+  primaryButton: { height: 55, marginTop: 13, overflow: 'hidden', borderRadius: 28, ...APP_SHADOW.floating },
+  primaryGradient: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 28, borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
+  primaryText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+  secondaryButton: { height: 40, marginTop: 7, alignItems: 'center', justifyContent: 'center' },
+  secondaryText: { color: APP_COLORS.muted, fontSize: 12, fontWeight: '600' },
+  secondaryLink: { color: APP_COLORS.blueStrong, fontWeight: '900' },
+});
