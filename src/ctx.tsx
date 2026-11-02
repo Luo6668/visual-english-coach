@@ -3,15 +3,21 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 
 import { supabase, supabaseConfigError } from '@/client/supabase';
+import {
+  accountDemoOwner,
+  clearDemoIdentity,
+  isQuickDemoOwner,
+  quickDemoOwner,
+  readDemoIdentity,
+  saveDemoIdentity,
+} from '@/lib/demoSession';
 
-const DEMO_SESSION_KEY = 'visual-english-coach-demo-session';
-
-function createDemoSession(email: string): Session {
+function createDemoSession(email: string, ownerId: string): Session {
   return {
     access_token: '', refresh_token: '', expires_in: 0, token_type: 'bearer',
     user: {
-      id: 'local-demo-user', aud: 'authenticated', role: 'authenticated', email,
-      app_metadata: {}, user_metadata: { demo: true }, identities: [],
+      id: ownerId, aud: 'authenticated', role: 'authenticated', email,
+      app_metadata: {}, user_metadata: { demo: true, quickExperience: isQuickDemoOwner(ownerId) }, identities: [],
       created_at: new Date().toISOString(),
     },
   } as Session;
@@ -21,8 +27,10 @@ type SessionContextType = {
   session: Session | null;
   isLoading: boolean;
   isDemoMode: boolean;
+  isQuickExperience: boolean;
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<string | null>;
+  startQuickExperience: () => Promise<string | null>;
   signOut: () => Promise<void>;
 };
 
@@ -30,8 +38,10 @@ const SessionContext = createContext<SessionContextType>({
   session: null,
   isLoading: true,
   isDemoMode: Boolean(supabaseConfigError),
+  isQuickExperience: false,
   signIn: async () => null,
   signUp: async () => null,
+  startQuickExperience: async () => null,
   signOut: async () => {},
 });
 
@@ -42,8 +52,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (supabaseConfigError) {
-      const email = localStorage.getItem(DEMO_SESSION_KEY);
-      setSession(email ? createDemoSession(email) : null);
+      const identity = readDemoIdentity();
+      setSession(identity ? createDemoSession(identity.email, identity.ownerId) : null);
       setIsLoading(false);
       return;
     }
@@ -77,10 +87,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const setDemoSession = (email: string) => {
+  const setDemoSession = (email: string, ownerId = accountDemoOwner(email)) => {
     const normalizedEmail = email.trim().toLowerCase();
-    localStorage.setItem(DEMO_SESSION_KEY, normalizedEmail);
-    setSession(createDemoSession(normalizedEmail));
+    saveDemoIdentity(normalizedEmail, ownerId);
+    setSession(createDemoSession(normalizedEmail, ownerId));
   };
 
   const signIn = async (email: string, password: string) => {
@@ -101,9 +111,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return error?.message ?? null;
   };
 
+  const startQuickExperience = async () => {
+    if (!supabaseConfigError) return '快速体验仅在本地演示模式可用';
+    setDemoSession('guest@visualcoach.local', quickDemoOwner());
+    return null;
+  };
+
   const signOut = async () => {
     if (supabaseConfigError) {
-      localStorage.removeItem(DEMO_SESSION_KEY);
+      clearDemoIdentity();
       setSession(null);
       return;
     }
@@ -111,7 +127,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <SessionContext.Provider value={{ session, isLoading, isDemoMode: Boolean(supabaseConfigError), signIn, signUp, signOut }}>
+    <SessionContext.Provider value={{
+      session,
+      isLoading,
+      isDemoMode: Boolean(supabaseConfigError),
+      isQuickExperience: Boolean(session?.user.user_metadata?.quickExperience),
+      signIn,
+      signUp,
+      startQuickExperience,
+      signOut,
+    }}>
       {children}
     </SessionContext.Provider>
   );

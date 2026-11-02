@@ -40,7 +40,7 @@ function localAsrInstalled() {
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'content-type, authorization, apikey',
+  'Access-Control-Allow-Headers': 'content-type, authorization, apikey, x-local-user-id',
 };
 
 const MAX_REQUEST_BYTES = 15_000_000;
@@ -534,10 +534,10 @@ async function localTtsReady() {
   }
 }
 
-async function handle(name, body) {
-  if (name === 'add-xp') return awardXp(body.source);
-  if (name === 'record-activity') return recordActivity(body.kind);
-  if (name === 'clear-local-data') return clearLocalData();
+async function handle(name, body, userId) {
+  if (name === 'add-xp') return awardXp(body.source, userId);
+  if (name === 'record-activity') return recordActivity(body.kind, userId);
+  if (name === 'clear-local-data') return clearLocalData(userId);
   if (name === 'local-tts') return localTts(body);
   if (name === 'qwen-tts') return qwenTts(body);
   if (name === 'short-speech-recognition') {
@@ -679,9 +679,13 @@ const server = createServer(async (req, res) => {
       return json(res, 400, { error: '请求 JSON 格式无效' });
     }
     try {
-      if (dataTable) return json(res, 200, { data: await handleDataRequest(dataTable, body) });
+      const requestedUserId = req.headers['x-local-user-id'];
+      const userId = typeof requestedUserId === 'string' && /^[a-z0-9-]{3,96}$/i.test(requestedUserId)
+        ? requestedUserId
+        : undefined;
+      if (dataTable) return json(res, 200, { data: await handleDataRequest(dataTable, body, userId) });
       if (name === 'ai-coach-chat' || name === 'scene-dialogue-chat') return await streamChat(name, body, res);
-      json(res, 200, await handle(name, body));
+      json(res, 200, await handle(name, body, userId));
     }
     catch (error) { json(res, 500, { error: error instanceof Error ? error.message : String(error) }); }
   });

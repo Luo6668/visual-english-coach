@@ -45,7 +45,7 @@ type HotspotKey = keyof typeof HOTSPOTS;
 export default function SignIn() {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const { signIn, isDemoMode } = useSession();
+  const { signIn, isDemoMode, startQuickExperience } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -91,7 +91,7 @@ export default function SignIn() {
     setQuickLoading(true);
     setError('');
     try {
-      const signInError = await signIn('guest@visualcoach.local', 'visual-coach-demo');
+      const signInError = await startQuickExperience();
       if (signInError) setError(getAuthErrorMessage(signInError));
       else router.replace('/');
     } catch (signInError) {

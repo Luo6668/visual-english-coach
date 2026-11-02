@@ -55,9 +55,9 @@ function normalizeWriteValues(input = {}) {
   return values;
 }
 
-function where(filters = {}) {
+function where(filters = {}, userId = USER_ID) {
   const parts = ['user_id = :currentUser'];
-  const params = { currentUser: USER_ID };
+  const params = { currentUser: userId };
   for (const [key, value] of Object.entries(filters)) {
     if (!/^[a-z_]+$/.test(key)) throw new Error('Invalid filter');
     parts.push(`\`${key}\` = :f_${key}`);
@@ -66,11 +66,11 @@ function where(filters = {}) {
   return { sql: parts.join(' AND '), params };
 }
 
-export async function handleDataRequest(table, body) {
+export async function handleDataRequest(table, body, userId = USER_ID) {
   if (!TABLES.has(table)) throw new Error('Unsupported table');
   const db = getPool();
   const action = body.action || 'select';
-  const scope = where(body.filters);
+  const scope = where(body.filters, userId);
   if (action === 'select') {
     const order = /^[a-z_]+$/.test(body.orderBy || '') ? ` ORDER BY \`${body.orderBy}\` ${body.ascending ? 'ASC' : 'DESC'}` : '';
     const limit = Math.min(Number(body.limit || 500), 500);
@@ -79,7 +79,7 @@ export async function handleDataRequest(table, body) {
     return body.single ? (data[0] ?? null) : data;
   }
   if (action === 'insert') {
-    const values = normalizeWriteValues({ id: randomUUID(), ...body.values, user_id: USER_ID });
+    const values = normalizeWriteValues({ id: randomUUID(), ...body.values, user_id: userId });
     const keys = Object.keys(values).filter((key) => /^[a-z_]+$/.test(key));
     await db.query(`INSERT INTO \`${table}\` (${keys.map((k) => `\`${k}\``).join(',')}) VALUES (${keys.map((k) => `:${k}`).join(',')})`, values);
     return normalizeRow(values);
@@ -97,7 +97,7 @@ export async function handleDataRequest(table, body) {
     return true;
   }
   if (action === 'upsert') {
-    const values = normalizeWriteValues({ id: randomUUID(), ...body.values, user_id: USER_ID });
+    const values = normalizeWriteValues({ id: randomUUID(), ...body.values, user_id: userId });
     const keys = Object.keys(values).filter((key) => /^[a-z_]+$/.test(key));
     const updates = keys.filter((k) => !['id', 'user_id'].includes(k));
     await db.query(`INSERT INTO \`${table}\` (${keys.map((k) => `\`${k}\``).join(',')}) VALUES (${keys.map((k) => `:${k}`).join(',')}) ON DUPLICATE KEY UPDATE ${updates.map((k) => `\`${k}\` = VALUES(\`${k}\`)`).join(',')}`, values);
@@ -114,7 +114,7 @@ function levelForXp(totalXp) {
   return level;
 }
 
-export async function recordActivity(kind) {
+export async function recordActivity(kind, userId = USER_ID) {
   const fields = ACTIVITY_FIELDS[kind];
   if (!fields) throw new Error('Invalid activity kind');
   const [totalField, dailyField] = fields;
@@ -122,19 +122,19 @@ export async function recordActivity(kind) {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
-    await connection.query('INSERT IGNORE INTO user_stats (user_id) VALUES (?)', [USER_ID]);
+    await connection.query('INSERT IGNORE INTO user_stats (user_id) VALUES (?)', [userId]);
     await connection.query(
       `UPDATE user_stats SET
         \`${totalField}\` = \`${totalField}\` + 1,
         last_study_date = CURDATE()
        WHERE user_id = ?`,
-      [USER_ID],
+      [userId],
     );
     await connection.query(
       `INSERT INTO daily_stats (id, user_id, study_date, \`${dailyField}\`)
        VALUES (?, ?, CURDATE(), 1)
        ON DUPLICATE KEY UPDATE \`${dailyField}\` = \`${dailyField}\` + 1`,
-      [randomUUID(), USER_ID],
+      [randomUUID(), userId],
     );
     await connection.commit();
     return { recorded: true, kind };
@@ -146,7 +146,7 @@ export async function recordActivity(kind) {
   }
 }
 
-export async function clearLocalData() {
+export async function clearLocalData(userId = USER_ID) {
   const db = getPool();
   const connection = await db.getConnection();
   const tables = [
@@ -156,7 +156,7 @@ export async function clearLocalData() {
   try {
     await connection.beginTransaction();
     for (const table of tables) {
-      await connection.query(`DELETE FROM \`${table}\` WHERE user_id = ?`, [USER_ID]);
+      await connection.query(`DELETE FROM \`${table}\` WHERE user_id = ?`, [userId]);
     }
     await connection.query(
       `UPDATE user_stats SET
@@ -164,7 +164,7 @@ export async function clearLocalData() {
         total_dialogues = 0, streak_days = 0, last_study_date = NULL,
         total_xp = 0, current_level = 1, last_checkin_date = NULL
        WHERE user_id = ?`,
-      [USER_ID],
+      [userId],
     );
     await connection.commit();
     return { cleared: true };
@@ -176,7 +176,7 @@ export async function clearLocalData() {
   }
 }
 
-export async function awardXp(source) {
+export async function awardXp(source, userId = USER_ID) {
   const baseAmount = source === 'daily_checkin' ? 10
     : source?.startsWith('scene_analysis_') ? 20
       : source?.startsWith('dialogue_') ? 30
@@ -189,13 +189,13 @@ export async function awardXp(source) {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
-    await connection.query('INSERT IGNORE INTO user_stats (user_id) VALUES (?)', [USER_ID]);
+    await connection.query('INSERT IGNORE INTO user_stats (user_id) VALUES (?)', [userId]);
     const [[dates]] = await connection.query(
       'SELECT CURDATE() AS today, DATE_SUB(CURDATE(), INTERVAL 1 DAY) AS yesterday',
     );
     const [[stats]] = await connection.query(
       'SELECT total_xp, streak_days, last_checkin_date FROM user_stats WHERE user_id = ? FOR UPDATE',
-      [USER_ID],
+      [userId],
     );
     let streak = Number(stats?.streak_days || 0);
     if (source === 'daily_checkin') {
@@ -208,14 +208,14 @@ export async function awardXp(source) {
     const amount = baseAmount + (source === 'daily_checkin' && streak % 7 === 0 ? 50 : 0);
     await connection.query(
       'INSERT INTO xp_logs (id, user_id, xp_amount, source, reward_date) VALUES (?, ?, ?, ?, ?)',
-      [randomUUID(), USER_ID, amount, source, dates.today],
+      [randomUUID(), userId, amount, source, dates.today],
     );
     const totalXp = Number(stats?.total_xp || 0) + amount;
     await connection.query(
       `UPDATE user_stats SET total_xp = ?, current_level = ?,
         streak_days = ?, last_checkin_date = IF(? = 'daily_checkin', CURDATE(), last_checkin_date)
        WHERE user_id = ?`,
-      [totalXp, levelForXp(totalXp), streak, source, USER_ID],
+      [totalXp, levelForXp(totalXp), streak, source, userId],
     );
     await connection.commit();
     return { awarded: amount, totalXp, level: levelForXp(totalXp), streak };

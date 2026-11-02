@@ -67,6 +67,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import { MotionPressable } from '@/components/motion-pressable';
 import { PremiumHomeBoard } from '@/components/premium-home-board';
+import { useSession } from '@/ctx';
 import {
   addXp,
   fetchDailyStats,
@@ -571,6 +572,7 @@ function LearningDeck({ records, loading, failedImageId, onImageError, onOpen, o
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { isQuickExperience } = useSession();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
@@ -618,7 +620,7 @@ export default function HomeScreen() {
       let active = true;
       void (async () => {
         setLoading(true);
-        await addXp('daily_checkin').catch(() => {});
+        if (!isQuickExperience) await addXp('daily_checkin').catch(() => {});
         const [recordsResult, scenesResult, wordsResult, highFreqResult, dailyResult, xpResult] = await Promise.allSettled([
           fetchLearningRecords(),
           fetchScenes(),
@@ -659,7 +661,7 @@ export default function HomeScreen() {
         stopLocalSpeech();
         setPreviewSpeaking(false);
       };
-    }, []),
+    }, [isQuickExperience]),
   );
 
   useEffect(() => () => {

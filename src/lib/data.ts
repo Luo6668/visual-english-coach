@@ -1,3 +1,5 @@
+import { getDemoDataOwner } from '@/lib/demoSession';
+
 const DATA_URL = process.env.EXPO_PUBLIC_DATA_API_URL || 'http://127.0.0.1:8787/data';
 
 type DataOptions = {
@@ -13,7 +15,10 @@ type DataOptions = {
 export async function mysqlData<T = any>(table: string, options: DataOptions = {}): Promise<T> {
   const response = await fetch(`${DATA_URL}/${table}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Local-User-Id': getDemoDataOwner(),
+    },
     body: JSON.stringify(options),
   });
   const payload = await response.json().catch(() => ({}));

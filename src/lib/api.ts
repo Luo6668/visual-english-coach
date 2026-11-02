@@ -1,5 +1,6 @@
 import { supabase, supabaseConfigError } from '@/client/supabase';
 import { mysqlData } from '@/lib/data';
+import { getDemoDataOwner } from '@/lib/demoSession';
 import { functionUrl, localFunctionsBaseUrl } from '@/lib/serviceConfig';
 import { formatLocalDate } from '@/lib/utils';
 
@@ -18,7 +19,10 @@ export async function invokeEdgeFunction(name: string, body: any) {
   if (supabaseConfigError) {
     const response = await fetch(functionUrl(name), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Local-User-Id': getDemoDataOwner(),
+      },
       body: JSON.stringify(body),
     });
     const payload = await response.json().catch(() => ({}));
