@@ -31,8 +31,8 @@ import Animated, {
   interpolate,
   LinearTransition,
   runOnJS,
-  useAnimatedStyle,
   useAnimatedProps,
+  useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withRepeat,
@@ -40,7 +40,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, Path, RadialGradient, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
 import { MotionPressable } from '@/components/motion-pressable';
 import { IOS_MOTION, resistedOffset } from '@/lib/ios-motion';
 import { ALL_SCENES, type SceneNode } from '@/lib/sceneMapData';
@@ -169,6 +169,7 @@ type VocabularyItem = {
 };
 
 const ASSETS = {
+  defaultRecentScene: require('../../assets/home-cafe-hero.png'),
   hero: require('../../assets/home-premium/hero-photo.png'),
   lessonCity: require('../../assets/home-premium/lesson-city.png'),
   lessonAirport: require('../../assets/home-premium/lesson-airport.png'),
@@ -219,6 +220,24 @@ const SCENES: readonly SceneCard[] = [
   },
 ];
 
+const DEFAULT_RECENT_SCENE: SceneCard = {
+  key: 'default-recent-scene',
+  source: ASSETS.defaultRecentScene,
+  title: '咖啡馆点单',
+  subtitle: '新手推荐',
+  prompt: '练习咖啡馆点单英语',
+  description: '从一杯咖啡开始，练习点单、确认需求和自然回应。',
+  phrases: [['Could I have a latte?', '我可以要一杯拿铁吗？'], ['For here or to go?', '堂食还是外带？']],
+  isRecommendation: true,
+};
+
+const DEFAULT_ALBUM_SCENES: SceneCard[] = SCENES.map(scene => ({
+  ...scene,
+  key: `concept-${scene.key}`,
+  subtitle: '概念示例',
+  isRecommendation: true,
+}));
+
 function hasUsableImage(value?: string) {
   return Boolean(value && !value.startsWith('blob:'));
 }
@@ -236,7 +255,8 @@ function fallbackSceneAsset(name: string) {
   if (/机场|登机|airport|flight|海岛|旅行/i.test(name)) return ASSETS.sceneAirport;
   if (/酒店|住宿|hotel|bedroom|卧室/i.test(name)) return ASSETS.sceneHotel;
   if (/城市|地铁|问路|city|subway/i.test(name)) return ASSETS.city;
-  return ASSETS.sceneCoffee;
+  if (/咖啡|coffee|latte|饮品/i.test(name)) return ASSETS.sceneCoffee;
+  return ASSETS.city;
 }
 
 function curriculumPhrases(scene?: SceneNode): readonly [string, string][] {
@@ -824,16 +844,7 @@ function PhotoDeck({ u, items, onPreview }: { u: number; items: SceneCard[]; onP
   const reduceMotion = useReducedMotion();
   const [selected, setSelected] = useState(0);
   const dragX = useSharedValue(0);
-  const displayItems = items.length ? items.slice(0, 3) : [{
-    key: 'empty-album',
-    source: ASSETS.coffee,
-    title: '暂无场景照片',
-    subtitle: '拍照识别后自动出现',
-    prompt: '',
-    description: '完成一次拍照识别后，这里会显示你的真实场景照片。',
-    phrases: [] as [string, string][],
-    isRecommendation: true,
-  }];
+  const displayItems = items.length ? items.slice(0, 3) : DEFAULT_ALBUM_SCENES;
   const shift = useCallback((direction: 1 | -1) => setSelected(current => (current + direction + displayItems.length) % displayItems.length), [displayItems.length]);
 
   useEffect(() => {
@@ -1010,13 +1021,18 @@ export function PremiumHomeBoard(props: Props) {
     return [...learned, ...recommendations].slice(0, 3);
   }, [props.scenes]);
   const heroScene = useMemo(
-    () => latest ? sceneCardFromRecord(latest) : sceneCards[0] ?? SCENES[0],
-    [latest, sceneCards],
+    () => latest ? sceneCardFromRecord(latest) : DEFAULT_RECENT_SCENE,
+    [latest],
   );
-  const albumScenes = useMemo(
+  const realAlbumScenes = useMemo(
     () => props.records.filter(record => hasUsableImage(record.scene_image)).slice(0, 3).map(sceneCardFromRecord),
     [props.records],
   );
+  const albumScenes = useMemo(() => {
+    const realTitles = new Set(realAlbumScenes.map(scene => scene.title));
+    const concepts = DEFAULT_ALBUM_SCENES.filter(scene => !realTitles.has(scene.title));
+    return [...realAlbumScenes, ...concepts].slice(0, 3);
+  }, [realAlbumScenes]);
   const vocabularyItems = useMemo<VocabularyItem[]>(() => {
     const learnedByWord = new Map(props.words.map(item => [item.word.toLowerCase(), item]));
     const prioritized = props.highFreqWords.map(frequent => {
@@ -1118,8 +1134,8 @@ export function PremiumHomeBoard(props: Props) {
         <Image source={heroScene.source} style={{ position: 'absolute', left: 0, right: 0, top: -25 * u, width: 540 * u, height: 625 * u }} contentFit="cover" transition={180} />
         <LinearGradient colors={['rgba(4,11,19,0.08)', 'rgba(4,11,19,0.02)', 'rgba(4,11,19,0.18)']} style={StyleSheet.absoluteFillObject} />
         <View style={{ position: 'absolute', left: 39 * u, top: 54 * u }}>
-          <Text style={[styles.heroTitle, { fontSize: fs(45), lineHeight: fs(54) }]}>{latest ? '最近场景' : '实时场景'}</Text>
-          <Text style={[styles.heroSubtitle, { fontSize: fs(21), lineHeight: fs(30) }]} numberOfLines={1}>{latest ? heroScene.title : '在真实场景中练习地道表达'}</Text>
+          <Text style={[styles.heroTitle, { fontSize: fs(45), lineHeight: fs(54) }]}>最近场景</Text>
+          <Text style={[styles.heroSubtitle, { fontSize: fs(21), lineHeight: fs(30) }]} numberOfLines={1}>{latest ? heroScene.title : `${heroScene.title} · 新手默认`}</Text>
         </View>
         <LinearGradient
           pointerEvents="none"
@@ -1204,7 +1220,15 @@ export function PremiumHomeBoard(props: Props) {
 
       <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(210).duration(450)} style={[styles.album, { left: 32 * u, top: 1068 * u + utilityStartOffset, width: 410 * u, height: 225 * u, borderRadius: 28 * u }]}>
         <Glass level="utility" style={StyleSheet.absoluteFillObject}>
-          <CardHeading u={u} title="相册场景" subtitle={albumScenes.length ? `${albumScenes.length} 个真实照片场景` : '拍照识别后自动更新'} />
+          <CardHeading
+            u={u}
+            title="相册场景"
+            subtitle={realAlbumScenes.length >= 3
+              ? `${realAlbumScenes.length} 个真实照片场景`
+              : realAlbumScenes.length
+                ? `${realAlbumScenes.length} 个真实照片 · 概念图补位`
+                : '默认概念图 · 拍照后自动替换'}
+          />
           <PhotoDeck u={u} items={albumScenes} onPreview={(scene) => {
             if (scene.isRecommendation) {
               props.onGallery();
@@ -1384,8 +1408,14 @@ const styles = StyleSheet.create({
   albumPhotoButton: { position: 'absolute' },
   albumPhoto: { borderWidth: 2.5, borderColor: 'rgba(255,255,255,0.96)', shadowColor: '#1E578D', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.34, shadowRadius: 12, elevation: 6 },
   albumPhotoActive: { borderColor: '#1095FF', shadowColor: '#008CFF', shadowOpacity: 0.56, shadowRadius: 14 },
-  albumEmptyScrim: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, backgroundColor: 'rgba(235,246,255,0.76)' },
-  albumEmptyText: { color: '#29446E', fontSize: 12, lineHeight: 16, fontWeight: '800', textAlign: 'center' },
+  albumEmptyScrim: {
+    position: 'absolute', left: 5, right: 5, bottom: 5, minHeight: 27,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8,
+    borderRadius: 10, backgroundColor: 'rgba(7,22,46,0.62)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.46)',
+    ...webGlass('blur(14px) saturate(1.2)'),
+  },
+  albumEmptyText: { color: '#FFFFFF', fontSize: 11, lineHeight: 15, fontWeight: '900', textAlign: 'center' },
   dots: { position: 'absolute', flexDirection: 'row', alignItems: 'center' },
   cardNext: { position: 'absolute', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowColor: '#34597F', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.18, shadowRadius: 10, elevation: 5 },
   writingBox: { position: 'absolute', backgroundColor: 'rgba(255,255,255,0.7)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.94)', shadowColor: '#315B88', shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 4, justifyContent: 'center', ...webGlass('blur(16px) saturate(1.3)') },
