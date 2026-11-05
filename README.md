@@ -2,6 +2,14 @@
 
 基于 Expo SDK 55 + React Native + expo-router + NativeWind v4 打造的视觉化英语学习 App。
 
+## 当前进度与产品文档（2026-11-05）
+
+- [项目进度、验收边界与恢复说明](docs/PROJECT_PROGRESS.md)
+- [当前实现版 PRD](docs/current-product-20261105/PRD.md)
+- [设计与技术文档](docs/current-product-20261105/DESIGN.md)
+
+已有数据库更新日记功能时运行 `pnpm mysql:migrate:diary`。本地登录为演示机制；云部署与原生硬件验收边界见进度文档。
+
 ## 技术栈
 
 - **框架**: React Native + Expo SDK 55

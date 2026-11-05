@@ -1,4 +1,8 @@
+import { diaryWritingRequest, diaryWritingMessages, validateDiaryWriting } from '../supabase/functions/_shared/diary-writing.mjs';
+import { sentenceRequest, sentenceMessages, validateSentenceDetail } from '../supabase/functions/_shared/sentence-detail.mjs';
+import { coachSystem } from '../supabase/functions/_shared/coach-system.mjs';
 import { Buffer } from 'node:buffer';
+import { learningRequest, learningMessages, validateLearningResult } from '../supabase/functions/_shared/learning-assist.mjs';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -47,7 +51,7 @@ const MAX_REQUEST_BYTES = 15_000_000;
 const KNOWN_FUNCTIONS = new Set([
   'add-xp', 'record-activity', 'clear-local-data', 'local-tts', 'qwen-tts',
   'short-speech-recognition', 'diary', 'shadowing', 'thinking-mode',
-  'translate', 'word-detail', 'dialogue', 'ai-coach-chat', 'scene-dialogue-chat',
+  'translate', 'word-detail', 'sentence-detail', 'dialogue', 'ai-coach-chat', 'scene-dialogue-chat', 'learning-assist',
 ]);
 
 function json(res, status, value) {
@@ -114,12 +118,12 @@ function runProcess(command, args, timeout = 120_000) {
   });
 }
 
-async function chat({ messages, jsonMode = false, stream = false, maxTokens = 700, timeoutSeconds = 90 }) {
+async function chat({ messages, jsonMode = false, stream = false, maxTokens = 700, timeoutSeconds = 90, temperature = 0.7 }) {
   const key = process.env.DEEPSEEK_API_KEY;
   if (!key) throw new Error('未配置 DEEPSEEK_API_KEY');
   return curlJson('https://api.deepseek.com/chat/completions', key, {
     model: 'deepseek-chat', messages, stream, max_tokens: maxTokens,
-    temperature: 0.7, ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
+    temperature, ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
   }, timeoutSeconds);
 }
 
@@ -535,6 +539,12 @@ async function localTtsReady() {
 }
 
 async function handle(name, body, userId) {
+  if (name === 'learning-assist') {
+    const input = learningRequest(body);
+    const response = await chat({ messages: learningMessages(input), jsonMode: true, temperature: 0.2, maxTokens: 750, timeoutSeconds: 25 });
+    const data = await response.json();
+    return validateLearningResult(parseJson(data.choices?.[0]?.message?.content || ''), input);
+  }
   if (name === 'add-xp') return awardXp(body.source, userId);
   if (name === 'record-activity') return recordActivity(body.kind, userId);
   if (name === 'clear-local-data') return clearLocalData(userId);
@@ -544,19 +554,10 @@ async function handle(name, body, userId) {
     return process.env.LOCAL_SPEECH_PROVIDER === 'qwen' ? qwenAsr(body) : localAsr(body);
   }
   if (name === 'diary') {
-    if (!Array.isArray(body.records) || !body.records.length) throw new Error('没有可用的学习记录');
-    const summaries = body.records.map((record, index) =>
-      `${index + 1}. ${record.scene_name}: ${record.i_see}; ${record.i_think}; ${record.i_say}`,
-    ).join('\n');
-    const weekly = body.diaryType === 'weekly';
-    const response = await chat({ messages: [
-      { role: 'system', content: weekly
-        ? '根据学习记录写一篇200词左右的第一人称英文 Weekly Story，只返回正文，结尾鼓励下周继续学习。'
-        : '根据学习记录写一篇150词左右的第一人称英文日记，以 Dear Diary, 开头，只返回正文。' },
-      { role: 'user', content: summaries },
-    ], maxTokens: 600 });
+    const input = diaryWritingRequest(body);
+    const response = await chat({ messages: diaryWritingMessages(input), jsonMode: true, temperature: 0.2, maxTokens: 3500, timeoutSeconds: 55 });
     const data = await response.json();
-    return { content: data.choices?.[0]?.message?.content?.trim() || '' };
+    return validateDiaryWriting(parseJson(data.choices?.[0]?.message?.content || ''), input);
   }
   if (name === 'shadowing') {
     const sentence = String(body.sentence || '').trim();
@@ -591,6 +592,12 @@ async function handle(name, body, userId) {
     const data = await response.json();
     return { translation: data.choices?.[0]?.message?.content?.trim() || '' };
   }
+  if (name === 'sentence-detail') {
+    const input = sentenceRequest(body);
+    const response = await chat({ jsonMode: true, messages: sentenceMessages(input), maxTokens: 3000, timeoutSeconds: 55 });
+    const data = await response.json();
+    return validateSentenceDetail(parseJson(data.choices?.[0]?.message?.content || ''), input);
+  }
   if (name === 'word-detail') {
     const response = await chat({ jsonMode: true, messages: [
       { role: 'system', content: '你是英语词典。严格返回JSON字段 word, phonetic, meaning, partOfSpeech, collocations数组, examples数组, memoryTip。' },
@@ -623,7 +630,7 @@ async function streamChat(name, body, res) {
     : `这是第 ${currentRound}/${requiredRounds} 轮，请用不超过3句英语自然推进对话。`;
   const system = name === 'scene-dialogue-chat'
     ? `你是${scene}场景中的角色，用简短自然的英语与学习者对话。${dialogueGoal ? `练习目标：${dialogueGoal}。` : ''}${roundInstruction}`
-    : `你是友好专业的英语教练。围绕${scene}纠正表达并自然推进对话。`;
+    : coachSystem(body.coachMode, scene);
   const messages = Array.isArray(body.messages) ? body.messages : [];
   let content = '';
   try {

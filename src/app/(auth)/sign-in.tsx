@@ -1,3 +1,5 @@
+// Metro resolves static image assets at build time.
+declare const require: (assetPath: string) => number;
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';

@@ -1,3 +1,5 @@
+// Metro resolves static image assets at build time.
+declare const require: (assetPath: string) => number;
 import { useAudioPlayer } from 'expo-audio';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';

@@ -1,3 +1,5 @@
+// Metro resolves static image assets at build time.
+declare const require: (assetPath: string) => number;
 /* global require */
 import { fetch as expoFetch } from 'expo/fetch';
 import {
@@ -66,7 +68,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import { MotionPressable } from '@/components/motion-pressable';
-import { PremiumHomeBoard } from '@/components/premium-home-board';
+import { PremiumHomeBoard, type VoiceRecordingError } from '@/components/premium-home-board';
 import { useSession } from '@/ctx';
 import {
   addXp,
@@ -113,6 +115,63 @@ const RECORDING_OPTIONS = {
 
 type InputMode = 'text' | 'voice';
 type SceneInputMode = 'camera' | 'gallery' | InputMode;
+
+function voiceRecordingError(error: unknown, fallback = '录音处理失败'): VoiceRecordingError {
+  const rawMessage = error instanceof Error ? error.message : String(error || fallback);
+  const normalized = rawMessage.toLowerCase();
+
+  if (/权限|notallowed|security|permission|授权/.test(normalized)) {
+    return {
+      kind: 'permission',
+      title: '需要麦克风权限',
+      message: '请在浏览器或系统设置中允许麦克风访问',
+      actionLabel: '再次检查',
+    };
+  }
+  if (/太短|too short/.test(normalized)) {
+    return {
+      kind: 'too-short',
+      title: '说得有点短',
+      message: '请说完一句英文后再停止录音',
+      actionLabel: '重新录音',
+    };
+  }
+  if (/未识别|没有听清|不清晰|清晰的英文|no speech|blank_audio|silence/.test(normalized)) {
+    return {
+      kind: 'no-speech',
+      title: '没有听清英文',
+      message: '请靠近麦克风，用正常音量再说一次',
+      actionLabel: '再说一次',
+    };
+  }
+  if (/未检测到|找不到|notfound|device|设备|麦克风/.test(normalized)) {
+    return {
+      kind: 'device',
+      title: '没有找到麦克风',
+      message: '请连接或切换输入设备后重新检查',
+      actionLabel: '重新检查',
+    };
+  }
+  if (/fetch|network|服务|连接|timeout|超时|whisper|ai/.test(normalized)) {
+    return {
+      kind: 'service',
+      title: '语音服务暂时不可用',
+      message: '请确认本地服务连接后重新录音',
+      actionLabel: '重新连接',
+    };
+  }
+
+  const conciseMessage = rawMessage
+    .replace(/[，,。.!！]?请(?:稍后)?重试[。.!！]?/g, '')
+    .replace(/[，,。.!！]?重新尝试[。.!！]?/g, '')
+    .trim() || fallback;
+  return {
+    kind: 'unknown',
+    title: '录音没有完成',
+    message: conciseMessage,
+    actionLabel: '重新录音',
+  };
+}
 
 interface LearningRecord {
   id: string;
@@ -599,7 +658,7 @@ export default function HomeScreen() {
   const [failedRecordImageId, setFailedRecordImageId] = useState<string | null>(null);
   const [previewSpeaking, setPreviewSpeaking] = useState(false);
   const [recState, setRecState] = useState<'idle' | 'requesting' | 'recording' | 'transcribing'>('idle');
-  const [recError, setRecError] = useState('');
+  const [recError, setRecError] = useState<VoiceRecordingError | null>(null);
   const [recSeconds, setRecSeconds] = useState(0);
   const [reveal, setReveal] = useState<{ x: number; y: number; color: string } | null>(null);
 
@@ -607,6 +666,8 @@ export default function HomeScreen() {
   const revealActionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revealCleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webRecorderRef = useRef<MediaRecorder | null>(null);
+  const webRecordingAbortRef = useRef<AbortController | null>(null);
+  const recordingOperationRef = useRef(0);
   const scrollOffsetRef = useRef(0);
   const progressValue = useSharedValue(0);
   const revealProgress = useSharedValue(0);
@@ -614,6 +675,26 @@ export default function HomeScreen() {
   const contentWidth = Math.min(width, 760);
   const compactHeader = width < 480;
   const heroHeight = Math.min(360, Math.max(300, Math.round((contentWidth - 32) * 0.78)));
+
+  const clearRecordingTimer = useCallback(() => {
+    if (!recTimerRef.current) return;
+    clearInterval(recTimerRef.current);
+    recTimerRef.current = null;
+  }, []);
+
+  const finishRecordingWithError = useCallback((error: unknown, fallback: string, operation?: number) => {
+    if (operation !== undefined && operation !== recordingOperationRef.current) return;
+    if (operation !== undefined) recordingOperationRef.current = operation + 1;
+    clearRecordingTimer();
+    webRecordingAbortRef.current?.abort();
+    webRecordingAbortRef.current = null;
+    const activeRecorder = webRecorderRef.current;
+    webRecorderRef.current = null;
+    if (activeRecorder?.state === 'recording') activeRecorder.stop();
+    setRecSeconds(0);
+    setRecState('idle');
+    setRecError(voiceRecordingError(error, fallback));
+  }, [clearRecordingTimer]);
 
   useFocusEffect(
     useCallback(() => {
@@ -665,10 +746,14 @@ export default function HomeScreen() {
   );
 
   useEffect(() => () => {
-    if (recTimerRef.current) clearInterval(recTimerRef.current);
+    recordingOperationRef.current += 1;
+    webRecordingAbortRef.current?.abort();
+    webRecordingAbortRef.current = null;
+    if (webRecorderRef.current?.state === 'recording') webRecorderRef.current.stop();
+    clearRecordingTimer();
     if (revealActionTimerRef.current) clearTimeout(revealActionTimerRef.current);
     if (revealCleanupTimerRef.current) clearTimeout(revealCleanupTimerRef.current);
-  }, []);
+  }, [clearRecordingTimer]);
 
   const handleCamera = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -697,7 +782,7 @@ export default function HomeScreen() {
     router.push(`/(app)/thinking-mode?inputType=${inputType}&text=${encodeURIComponent(text)}` as any);
   };
 
-  const transcribeAudio = async (speech: string, length: number, format: 'wav' | 'm4a') => {
+  const transcribeAudio = async (speech: string, length: number, format: 'wav' | 'm4a', operation: number) => {
     const data = await invokeEdgeFunction('short-speech-recognition', {
       speech,
       len: length,
@@ -706,71 +791,87 @@ export default function HomeScreen() {
       language: 'en',
       cuid: 'home',
     });
+    if (operation !== recordingOperationRef.current) return;
     const recognized = String(data?.result?.[0] || '').trim();
     if (!recognized) throw new Error('未识别到内容，请靠近麦克风后重试');
+    setRecError(null);
     setSceneInputText(recognized);
   };
 
   const startRecording = async () => {
-    setRecError('');
+    const operation = recordingOperationRef.current + 1;
+    recordingOperationRef.current = operation;
+    webRecordingAbortRef.current?.abort();
+    clearRecordingTimer();
+    setRecError(null);
+    setRecSeconds(0);
     setRecState('requesting');
     if (process.env.EXPO_OS === 'web') {
+      const controller = new AbortController();
+      webRecordingAbortRef.current = controller;
       try {
-        webRecorderRef.current = await startWebAudioRecording(
+        const mediaRecorder = await startWebAudioRecording(
           async (blob) => {
+            if (operation !== recordingOperationRef.current) return;
             webRecorderRef.current = null;
-            if (blob.size < 200) throw new Error('录音时间太短，请重新录制');
+            webRecordingAbortRef.current = null;
+            clearRecordingTimer();
+            if (blob.size < 200) {
+              finishRecordingWithError(new Error('录音时间太短'), '录音时间太短', operation);
+              return;
+            }
             setRecState('transcribing');
             try {
               const wav = await audioBlobTo16kWav(blob);
-              await transcribeAudio(arrayBufferToBase64(wav), wav.byteLength, 'wav');
+              if (operation !== recordingOperationRef.current) return;
+              await transcribeAudio(arrayBufferToBase64(wav), wav.byteLength, 'wav', operation);
             } catch (error) {
-              setRecError(error instanceof Error ? error.message : '识别失败，请重试');
+              finishRecordingWithError(error, '识别失败', operation);
             } finally {
-              setRecState('idle');
+              if (operation === recordingOperationRef.current) setRecState('idle');
             }
           },
           (error) => {
-            webRecorderRef.current = null;
-            setRecError(error instanceof Error ? error.message : '录音失败，请重试');
-            setRecState('idle');
+            finishRecordingWithError(error, '录音设备出现异常', operation);
           },
+          controller.signal,
         );
+        if (operation !== recordingOperationRef.current) {
+          if (mediaRecorder.state === 'recording') mediaRecorder.stop();
+          return;
+        }
+        webRecorderRef.current = mediaRecorder;
         setRecState('recording');
-        setRecSeconds(0);
         recTimerRef.current = setInterval(() => setRecSeconds((seconds) => seconds + 1), 1000);
         return;
       } catch (error) {
-        setRecError(error instanceof Error ? error.message : '无法使用麦克风，请检查浏览器权限');
-        setRecState('idle');
+        finishRecordingWithError(error, '无法使用麦克风', operation);
         return;
       }
     }
 
     const permission = await requestRecordingPermissionsAsync();
+    if (operation !== recordingOperationRef.current) return;
     if (!permission.granted) {
-      setRecError('需要麦克风权限才能录音');
-      setRecState('idle');
+      finishRecordingWithError(new Error('需要麦克风权限才能录音'), '需要麦克风权限', operation);
       return;
     }
     try {
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      if (operation !== recordingOperationRef.current) return;
       await recorder.prepareToRecordAsync();
+      if (operation !== recordingOperationRef.current) return;
       recorder.record();
       setRecState('recording');
-      setRecSeconds(0);
       recTimerRef.current = setInterval(() => setRecSeconds((seconds) => seconds + 1), 1000);
-    } catch {
-      setRecError('录音启动失败，请重试');
-      setRecState('idle');
+    } catch (error) {
+      finishRecordingWithError(error, '录音启动失败', operation);
     }
   };
 
   const stopRecording = async () => {
-    if (recTimerRef.current) {
-      clearInterval(recTimerRef.current);
-      recTimerRef.current = null;
-    }
+    const operation = recordingOperationRef.current;
+    clearRecordingTimer();
     if (process.env.EXPO_OS === 'web' && webRecorderRef.current) {
       const activeRecorder = webRecorderRef.current;
       if (activeRecorder.state !== 'inactive') activeRecorder.stop();
@@ -781,16 +882,36 @@ export default function HomeScreen() {
     setRecState('transcribing');
     try {
       await recorder.stop();
+      if (operation !== recordingOperationRef.current) return;
       const uri = recorder.uri;
       if (!uri) throw new Error('录音文件为空');
       const response = await expoFetch(uri);
       const buffer = await response.arrayBuffer();
-      await transcribeAudio(arrayBufferToBase64(buffer), buffer.byteLength, 'm4a');
+      if (operation !== recordingOperationRef.current) return;
+      await transcribeAudio(arrayBufferToBase64(buffer), buffer.byteLength, 'm4a', operation);
     } catch (error) {
-      setRecError(error instanceof Error ? error.message : '识别失败，请重试');
+      finishRecordingWithError(error, '识别失败', operation);
     } finally {
-      setRecState('idle');
+      if (operation === recordingOperationRef.current) setRecState('idle');
     }
+  };
+
+  const retryRecording = async () => {
+    if (recState !== 'idle') return;
+    if (recError?.kind === 'permission' && process.env.EXPO_OS === 'web' && navigator.permissions?.query) {
+      try {
+        const permission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        if (permission.state === 'denied') {
+          setRecError({
+            ...recError,
+            message: '请点击地址栏的麦克风图标，将权限改为允许',
+            actionLabel: '再次检查',
+          });
+          return;
+        }
+      } catch {}
+    }
+    await startRecording();
   };
 
   useEffect(() => {
@@ -905,7 +1026,7 @@ export default function HomeScreen() {
   const weekCompleted = weekDays.filter((date) => practicedDays.has(dateKey(date))).length;
 
   const selectInputMode = (mode: SceneInputMode) => {
-    setRecError('');
+    setRecError(null);
     if (mode === 'camera') {
       void handleCamera();
       return;
@@ -980,6 +1101,11 @@ export default function HomeScreen() {
             setSceneInputMode('voice');
             void (recState === 'recording' ? stopRecording() : startRecording());
           }}
+          onRetryRecording={() => {
+            setSceneInputMode('voice');
+            void retryRecording();
+          }}
+          onDismissRecordingError={() => setRecError(null)}
           onOpenCoach={openCoach}
           onOpenLearning={() => router.push('/(app)/(tabs)/learning' as any)}
           onOpenRecord={(record) => router.push(`/(app)/record/${record.id}` as any)}
@@ -1195,7 +1321,7 @@ export default function HomeScreen() {
                   </View>
                 </View>
               ) : null}
-              {recError ? <Text style={styles.errorText}>{recError}</Text> : null}
+              {recError ? <Text style={styles.errorText}>{recError?.message ?? ''}</Text> : null}
             </Animated.View>
           ) : null}
 

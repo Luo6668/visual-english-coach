@@ -1,565 +1,65 @@
 import { useAudioPlayer } from 'expo-audio';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { BookOpen, Calendar, Check, ChevronLeft, RefreshCw, Sparkles, Trash2, Volume2 } from 'lucide-react-native';
-import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from 'react-native';
-import { deleteDiary, fetchDiaries, fetchLearningRecords, invokeEdgeFunction, saveDiary, updateDiary } from '@/lib/api';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Feather, History, Languages, RefreshCw, Volume2 } from 'lucide-react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { DiaryCalendar } from '@/components/diary/calendar';
+import { DiaryExpressions } from '@/components/diary/expression-list';
+import { MotionPressable } from '@/components/motion-pressable';
+import { useSession } from '@/ctx';
+import { invokeEdgeFunction } from '@/lib/api';
+import { dateKey, inWeek, MODE_LABELS, recordDate, validDate, weekStart } from '@/lib/diary/model.mjs';
+import { useDiaryEditor, type DiaryMode } from '@/lib/diary/use-diary-editor';
 import { speakWithTTS, stopLocalSpeech } from '@/lib/speech';
-import { formatLocalDate } from '@/lib/utils';
-
-// ── 颜色常量 ────────────────────────────────────────────
-const BLUE      = '#4A90E2';
-const BLUE_DARK = '#2E5C8A';
-const BLUE_LIGHT = '#EEF5FF';
-const YELLOW    = '#FFD60A';
-const GREEN     = '#34C759';
-const WHITE     = '#FFFFFF';
-const BG        = '#F5F8FF';
-
-// ── 类型 ────────────────────────────────────────────────
-interface DiaryEntry {
-  id: string;
-  diary_type: 'daily' | 'weekly';
-  content: string;
-  study_date?: string;
-  week_start?: string;
-  created_at: string;
-}
-interface LearningRecord {
-  id: string;
-  scene_name: string;
-  i_see?: string;
-  i_think?: string;
-  i_say?: string;
-  created_at: string;
-}
-
-interface RecordDay {
-  date: string;
-  records: LearningRecord[];
-}
-
-// ── 辅助函数 ────────────────────────────────────────────
-function parseDate(value: string) {
-  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
-  const parsed = new Date(dateOnly ? `${value}T12:00:00` : value.replace(' ', 'T'));
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-}
-
-function formatDate(iso: string) {
-  return parseDate(iso).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
-}
-
-function weekRange(isoStart: string) {
-  const s = parseDate(isoStart);
-  const e = new Date(s);
-  e.setDate(s.getDate() + 6);
-  const fmt = (d: Date) => d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
-  return `${fmt(s)} — ${fmt(e)}`;
-}
-
-function getWeekStart(date = new Date()) {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
-  return start;
-}
-
-const SCENE_EMOJI_MAP: Record<string, string> = {
-  '咖啡店': '☕', '图书馆': '📚', '地铁': '🚇', '机场': '✈️',
-  '超市': '🛒', '餐厅': '🍽️', '办公室': '💻', '学校': '🏫',
-  '公园': '🌳', '健身房': '🏋️',
-};
-const sceneEmoji = (name: string) => {
-  for (const [k, v] of Object.entries(SCENE_EMOJI_MAP)) { if (name.includes(k)) return v; }
-  return '📍';
-};
-
-// ── 主组件 ──────────────────────────────────────────────
+function Action({ label, onPress, disabled = false, primary = false }: { label: string; onPress: () => void; disabled?: boolean; primary?: boolean }) { return <MotionPressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={[s.action, primary && s.primary, disabled && { opacity: 0.45 }]}><Text style={[s.actionText, primary && { color: '#FFF' }]}>{label}</Text></MotionPressable>; }
+const labelDate = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
 export default function DiaryScreen() {
-  const router = useRouter();
-  const player = useAudioPlayer();
-  const [activeTab, setActiveTab]     = useState<'daily' | 'weekly'>('daily');
-  const [recordDays, setRecordDays]   = useState<RecordDay[]>([]);
-  const [selectedStudyDate, setSelectedStudyDate] = useState(formatLocalDate());
-  const [weekRecs, setWeekRecs]       = useState<LearningRecord[]>([]);
-  const [diaries, setDiaries]         = useState<DiaryEntry[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading]         = useState(true);
-  const [refreshing, setRefreshing]   = useState(false);
-  const [generating, setGenerating]   = useState(false);
-  const [deletingId, setDeletingId]   = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<DiaryEntry | null>(null);
-  const [speakingId, setSpeakingId]   = useState<string | null>(null);
-  const [speechLoadingId, setSpeechLoadingId] = useState<string | null>(null);
-  const [error, setError]             = useState('');
-  const [success, setSuccess]         = useState('');
-
-  // ── 数据加载 ──
-  const loadData = useCallback(async (refresh = false) => {
-    refresh ? setRefreshing(true) : setLoading(true);
-    setError('');
-    try {
-      const [allRecs, allDiaries] = await Promise.all([fetchLearningRecords(), fetchDiaries()]);
-      const today = formatLocalDate();
-      const weekStart = getWeekStart();
-      const nextWeek = new Date(weekStart);
-      nextWeek.setDate(weekStart.getDate() + 7);
-      const grouped = new Map<string, LearningRecord[]>();
-      allRecs.forEach((record: LearningRecord) => {
-        const date = formatLocalDate(parseDate(record.created_at));
-        grouped.set(date, [...(grouped.get(date) || []), record]);
-      });
-      const availableDays = [...grouped.entries()]
-        .sort(([left], [right]) => right.localeCompare(left))
-        .slice(0, 7)
-        .map(([date, records]) => ({ date, records }));
-      const currentWeek = allRecs.filter((r: LearningRecord) => {
-        const createdAt = parseDate(r.created_at);
-        return createdAt >= weekStart && createdAt < nextWeek;
-      });
-      setRecordDays(availableDays);
-      setWeekRecs(currentWeek);
-      setDiaries(allDiaries);
-      setSelectedStudyDate(previous => {
-        if (availableDays.some(day => day.date === previous)) return previous;
-        if (availableDays.some(day => day.date === today)) return today;
-        return availableDays[0]?.date || today;
-      });
-      setSelectedIds(new Set());
-    } catch (loadError) {
-      console.error('[diary] load failed:', loadError);
-      setError('加载失败，请检查本地服务后重试');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useFocusEffect(useCallback(() => {
-    void loadData();
-    return () => stopLocalSpeech();
-  }, [loadData]));
-
-  const dailyRecs = useMemo(
-    () => recordDays.find(day => day.date === selectedStudyDate)?.records || [],
-    [recordDays, selectedStudyDate],
-  );
-  const existingDaily = useMemo(
-    () => diaries.find(diary => diary.diary_type === 'daily' && diary.study_date === selectedStudyDate),
-    [diaries, selectedStudyDate],
-  );
-
-  // ── 生成每日日记 ──
-  const handleGenerateDaily = async () => {
-    if (selectedIds.size === 0) return;
-    setGenerating(true); setError(''); setSuccess('');
-    try {
-      const selected = dailyRecs.filter(r => selectedIds.has(r.id));
-      const result   = await invokeEdgeFunction('diary', { records: selected, diaryType: 'daily' });
-      const content  = typeof result?.content === 'string' ? result.content.trim() : '';
-      if (!content) throw new Error('AI 未返回有效日记内容');
-      if (existingDaily) await updateDiary(existingDaily.id, { content });
-      else await saveDiary({ diary_type: 'daily', content, study_date: selectedStudyDate });
-      const updated  = await fetchDiaries();
-      setDiaries(updated);
-      setSelectedIds(new Set());
-      setSuccess(`${formatDate(selectedStudyDate)}的日记已${existingDaily ? '更新' : '生成并保存'}`);
-    } catch (e: any) {
-      setError('生成失败：' + (e.message || '请检查 API 配置'));
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  // ── 生成 Weekly Story ──
-  const handleGenerateWeekly = async () => {
-    if (weekRecs.length === 0) { setError('本周暂无学习记录'); return; }
-    setGenerating(true); setError(''); setSuccess('');
-    try {
-      const result      = await invokeEdgeFunction('diary', { records: weekRecs, diaryType: 'weekly' });
-      const content     = typeof result?.content === 'string' ? result.content.trim() : '';
-      if (!content) throw new Error('AI 未返回有效周记内容');
-      const weekStart   = getWeekStart();
-      await saveDiary({ diary_type: 'weekly', content, week_start: formatLocalDate(weekStart) });
-      const updated = await fetchDiaries();
-      setDiaries(updated);
-      setSuccess('本周 Story 已生成并保存');
-    } catch (e: any) {
-      setError('生成失败：' + (e.message || '请检查 API 配置'));
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  // ── 删除日记 ──
-  const handleConfirmDelete = async () => {
-    if (!pendingDelete || deletingId) return;
-    const id = pendingDelete.id;
-    setDeletingId(id);
-    setError('');
-    try {
-      await deleteDiary(id);
-      setDiaries(prev => prev.filter(d => d.id !== id));
-      setPendingDelete(null);
-      setSuccess('日记已删除');
-      if (speakingId === id) {
-        stopLocalSpeech();
-        setSpeakingId(null);
-        setSpeechLoadingId(null);
-      }
-    } catch (deleteError) {
-      console.error('[diary] delete failed:', deleteError);
-      setPendingDelete(null);
-      setError('删除失败，日记仍然保留，请稍后再试');
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const handleSpeak = (diary: DiaryEntry) => {
-    if (speakingId === diary.id) {
-      stopLocalSpeech();
-      setSpeakingId(null);
-      setSpeechLoadingId(null);
-      return;
-    }
-    stopLocalSpeech();
-    setSpeakingId(diary.id);
-    setSpeechLoadingId(diary.id);
-    void speakWithTTS(diary.content, player, invokeEdgeFunction, () => {
-      setSpeakingId(null);
-      setSpeechLoadingId(null);
-    }, { rate: 0.92, onStart: () => setSpeechLoadingId(null) });
-  };
-
-  const toggleSelect = (id: string) =>
-    setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-
-  const filteredDiaries = diaries.filter(d => d.diary_type === activeTab);
-
-  return (
-    <View style={{ flex: 1, backgroundColor: BG }}>
-
-      {/* ── 顶部 Hero ── */}
-      <View style={{ backgroundColor: BLUE_LIGHT, paddingTop: 56, paddingBottom: 24, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#D6E8FF' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-          <Pressable onPress={() => router.back()} className="active:opacity-70"
-            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: BLUE + '18', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-            <ChevronLeft size={20} color={BLUE} />
-          </Pressable>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: '#1E293B', fontSize: 22, fontWeight: '800' }}>📖 英语日记</Text>
-            <Text style={{ color: '#64748B', fontSize: 12, marginTop: 2 }}>AI 为你记录每天的英语故事</Text>
-          </View>
-          <Pressable onPress={() => void loadData(true)} disabled={refreshing} accessibilityRole="button" accessibilityLabel="刷新日记数据" className="active:opacity-70"
-            style={{ width: 34, height: 28, backgroundColor: YELLOW, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}>
-            {refreshing ? <ActivityIndicator size="small" color={BLUE_DARK} /> : <Sparkles size={14} color={BLUE_DARK} />}
-          </Pressable>
-        </View>
-
-        {/* Tab 切换 */}
-        <View style={{ flexDirection: 'row', backgroundColor: BLUE + '18', borderRadius: 14, padding: 3 }}>
-          {([
-            { key: 'daily',  label: '📅 每日日记' },
-            { key: 'weekly', label: '🌟 Weekly Story' },
-          ] as const).map(t => (
-            <Pressable key={t.key} onPress={() => setActiveTab(t.key)} className="active:opacity-80" accessibilityRole="button" accessibilityState={{ selected: activeTab === t.key }}
-              style={{ flex: 1, paddingVertical: 9, borderRadius: 11, backgroundColor: activeTab === t.key ? WHITE : 'transparent', alignItems: 'center' }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: activeTab === t.key ? BLUE_DARK : '#64748B' }}>
-                {t.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic">
-        <View style={{ padding: 16, gap: 16, paddingBottom: 40 }}>
-
-          {/* 错误提示 */}
-          {error !== '' && (
-            <View style={{ backgroundColor: '#FEE2E2', borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={{ color: '#991B1B', fontSize: 13, flex: 1 }}>⚠️ {error}</Text>
-              <Pressable onPress={() => void loadData(true)} className="active:opacity-70">
-                <Text style={{ color: '#991B1B', fontSize: 12, fontWeight: '800' }}>重试</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {success !== '' && (
-            <View style={{ backgroundColor: '#DCFCE7', borderRadius: 12, padding: 12 }}>
-              <Text style={{ color: '#166534', fontSize: 13 }}>✓ {success}</Text>
-            </View>
-          )}
-
-          {loading ? (
-            <View style={{ alignItems: 'center', paddingVertical: 60 }}>
-              <ActivityIndicator color={BLUE} size="large" />
-              <Text style={{ color: '#94A3B8', fontSize: 13, marginTop: 12 }}>加载中...</Text>
-            </View>
-          ) : (
-            <>
-              {/* ── 每日日记：选择记录区 ── */}
-              {activeTab === 'daily' && (
-                <View style={{ gap: 12 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Calendar size={16} color={BLUE} />
-                    <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E293B' }}>选择学习日期</Text>
-                    <Text style={{ fontSize: 12, color: '#94A3B8' }}>最近 7 个有记录的日期</Text>
-                  </View>
-
-                  {recordDays.length > 0 && (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 6 }}>
-                      {recordDays.map(day => {
-                        const active = day.date === selectedStudyDate;
-                        const date = parseDate(day.date);
-                        return (
-                          <Pressable key={day.date} onPress={() => { setSelectedStudyDate(day.date); setSelectedIds(new Set()); setError(''); }} className="active:opacity-80" accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={`${formatDate(day.date)}，${day.records.length}条学习记录`}
-                            style={{ minWidth: 76, backgroundColor: active ? BLUE : WHITE, borderRadius: 14, paddingVertical: 9, paddingHorizontal: 12, borderWidth: 1, borderColor: active ? BLUE : '#E1EAF5', alignItems: 'center' }}>
-                            <Text style={{ color: active ? WHITE : '#64748B', fontSize: 10, fontWeight: '700' }}>{date.toLocaleDateString('zh-CN', { weekday: 'short' })}</Text>
-                            <Text style={{ color: active ? WHITE : '#1E293B', fontSize: 13, fontWeight: '800', marginTop: 2 }}>{date.getMonth() + 1}月{date.getDate()}日</Text>
-                            <Text style={{ color: active ? 'rgba(255,255,255,0.76)' : '#94A3B8', fontSize: 9, marginTop: 2 }}>{day.records.length} 条记录</Text>
-                          </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-                  )}
-
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#334155' }}>{formatDate(selectedStudyDate)} · 学习记录</Text>
-                    {dailyRecs.length > 0 && <Text style={{ fontSize: 11, color: BLUE, fontWeight: '700' }}>{existingDaily ? '已有日记 · 可重新生成' : `已选 ${selectedIds.size}/${dailyRecs.length}`}</Text>}
-                  </View>
-
-                  {dailyRecs.length === 0 ? (
-                    <View style={{ backgroundColor: WHITE, borderRadius: 18, padding: 24, alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#E7EEF8' }}>
-                      <Text style={{ fontSize: 36 }}>📭</Text>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#1E293B' }}>还没有可写入日记的学习记录</Text>
-                      <Text style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center', lineHeight: 18 }}>完成一次场景学习后，这里会自动出现可选择的真实记录。</Text>
-                      <Pressable onPress={() => router.replace('/home')} className="active:opacity-80" accessibilityRole="button"
-                        style={{ marginTop: 4, backgroundColor: BLUE_LIGHT, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 9 }}>
-                        <Text style={{ color: BLUE_DARK, fontSize: 12, fontWeight: '800' }}>去学习场景</Text>
-                      </Pressable>
-                    </View>
-                  ) : (
-                    <View style={{ gap: 8 }}>
-                      {/* 全选 */}
-                      <Pressable onPress={() => setSelectedIds(prev => prev.size === dailyRecs.length ? new Set() : new Set(dailyRecs.map(r => r.id)))} accessibilityRole="checkbox" accessibilityState={{ checked: selectedIds.size === dailyRecs.length }}
-                        className="active:opacity-70"
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <View style={{ width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: selectedIds.size === dailyRecs.length ? BLUE : '#CBD5E1', backgroundColor: selectedIds.size === dailyRecs.length ? BLUE : WHITE, alignItems: 'center', justifyContent: 'center' }}>
-                          {selectedIds.size === dailyRecs.length && <Check size={11} color={WHITE} />}
-                        </View>
-                        <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '600' }}>全选 ({dailyRecs.length}条)</Text>
-                      </Pressable>
-
-                      {dailyRecs.map(r => {
-                        const sel = selectedIds.has(r.id);
-                        return (
-                          <Pressable key={r.id} onPress={() => toggleSelect(r.id)} className="active:opacity-85" accessibilityRole="checkbox" accessibilityState={{ checked: sel }} accessibilityLabel={`${r.scene_name}学习记录`}
-                            style={{ backgroundColor: sel ? '#F7FBFF' : WHITE, borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderColor: sel ? BLUE : '#E8EDF2', shadowColor: '#6CA8D7', shadowOffset: { width: 0, height: 4 }, shadowOpacity: sel ? 0.12 : 0.05, shadowRadius: 10 }}>
-                            <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: sel ? BLUE + '18' : '#F0F4F8', alignItems: 'center', justifyContent: 'center' }}>
-                              <Text style={{ fontSize: 20 }}>{sceneEmoji(r.scene_name)}</Text>
-                            </View>
-                            <View style={{ flex: 1, gap: 2 }}>
-                              <Text style={{ fontSize: 14, fontWeight: '700', color: '#1E293B' }}>{r.scene_name}</Text>
-                              {r.i_see && <Text style={{ fontSize: 11, color: '#94A3B8' }} numberOfLines={1}>{r.i_see}</Text>}
-                            </View>
-                            <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: sel ? BLUE : '#CBD5E1', backgroundColor: sel ? BLUE : WHITE, alignItems: 'center', justifyContent: 'center' }}>
-                              {sel && <Check size={12} color={WHITE} />}
-                            </View>
-                          </Pressable>
-                        );
-                      })}
-
-                      {/* 生成按钮 */}
-                      <Pressable onPress={handleGenerateDaily} disabled={generating || selectedIds.size === 0} accessibilityRole="button" accessibilityLabel={existingDaily ? '重新生成这天的英语日记' : '生成这天的英语日记'}
-                        className="active:opacity-85"
-                        style={{ backgroundColor: selectedIds.size > 0 ? BLUE : '#CBD5E1', borderRadius: 18, paddingVertical: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 4 }}>
-                        {generating
-                          ? <><ActivityIndicator color={WHITE} size="small" /><Text style={{ color: WHITE, fontWeight: '800', fontSize: 14 }}>AI 正在创作...</Text></>
-                          : <><Sparkles size={18} color={WHITE} /><Text style={{ color: WHITE, fontWeight: '800', fontSize: 14 }}>{existingDaily ? '重新生成这天的英语日记' : '生成这天的英语日记'}</Text></>
-                        }
-                      </Pressable>
-                    </View>
-                  )}
-                </View>
-              )}
-
-              {/* ── Weekly Story：生成按钮 ── */}
-              {activeTab === 'weekly' && (
-                <View style={{ gap: 12 }}>
-                  <View style={{ backgroundColor: WHITE, borderRadius: 18, padding: 16, gap: 12 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: BLUE + '15', alignItems: 'center', justifyContent: 'center' }}>
-                        <BookOpen size={20} color={BLUE} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 14, fontWeight: '800', color: '#1E293B' }}>本周学习概览</Text>
-                        <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 1 }}>本周一至今天 · {weekRecs.length} 条场景记录</Text>
-                      </View>
-                    </View>
-                    {/* 场景标签展示 */}
-                    {weekRecs.length > 0 && (
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                        {Array.from(new Set(weekRecs.map(r => r.scene_name))).slice(0, 6).map(name => (
-                          <View key={name} style={{ backgroundColor: BLUE + '12', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                            <Text style={{ fontSize: 12 }}>{sceneEmoji(name)}</Text>
-                            <Text style={{ fontSize: 11, color: BLUE, fontWeight: '600' }}>{name}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-
-                  <Pressable onPress={handleGenerateWeekly} disabled={generating || weekRecs.length === 0} accessibilityRole="button" accessibilityLabel="生成本周 Story"
-                    className="active:opacity-85"
-                    style={{ backgroundColor: weekRecs.length > 0 ? BLUE_DARK : '#CBD5E1', borderRadius: 18, paddingVertical: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
-                    {generating
-                      ? <><ActivityIndicator color={WHITE} size="small" /><Text style={{ color: WHITE, fontWeight: '800', fontSize: 14 }}>AI 正在创作...</Text></>
-                      : <><RefreshCw size={18} color={weekRecs.length > 0 ? YELLOW : WHITE} /><Text style={{ color: WHITE, fontWeight: '800', fontSize: 14 }}>生成本周 Story</Text></>
-                    }
-                  </Pressable>
-                </View>
-              )}
-
-              {/* ── 日记列表 ── */}
-              {filteredDiaries.length > 0 && (
-                <View style={{ gap: 14 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E293B' }}>
-                      {activeTab === 'daily' ? '往期日记' : '往期 Story'}
-                    </Text>
-                    <Text style={{ fontSize: 12, color: '#94A3B8' }}>{filteredDiaries.length} 篇</Text>
-                  </View>
-
-                  {filteredDiaries.map((d, idx) => (
-                    <DiaryCard key={d.id} diary={d} index={idx} onDelete={setPendingDelete} onSpeak={handleSpeak} deletingId={deletingId} speakingId={speakingId} speechLoadingId={speechLoadingId} />
-                  ))}
-                </View>
-              )}
-
-              {/* 空状态 */}
-              {filteredDiaries.length === 0 && !generating && (
-                <View style={{ backgroundColor: WHITE, borderRadius: 20, padding: 32, alignItems: 'center', gap: 10 }}>
-                  <Text style={{ fontSize: 44 }}>{activeTab === 'daily' ? '✏️' : '📚'}</Text>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#1E293B' }}>
-                    {activeTab === 'daily' ? '还没有日记' : '还没有 Weekly Story'}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center', lineHeight: 18 }}>
-                    {activeTab === 'daily' ? '选择上方任意一天的学习记录，让 AI 为你生成专属日记' : '每周学习结束后，生成你的英语成长故事'}
-                  </Text>
-                </View>
-              )}
-
-            </>
-          )}
-        </View>
-      </ScrollView>
-
-      <Modal visible={pendingDelete !== null} transparent animationType="fade" onRequestClose={() => setPendingDelete(null)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.36)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <View style={{ width: '100%', maxWidth: 340, backgroundColor: WHITE, borderRadius: 22, padding: 22, gap: 14 }}>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: '#1E293B' }}>删除这篇日记？</Text>
-            <Text style={{ fontSize: 13, lineHeight: 20, color: '#64748B' }}>删除后无法恢复。你的学习记录不会受到影响。</Text>
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-              <Pressable onPress={() => setPendingDelete(null)} disabled={deletingId !== null} className="active:opacity-70"
-                style={{ flex: 1, borderRadius: 14, paddingVertical: 12, backgroundColor: '#F1F5F9', alignItems: 'center' }}>
-                <Text style={{ color: '#475569', fontWeight: '700' }}>取消</Text>
-              </Pressable>
-              <Pressable onPress={() => void handleConfirmDelete()} disabled={deletingId !== null} className="active:opacity-70"
-                style={{ flex: 1, borderRadius: 14, paddingVertical: 12, backgroundColor: '#EF4444', alignItems: 'center' }}>
-                {deletingId ? <ActivityIndicator size="small" color={WHITE} /> : <Text style={{ color: WHITE, fontWeight: '800' }}>确认删除</Text>}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </View>
-  );
+  const params = useLocalSearchParams<{ date?: string; type?: string }>();
+  const initialDate = typeof params.date === 'string' && validDate(params.date) && params.date <= dateKey() ? params.date : dateKey();
+  const router = useRouter(); const { session } = useSession(); const owner = session?.user.id || '';
+  const player = useAudioPlayer(); const [date, setDate] = useState(initialDate); const [type, setType] = useState<'daily' | 'weekly'>(params.type === 'weekly' ? 'weekly' : 'daily');
+  const editor = useDiaryEditor(owner, date, type); const [calendar, setCalendar] = useState(false); const [history, setHistory] = useState(false); const [recordsOpen, setRecordsOpen] = useState(false); const [showChinese, setShowChinese] = useState(false); const [editing, setEditing] = useState(false); const [speaking, setSpeaking] = useState(''); const [deleting, setDeleting] = useState(false);
+  const identity = `${owner}:${type}:${date}`; const candidate = editor.draft.candidates[editor.draft.mode]; const visibleDraft = editor.ready;
+  const editable = editing || !editor.existing || !editor.saved;
+  useEffect(() => { setEditing(false); setShowChinese(false); setRecordsOpen(false); stopLocalSpeech(); setSpeaking(''); }, [identity]);
+  useFocusEffect(useCallback(() => () => stopLocalSpeech(), []));
+  const speak = (text: string, key: string) => { stopLocalSpeech(); if (speaking === key) { setSpeaking(''); return; } setSpeaking(key); void speakWithTTS(text, player, invokeEdgeFunction, () => setSpeaking('')); };
+  const selectedRecords = editor.records.filter(item => recordDate(item.created_at) === date);
+  const weeklyDiaries = editor.entries.filter(item => item.diary_type === 'daily' && inWeek(item.study_date || '', weekStart(date)));
+  const weeklyRecords = editor.records.filter(item => inWeek(recordDate(item.created_at), weekStart(date)));
+  const historyEntries = editor.entries.filter(item => item.diary_type === type).slice().sort((a, b) => String(b.study_date || b.week_start || b.created_at).localeCompare(String(a.study_date || a.week_start || a.created_at)));
+  const locked = editor.saving;
+  return <View style={s.page}>
+    <View style={s.header}><View style={s.headerInner}><View style={s.row}><MotionPressable accessibilityRole="button" accessibilityLabel="返回我的页面" onPress={() => router.canGoBack() ? router.back() : router.replace('/(app)/(tabs)/profile' as any)} style={s.iconButton}><ChevronLeft size={21} color="#3478BE" /></MotionPressable><View style={{ flex: 1, gap: 4 }}><Text style={s.title}>英语日记</Text><Text style={s.subtitle}>写下自己的生活，用英语说出你的故事</Text></View><MotionPressable accessibilityRole="button" accessibilityLabel="刷新日记数据" disabled={locked || editor.generating} onPress={() => void editor.load()} style={s.iconButton}><RefreshCw size={18} color="#6095C9" /></MotionPressable></View><View style={s.tabs}>{(['daily', 'weekly'] as const).map(tab => <MotionPressable key={tab} accessibilityRole="tab" accessibilityLabel={tab === 'daily' ? '每日日记' : '每周回顾'} accessibilityState={{ selected: type === tab }} disabled={locked} onPress={() => setType(tab)} style={[s.tab, type === tab && s.tabSelected]}><Text style={[s.tabText, type === tab && { color: '#2F72BC' }]}>{tab === 'daily' ? '每日日记' : '每周回顾'}</Text></MotionPressable>)}</View></View></View>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
+      <View style={[s.row, { flexWrap: 'wrap', gap: 9 }]}><MotionPressable accessibilityRole="button" accessibilityLabel="打开日记日历" disabled={locked} onPress={() => setCalendar(true)} style={s.date}><Calendar size={17} color="#377CC3" /><Text style={s.dateText}>{type === 'daily' ? labelDate(date) : `${weekStart(date)} 起的一周`}</Text><ChevronDown size={15} color="#7F9CB8" /></MotionPressable><MotionPressable accessibilityRole="button" accessibilityState={{ expanded: history }} accessibilityLabel="查看往期日记" onPress={() => setHistory(value => !value)} style={s.historyButton}><History size={17} color="#8498AF" /><Text style={s.subtitle}>往期</Text></MotionPressable></View>
+      {history ? <View style={s.card}><Text style={s.sectionTitle}>{type === 'daily' ? '我的日记' : '每周回顾'}</Text>{historyEntries.length ? historyEntries.map(item => <MotionPressable key={item.id} accessibilityRole="button" accessibilityLabel={`打开${item.study_date || item.week_start || item.created_at.slice(0, 10)}的日记`} disabled={locked} onPress={() => { setDate((item.study_date || item.week_start || item.created_at).slice(0, 10)); setHistory(false); }} style={s.historyRow}><View style={{ flex: 1, gap: 5 }}><Text style={s.dateText}>{item.study_date || item.week_start || item.created_at.slice(0, 10)}</Text><Text numberOfLines={1} style={s.subtitle}>{item.content}</Text></View><ChevronRight size={17} color="#94A9BF" /></MotionPressable>) : <Text style={s.subtitle}>还没有保存的日记，先写几句话就好。</Text>}</View> : null}
+      {editor.loadError ? <View style={s.warning}><Text accessibilityRole="alert" style={s.warningText}>{editor.loadError}</Text><Action label="重试读取日记" onPress={() => void editor.load()} /></View> : null}
+      {editor.loading || !visibleDraft ? <View style={s.loading}><ActivityIndicator color="#4A90E2" /><Text style={s.subtitle}>{editor.loadError ? '已保留本机草稿，请先恢复日记连接。' : '正在打开这一天的日记…'}</Text></View> : <>
+        {type === 'weekly' ? <View style={s.weekly}><Text style={s.sectionTitle}>把这一周，连成一个故事</Text><Text style={s.paragraph}>{weeklyDiaries.length ? `优先汇总这一周已保存的 ${weeklyDiaries.length} 篇日记，不添加没有发生过的事。` : `这一周暂无日记，可根据 ${weeklyRecords.length} 条真实学习记录生成学习回顾。`}</Text><Action label={editor.generating ? '正在整理本周回顾…' : candidate ? '重新汇总本周内容为预览' : '生成本周回顾预览'} disabled={locked || editor.generating || (!weeklyDiaries.length && !weeklyRecords.length)} onPress={() => void editor.generate(true)} /></View> : null}
+        {editable ? <View style={s.card}><View style={s.row}><View style={[s.row, { gap: 9, flex: 1 }]}><Feather size={20} color="#4E90D3" /><Text style={s.sectionTitle}>{type === 'daily' ? '今天，想记下什么？' : '中文回顾'}</Text></View><Text style={s.small}>{editor.draft.source.length}/4000</Text></View><TextInput accessibilityLabel="日记中文原文" placeholder="今天发生了什么？有什么感受？用中文写几句话就好。" placeholderTextColor="#A1B2C5" multiline maxLength={4000} editable={!locked} value={editor.draft.source} onChangeText={source => { stopLocalSpeech(); setSpeaking(''); editor.change(value => ({ ...value, source })); }} style={s.sourceInput} />
+          {type === 'daily' ? <><MotionPressable accessibilityRole="button" accessibilityLabel="带入当天学习内容" accessibilityState={{ expanded: recordsOpen }} onPress={() => setRecordsOpen(value => !value)} style={s.recordToggle}><Text style={s.link}>带入当天学习内容</Text><Text style={s.small}>{selectedRecords.length} 条可选</Text></MotionPressable>{recordsOpen ? <View style={{ gap: 9 }}>{selectedRecords.length ? selectedRecords.map(record => <Action key={record.id} label={`带入：${record.scene_name}`} disabled={locked} onPress={() => { const addition = `今天练习了「${record.scene_name}」场景。${record.i_say ? `练习的表达是：${record.i_say}` : ''}`; editor.change(value => ({ ...value, source: `${value.source}${value.source ? '\n\n' : ''}${addition}`.slice(0, 4000), sourceKind: 'written' })); setRecordsOpen(false); }} />) : <Text style={s.subtitle}>这一天没有学习记录，也可以直接写自己的生活。</Text>}</View> : null}</> : null}
+          <View style={s.modes}>{(Object.entries(MODE_LABELS) as [DiaryMode, string][]).map(([mode, label]) => <MotionPressable key={mode} accessibilityRole="button" accessibilityLabel={`选择${label}`} accessibilityState={{ selected: mode === editor.draft.mode }} disabled={locked} onPress={() => { stopLocalSpeech(); setSpeaking(''); editor.change(value => ({ ...value, mode })); }} style={[s.mode, mode === editor.draft.mode && s.modeSelected]}><Text style={[s.modeText, mode === editor.draft.mode && { color: '#287CCE' }]}>{label}</Text></MotionPressable>)}</View><Text style={s.small}>{editor.draft.mode === 'polished' ? '改善措辞和衔接，保留原有事实与情绪，不扩编经历。' : editor.draft.mode === 'simple' ? '用常见词和短句表达，不省略重要信息。' : '自然日常的英语，忠实表达你写下的内容。'}</Text><Action label={editor.generating ? '正在生成英语…' : candidate ? `重新生成${MODE_LABELS[editor.draft.mode]}` : `生成${MODE_LABELS[editor.draft.mode]}`} primary disabled={locked || editor.generating || !editor.draft.source.trim()} onPress={() => void editor.generate()} />
+        </View> : null}
+        {candidate ? <View style={s.card}><View style={s.row}><View style={[s.row, { gap: 9, flex: 1 }]}><Languages size={20} color="#4E90D3" /><Text style={s.sectionTitle}>{editor.saved ? '我的英语日记' : '英语预览'}</Text></View><Text style={[s.status, { color: editor.saved ? '#329976' : '#7A92AE' }]}>{editor.saved ? '已保存' : '未保存'}</Text></View>
+          {!editor.current ? <Text accessibilityRole="alert" style={s.warningText}>原文已修改，需要重新翻译。旧英文暂时保留，不能保存为当前原文的译文。</Text> : null}
+          {editable ? <TextInput accessibilityLabel="日记英语预览" multiline editable={!locked && editor.current} value={candidate.content} onChangeText={content => { stopLocalSpeech(); setSpeaking(''); editor.change(value => ({ ...value, candidates: { ...value.candidates, [value.mode]: { ...value.candidates[value.mode]!, content, expressions: [] } } })); }} style={[s.englishInput, !editor.current && { opacity: 0.5 }]} /> : <Text selectable style={s.english}>{candidate.content}</Text>}
+          <View style={[s.row, { flexWrap: 'wrap', gap: 10 }]}><Action label={speaking === 'diary' ? '停止日记朗读' : '朗读英语日记'} disabled={!editor.current} onPress={() => speak(candidate.content, 'diary')} /><Action label={showChinese ? '收起中文对照' : '显示中文对照'} onPress={() => setShowChinese(value => !value)} />{!editable ? <Action label="继续编辑这篇日记" onPress={() => setEditing(true)} /> : null}{editor.existing ? <Action label="删除这篇日记" disabled={locked} onPress={() => setDeleting(true)} /> : null}</View>
+          {showChinese ? <View style={s.chinese}><Text style={s.small}>中文原文</Text><Text selectable style={s.paragraph}>{editor.draft.source || '这是一篇旧日记，未保存中文原文。可以继续编辑补充，不会自动伪造原文。'}</Text></View> : null}
+          {editable ? <><Text style={s.small}>{editor.existing ? '确认保存后将更新这一天的日记；重新生成预览不会直接替换已保存正文。' : '确认后再收录，中文原文会和英语一起保存。'}</Text><Action label={editor.saving ? '正在保存日记…' : editor.saved ? '日记已保存' : editor.existing ? '确认更新日记' : '保存这篇日记'} primary disabled={locked || editor.generating || !editor.current || editor.saved} onPress={() => void editor.save()} /></> : null}
+          {editor.current ? <DiaryExpressions key={`${identity}:${candidate.content}`} items={candidate.expressions} onSpeak={speak} /> : null}
+          <Text style={s.small}>AI 辅助翻译，请核对人名、时间和事实；不代表专业写作评定。</Text>
+        </View> : <View style={s.empty}><Volume2 size={21} color="#AAC2DC" /><Text style={s.subtitle}>英语预览会出现在这里，确认后才会保存。</Text></View>}
+        {editor.notice ? <Text accessibilityLiveRegion="polite" style={s.success}>{editor.notice}</Text> : null}
+        {editor.error ? <View style={s.warning}><Text accessibilityRole="alert" style={s.warningText}>{editor.error}</Text><Text style={s.small}>可以使用上方生成或保存按钮重新尝试，原文不会清空。</Text></View> : null}
+        {editor.storageError ? <View style={s.warning}><Text accessibilityRole="alert" style={s.warningText}>{editor.storageError}</Text><Action label="重试保留本机草稿" onPress={editor.retryDraft} /></View> : null}
+        <Text accessibilityLiveRegion="polite" style={s.draftNote}>{editor.draftStatus} · 草稿按账号与日期保留在当前设备</Text>
+      </>}
+    </ScrollView>
+    {deleting ? <Modal visible transparent animationType="fade" onRequestClose={() => !locked && setDeleting(false)}><View style={{ flex: 1, backgroundColor: 'rgba(25,49,78,0.3)', alignItems: 'center', justifyContent: 'center', padding: 24 }}><View style={[s.card, { width: '100%', maxWidth: 360 }]}><Text style={s.sectionTitle}>删除这篇日记？</Text><Text style={s.paragraph}>删除后无法恢复，这一天的本机草稿也会清理。其他日期的日记和学习记录不受影响。</Text><Action label="取消删除日记" disabled={locked} onPress={() => setDeleting(false)} /><Action label={locked ? '正在删除…' : '确认删除日记'} disabled={locked} onPress={() => { stopLocalSpeech(); setSpeaking(''); void editor.remove().then(() => setDeleting(false)); }} /></View></View></Modal> : null}
+    {calendar ? <DiaryCalendar value={date} dates={editor.entries.filter(item => item.diary_type === 'daily').map(item => item.study_date || '').filter(Boolean)} onSelect={setDate} onClose={() => setCalendar(false)} /> : null}
+  </View>;
 }
-
-// ── 日记卡片组件 ─────────────────────────────────────────
-const CARD_ACCENTS = [BLUE, BLUE_DARK, '#6366F1', '#0891B2', '#059669'];
-
-function DiaryCard({ diary, index, onDelete, onSpeak, deletingId, speakingId, speechLoadingId }: {
-  diary: DiaryEntry;
-  index: number;
-  onDelete: (diary: DiaryEntry) => void;
-  onSpeak: (diary: DiaryEntry) => void;
-  deletingId: string | null;
-  speakingId: string | null;
-  speechLoadingId: string | null;
-}) {
-  const [expanded, setExpanded] = useState(index === 0);
-  const accent   = CARD_ACCENTS[index % CARD_ACCENTS.length];
-  const dateLabel = diary.diary_type === 'daily'
-    ? (diary.study_date ? formatDate(diary.study_date) : formatDate(diary.created_at))
-    : (diary.week_start ? weekRange(diary.week_start) : formatDate(diary.created_at));
-
-  // 截取预览文字（首2句）
-  const sentences  = diary.content.split(/(?<=[.!?])\s+/);
-  const preview    = sentences.slice(0, 2).join(' ');
-  const hasMore    = sentences.length > 2;
-
-  return (
-    <View style={{ backgroundColor: WHITE, borderRadius: 20, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 12 }}>
-      {/* 彩色顶部条 */}
-      <View style={{ height: 4, backgroundColor: accent }} />
-
-      <View style={{ padding: 18, gap: 12 }}>
-        {/* 头部：日期 + 类型标签 + 删除 */}
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{ flex: 1, gap: 3 }}>
-            <Text style={{ fontSize: 12, color: '#94A3B8', fontWeight: '600' }}>{dateLabel}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ backgroundColor: accent + '18', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 }}>
-                <Text style={{ fontSize: 10, fontWeight: '800', color: accent }}>
-                  {diary.diary_type === 'daily' ? '📅 每日日记' : '🌟 Weekly Story'}
-                </Text>
-              </View>
-              <View style={{ backgroundColor: '#F0FDF4', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                <Sparkles size={9} color={GREEN} />
-                <Text style={{ fontSize: 10, fontWeight: '700', color: GREEN }}>AI 生成</Text>
-              </View>
-            </View>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 7 }}>
-            <Pressable onPress={() => onSpeak(diary)} className="active:opacity-70" accessibilityRole="button" accessibilityLabel={speechLoadingId === diary.id ? '正在准备朗读' : speakingId === diary.id ? '停止朗读' : '朗读日记'}
-              style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: speakingId === diary.id ? BLUE : BLUE_LIGHT, alignItems: 'center', justifyContent: 'center' }}>
-              {speechLoadingId === diary.id
-                ? <ActivityIndicator size="small" color={WHITE} />
-                : <Volume2 size={15} color={speakingId === diary.id ? WHITE : BLUE} />}
-            </Pressable>
-            <Pressable onPress={() => onDelete(diary)} className="active:opacity-70" disabled={deletingId === diary.id}
-              accessibilityRole="button" accessibilityLabel={`删除${dateLabel}的日记`}
-              style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center' }}>
-              {deletingId === diary.id
-                ? <ActivityIndicator size="small" color="#EF4444" />
-                : <Trash2 size={15} color="#EF4444" />}
-            </Pressable>
-          </View>
-        </View>
-
-        {/* 正文内容 */}
-        <View style={{ backgroundColor: '#F8FAFF', borderRadius: 14, padding: 14, borderLeftWidth: 3, borderLeftColor: accent }}>
-          <Text style={{ fontSize: 14, color: '#1E293B', lineHeight: 24, letterSpacing: 0.2 }}>
-            {expanded ? diary.content : preview}
-          </Text>
-          {hasMore && !expanded && (
-            <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 4 }}>...</Text>
-          )}
-        </View>
-
-        {/* 展开/收起 */}
-        {hasMore && (
-          <Pressable onPress={() => setExpanded(!expanded)} className="active:opacity-70"
-            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 4 }}>
-            <Text style={{ fontSize: 12, color: BLUE, fontWeight: '700' }}>{expanded ? '收起' : '阅读全文'}</Text>
-            <Text style={{ fontSize: 12, color: BLUE }}>{expanded ? '↑' : '↓'}</Text>
-          </Pressable>
-        )}
-      </View>
-    </View>
-  );
-}
+const s = StyleSheet.create({
+  page: { flex: 1, backgroundColor: '#F5F8FF' }, header: { paddingTop: 52, backgroundColor: '#EDF5FF', borderBottomWidth: 1, borderColor: '#DCEAF9' }, headerInner: { width: '100%', maxWidth: 800, alignSelf: 'center', paddingHorizontal: 20, paddingBottom: 20, gap: 20 }, row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, iconButton: { width: 38, height: 40, alignItems: 'center', justifyContent: 'center' }, title: { color: '#203F65', fontSize: 24, fontWeight: '800' }, subtitle: { fontSize: 12, lineHeight: 20, color: '#8396AE' }, tabs: { flexDirection: 'row', padding: 4, backgroundColor: '#DFEAF8', borderRadius: 15, gap: 4 }, tab: { flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 12 }, tabSelected: { backgroundColor: '#FFF', shadowColor: '#6C9CCC', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, tabText: { fontSize: 14, fontWeight: '700', color: '#8B9DB2' }, body: { width: '100%', maxWidth: 800, alignSelf: 'center', padding: 18, gap: 17, paddingBottom: 50 }, date: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingVertical: 12 }, dateText: { color: '#46688D', fontSize: 13, fontWeight: '700' }, historyButton: { flexDirection: 'row', gap: 6, alignItems: 'center', minHeight: 42 }, card: { backgroundColor: '#FFF', padding: 21, borderRadius: 23, borderWidth: 1, borderColor: '#E5EDF9', gap: 15, shadowColor: '#729BC6', shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: 6 } }, sectionTitle: { fontSize: 17, fontWeight: '800', color: '#315577' }, sourceInput: { minHeight: 170, fontSize: 16, lineHeight: 28, color: '#385774', textAlignVertical: 'top', paddingTop: 6 }, small: { color: '#91A1B6', fontSize: 11, lineHeight: 19 }, recordToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderTopWidth: 1, borderColor: '#EFF4FB' }, link: { fontSize: 12, fontWeight: '700', color: '#6B96C1' }, modes: { flexDirection: 'row', gap: 5, backgroundColor: '#F2F6FC', padding: 4, borderRadius: 13 }, mode: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 10 }, modeSelected: { backgroundColor: '#FFF' }, modeText: { color: '#8B9EB4', fontSize: 12, fontWeight: '700' }, action: { minHeight: 44, paddingVertical: 13, paddingHorizontal: 15, backgroundColor: '#F0F6FF', borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, primary: { backgroundColor: '#448FDF' }, actionText: { color: '#4786C6', fontSize: 13, fontWeight: '700' }, englishInput: { minHeight: 160, color: '#335579', fontSize: 17, lineHeight: 30, textAlignVertical: 'top', padding: 0 }, english: { color: '#335579', fontSize: 17, lineHeight: 30 }, status: { fontSize: 11, fontWeight: '700' }, chinese: { backgroundColor: '#F5F8FC', borderRadius: 15, padding: 15, gap: 8 }, paragraph: { color: '#70869F', fontSize: 14, lineHeight: 25 }, weekly: { backgroundColor: '#EEF4FF', borderRadius: 20, padding: 20, gap: 12 }, warning: { backgroundColor: '#FFF4E9', borderRadius: 16, padding: 16, gap: 9 }, warningText: { color: '#AF7244', fontSize: 13, lineHeight: 23 }, success: { color: '#389976', fontSize: 13, lineHeight: 23, paddingHorizontal: 5 }, draftNote: { color: '#98A8BA', fontSize: 10, lineHeight: 18, textAlign: 'center' }, empty: { alignItems: 'center', paddingVertical: 22, gap: 10 }, loading: { alignItems: 'center', gap: 12, padding: 30 }, historyRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderBottomWidth: 1, borderColor: '#F0F4FA' },
+});

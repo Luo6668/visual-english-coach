@@ -1,6 +1,7 @@
 import * as Speech from 'expo-speech';
 import { Platform } from 'react-native';
 import { isLocalServiceMode } from '@/lib/serviceConfig';
+import { getDefaultSpeechRate } from '@/lib/profile-preferences';
 
 let webUtterance: SpeechSynthesisUtterance | null = null;
 let webAudio: HTMLAudioElement | null = null;
@@ -28,7 +29,7 @@ type SpeechOptions = {
 };
 
 function normalizeSpeechRate(rate?: number): number {
-  return Math.min(1.25, Math.max(0.7, rate ?? 1));
+  return Math.min(1.25, Math.max(0.7, rate ?? getDefaultSpeechRate()));
 }
 
 function speechLanguage(text: string): string {

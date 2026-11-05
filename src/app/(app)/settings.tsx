@@ -165,9 +165,9 @@ export default function SettingsScreen() {
           <SectionCard title="学习偏好">
             <NavRow
               icon={<Globe size={16} color={BLUE} />}
-              label="目标场景设置"
-              sub="选择你最常用的英语场景"
-              onPress={() => router.push('/(app)/map' as any)}
+              label="语音与学习偏好"
+              sub="设置默认语速、每日目标和常用场景"
+              onPress={() => router.push('/(app)/(tabs)/profile?panel=preferences' as any)}
             />
             <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 4 }} />
             <NavRow

@@ -19,6 +19,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fetchLearningRecords, fetchUserStats, fetchXpData } from '@/lib/api';
+import { useSession } from '@/ctx';
+import { useProfilePreferences } from '@/lib/profile-preferences';
 
 const COLORS = {
   blue: '#1677F2',
@@ -62,6 +64,8 @@ function calcLevel(totalXp: number) {
 
 export default function AchievementsScreen() {
   const router = useRouter();
+  const { session } = useSession();
+  const preferences = useProfilePreferences(session?.user.id);
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ tab?: string }>();
   const [activeTab, setActiveTab] = useState<'achievements' | 'titles'>(params.tab === 'titles' ? 'titles' : 'achievements');
@@ -96,7 +100,7 @@ export default function AchievementsScreen() {
   const totalWords = stats?.total_words ?? 0;
   const streak = stats?.streak_days ?? xpData.stats?.streak_days ?? 0;
   const curLevel = calcLevel(totalXp);
-  const activeTitle = [...TITLES].reverse().find(title => curLevel.level >= title.level);
+  const activeTitle = TITLES.find(title => title.name === preferences.title && curLevel.level >= title.level);
 
   const achievements = [
     { key: 'first-scene', name: '初次启程', description: '完成第一个场景学习', current: totalRecords, target: 1, unit: '个场景', icon: Star, color: COLORS.gold },
@@ -118,7 +122,8 @@ export default function AchievementsScreen() {
             accessibilityRole="button"
             accessibilityLabel="返回我的页面"
             onPress={() => router.back()}
-            style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}
+            className="active:opacity-50"
+            style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
           >
             <ArrowLeft size={23} color={COLORS.text} />
           </Pressable>
@@ -143,7 +148,8 @@ export default function AchievementsScreen() {
                   setActiveTab(tab.key);
                   router.setParams({ tab: tab.key });
                 }}
-                style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'center', borderBottomWidth: selected ? 3 : 1, borderBottomColor: selected ? COLORS.blue : COLORS.line, opacity: pressed ? 0.6 : 1 })}
+                className="active:opacity-60"
+                style={{ flex: 1, alignItems: 'center', justifyContent: 'center', borderBottomWidth: selected ? 3 : 1, borderBottomColor: selected ? COLORS.blue : COLORS.line }}
               >
                 <Text style={{ color: selected ? COLORS.blue : COLORS.muted, fontSize: 13, fontWeight: selected ? '900' : '700' }}>{tab.label}</Text>
               </Pressable>
@@ -207,7 +213,7 @@ export default function AchievementsScreen() {
                   </View>
                   <View style={{ flex: 1, marginLeft: 14 }}>
                     <Text style={{ color: COLORS.muted, fontSize: 11 }}>当前使用称号</Text>
-                    <Text style={{ marginTop: 3, color: COLORS.text, fontSize: 19, fontWeight: '900' }}>{activeTitle?.name ?? '尚未解锁'}</Text>
+                    <Text style={{ marginTop: 3, color: COLORS.text, fontSize: 19, fontWeight: '900' }}>{activeTitle?.name ?? '尚未佩戴'}</Text>
                     <Text style={{ marginTop: 5, color: COLORS.blue, fontSize: 11, fontWeight: '800' }}>LV.{curLevel.level} {curLevel.name} · {totalXp} XP</Text>
                   </View>
                 </View>
@@ -247,7 +253,8 @@ export default function AchievementsScreen() {
             accessibilityRole="button"
             accessibilityLabel="继续学习解锁更多成就"
             onPress={() => router.push('/(app)/(tabs)/learning' as any)}
-            style={({ pressed }) => ({ height: 52, marginTop: 24, borderRadius: 8, backgroundColor: COLORS.blue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.72 : 1 })}
+            className="active:opacity-70"
+            style={{ height: 52, marginTop: 24, borderRadius: 8, backgroundColor: COLORS.blue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
           >
             <Target size={19} color={COLORS.white} />
             <Text style={{ marginLeft: 8, color: COLORS.white, fontSize: 14, fontWeight: '900' }}>继续学习</Text>

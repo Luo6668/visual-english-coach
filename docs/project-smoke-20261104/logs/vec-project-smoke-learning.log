@@ -1,0 +1,8 @@
+$ node scripts/learning-loop-smoke.mjs
+OK M1 greeting does not complete concrete tasks
+OK M1 concrete order produces three source-backed goals
+OK M2 keywords
+OK M2 example
+OK M2 simplify
+OK M3 grammar correction and optional Chinese cue
+OK invalid action rejected

@@ -13,10 +13,22 @@
     "smoke:speech": "node scripts/local-speech-smoke.mjs",
     "mysql:init": "node scripts/mysql-init.mjs",
     "smoke:local": "node scripts/local-smoke.mjs",
+    "smoke:concurrency": "node scripts/local-concurrency-smoke.mjs",
     "lint": "devkit-lint",
     "typecheck": "tsc --noEmit",
     "check:config": "node scripts/check-config.mjs",
-    "verify": "pnpm lint && pnpm typecheck"
+    "verify": "pnpm lint && pnpm typecheck",
+    "test:learning": "node --test scripts/learning-loop.test.mjs",
+    "test:learning:tasks": "node --test --test-name-pattern=M1 scripts/learning-loop.test.mjs",
+    "test:learning:help": "node --test --test-name-pattern=M2 scripts/learning-loop.test.mjs",
+    "test:learning:retry": "node --test --test-name-pattern=M3 scripts/learning-loop.test.mjs",
+    "test:sentences": "node --test scripts/sentence-detail.test.mjs",
+    "test:review": "node --test --test-name-pattern=M4 scripts/learning-loop.test.mjs",
+    "test:learning:review": "node --test --test-name-pattern=M4 scripts/learning-loop.test.mjs",
+    "smoke:learning": "node scripts/learning-loop-smoke.mjs",
+    "test:diary": "node --test scripts/diary-writing.test.mjs",
+    "mysql:migrate:diary": "node scripts/migrate-diary-writing.mjs",
+    "smoke:diary": "node scripts/diary-writing-smoke.mjs"
   },
   "dependencies": {
     "@react-navigation/native": "^7.1.33",

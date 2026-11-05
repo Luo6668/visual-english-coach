@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, CloudOff, LoaderCircle, RotateCcw } from 'lucide-react-native';
+import { AlertCircle, CheckCircle2, CloudOff, LoaderCircle, RotateCcw, X } from 'lucide-react-native';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { MotionPressable } from '@/components/motion-pressable';
@@ -6,11 +6,13 @@ import { APP_COLORS, APP_RADIUS } from '@/lib/design-system';
 
 type Tone = 'loading' | 'error' | 'offline' | 'success';
 
-export function AsyncStatusBanner({ tone, title, message, onRetry, compact = false }: {
+export function AsyncStatusBanner({ tone, title, message, onRetry, retryLabel = '重试', onDismiss, compact = false }: {
   tone: Tone;
   title: string;
   message?: string;
   onRetry?: () => void;
+  retryLabel?: string;
+  onDismiss?: () => void;
   compact?: boolean;
 }) {
   const color = tone === 'error' ? APP_COLORS.danger : tone === 'offline' ? '#6B7280' : tone === 'success' ? APP_COLORS.success : APP_COLORS.blue;
@@ -23,10 +25,11 @@ export function AsyncStatusBanner({ tone, title, message, onRetry, compact = fal
         {message ? <Text style={[styles.message, compact && styles.messageCompact]} numberOfLines={compact ? 2 : undefined}>{message}</Text> : null}
       </View>
       {onRetry ? (
-        <MotionPressable onPress={onRetry} accessibilityRole="button" accessibilityLabel="重试" style={styles.retry} pressedScale={0.92}>
-          <RotateCcw size={15} color={color} /><Text style={[styles.retryText, { color }]}>重试</Text>
+        <MotionPressable onPress={onRetry} accessibilityRole="button" accessibilityLabel={retryLabel} style={styles.retry} pressedScale={0.92}>
+          <RotateCcw size={15} color={color} /><Text style={[styles.retryText, { color }]}>{retryLabel}</Text>
         </MotionPressable>
       ) : null}
+      {onDismiss ? <MotionPressable onPress={onDismiss} accessibilityRole="button" accessibilityLabel="关闭语音提示" style={{ padding: 6 }}><X size={16} color={color} /></MotionPressable> : null}
     </View>
   );
 }

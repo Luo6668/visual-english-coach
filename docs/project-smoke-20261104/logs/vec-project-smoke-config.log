@@ -1,0 +1,11 @@
+$ node scripts/check-config.mjs
+OK  MySQL Host
+OK  MySQL Database
+OK  MySQL User
+OK  MySQL Password
+OK  DeepSeek API Key
+OK  DashScope API Key
+OPTIONAL  Miaoda Integrations Key
+OPTIONAL  Supabase URL (unused locally)
+OK  Local Whisper ASR
+OK  Local Kokoro TTS

@@ -44,7 +44,7 @@ export default function ForgotPassword() {
         <View style={styles.iconShell}>
           {message ? <CheckCircle2 size={32} color="#1478F5" /> : <Mail size={31} color="#1478F5" />}
         </View>
-        <Text style={styles.title}>{message ? '请查看邮箱' : '找回密码'}</Text>
+        <Text style={styles.title}>{message ? (isDemoMode ? '本地演示说明' : '请查看邮箱') : '找回密码'}</Text>
         <Text style={styles.subtitle}>
           {message || (isDemoMode
             ? '本地演示模式不会发送真实邮件，提交后会说明如何继续。'

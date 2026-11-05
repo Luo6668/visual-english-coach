@@ -1,18 +1,20 @@
 import { useAudioPlayer } from 'expo-audio';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import {BookOpen, CheckCircle2, 
-  ChevronLeft, Lock,
+import {BookOpen, CheckCircle2,
+  ChevronLeft,
   MessageSquare, Play, Target, Volume2,
 } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
-import {ActivityIndicator,Pressable, ScrollView, Text, 
-  View, 
+import { useCallback, useRef, useState } from 'react';
+import {ActivityIndicator,Pressable, ScrollView, Text,
+  View,
 } from 'react-native';
 import { fetchSceneMapProgress, invokeEdgeFunction, upsertSceneMapProgress } from '@/lib/api';
+import { SceneTaskBoard } from '@/components/learning-loop/scene-task-board';
+import { getSceneTasks } from '@/lib/learning-loop/tasks';
 import { getSceneById } from '@/lib/sceneMapData';
-import { speakWithTTS } from '@/lib/speech';
+import { speakWithTTS, stopLocalSpeech } from '@/lib/speech';
 
 // ── 颜色 ─────────────────────────────────────────────────
 const BLUE    = '#2563EB';
@@ -25,7 +27,7 @@ type SceneStatus = 'locked' | 'in_progress' | 'completed';
 
 export default function SceneDetailScreen() {
   const router = useRouter();
-  const { sceneId } = useLocalSearchParams<{ sceneId: string }>();
+  const { sceneId, returnTo } = useLocalSearchParams<{ sceneId: string; returnTo?: string }>();
   const scene = getSceneById(sceneId ?? '');
   const player = useAudioPlayer();
 
@@ -33,6 +35,9 @@ export default function SceneDetailScreen() {
   const [rounds, setRounds]       = useState(0);
   const [loading, setLoading]     = useState(true);
   const [starting, setStarting]   = useState(false);
+  const startLock = useRef(false);
+  const progressRequest = useRef(0);
+  const [progressError, setProgressError] = useState('');
   const [speakingWord, setSpeakingWord] = useState<string | null>(null);
 
   const handleSpeak = (word: string) => {
@@ -41,21 +46,23 @@ export default function SceneDetailScreen() {
     speakWithTTS(word, player, invokeEdgeFunction, () => setSpeakingWord(null));
   };
 
-  useEffect(() => {
+  const loadProgress = useCallback(async () => {
     if (!sceneId) return;
-    (async () => {
+    const request = ++progressRequest.current;
+    setLoading(true); setProgressError('');
+    try {
       const data = (await fetchSceneMapProgress(sceneId))[0];
-      if (data) {
-        setStatus(data.status as SceneStatus);
-        setRounds(data.dialogue_rounds ?? 0);
-      }
-      setLoading(false);
-    })();
+      if (request !== progressRequest.current) return;
+      setStatus(data ? data.status as SceneStatus : 'locked'); setRounds(data?.dialogue_rounds ?? 0);
+    } catch { if (request === progressRequest.current) setProgressError('历史进度暂未读取，请重试后再开始，以免覆盖原来的记录。'); }
+    finally { if (request === progressRequest.current) setLoading(false); }
   }, [sceneId]);
+  useFocusEffect(useCallback(() => { setSpeakingWord(null); void loadProgress(); return () => { progressRequest.current++; stopLocalSpeech(); }; }, [loadProgress]));
 
   const handleStart = async () => {
-    if (!scene) return;
-    setStarting(true);
+    if (!scene || startLock.current || loading || progressError) return;
+    const request = progressRequest.current;
+    startLock.current = true; setStarting(true);
     try {
       // 若是 locked → 改为 in_progress
       if (status === 'locked') {
@@ -69,9 +76,9 @@ export default function SceneDetailScreen() {
         });
         setStatus('in_progress');
       }
-      router.push(`/(app)/scene-dialogue?sceneId=${scene.id}` as any);
-    } finally {
-      setStarting(false);
+      if (request === progressRequest.current) router.push(`/(app)/scene-dialogue?sceneId=${scene.id}` as any);
+    } catch { setProgressError('无法开始练习，请检查服务后重试。'); } finally {
+      startLock.current = false; setStarting(false);
     }
   };
 
@@ -86,7 +93,6 @@ export default function SceneDetailScreen() {
   const progressPct = Math.min(100, Math.round((rounds / scene.requiredRounds) * 100));
   const isCompleted = status === 'completed';
 
-  const statusColor = isCompleted ? GREEN : status === 'in_progress' ? BLUE : GRAY;
   const gradColors: [string, string] = scene.category === 'daily'
     ? ['#1E40AF', '#2563EB']
     : ['#EA580C', '#F97316'];
@@ -102,7 +108,7 @@ export default function SceneDetailScreen() {
         style={{ paddingTop: 56, paddingBottom: 32, paddingHorizontal: 20 }}
       >
         {/* 返回按钮 */}
-        <Pressable onPress={() => router.back()} className="active:opacity-70"
+        <Pressable accessibilityRole="button" accessibilityLabel="返回" onPress={() => returnTo === 'profile' ? router.replace('/(app)/(tabs)/profile' as any) : router.back()} className="active:opacity-70"
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
           <ChevronLeft size={20} color={WHITE} />
         </Pressable>
@@ -136,7 +142,7 @@ export default function SceneDetailScreen() {
                 ? <CheckCircle2 size={13} color={WHITE} />
                 : status === 'in_progress'
                   ? <Play size={13} color={WHITE} />
-                  : <Lock size={13} color={WHITE} />
+                  : <Play size={13} color={WHITE} />
               }
               <Text style={{ color: WHITE, fontSize: 12, fontWeight: '700' }}>
                 {isCompleted ? '已完成' : status === 'in_progress' ? '进行中' : '未开始'}
@@ -163,6 +169,8 @@ export default function SceneDetailScreen() {
           contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 120 }}
           contentInsetAdjustmentBehavior="automatic"
         >
+          {progressError ? <View style={{ padding: 15, borderRadius: 16, backgroundColor: '#FFF5E9', gap: 9 }}><Text accessibilityRole="alert" style={{ color: '#A45D26', lineHeight: 21 }}>{progressError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试读取场景进度" onPress={() => void loadProgress()}><Text style={{ color: BLUE, fontWeight: '700', padding: 8 }}>重试读取进度</Text></Pressable></View> : null}
+          <SceneTaskBoard tasks={getSceneTasks(scene)} preparation />
           {/* 场景描述 */}
           <View style={{ backgroundColor: WHITE, borderRadius: 18, padding: 18, gap: 10, borderWidth: 1, borderColor: '#E2E8F0' }}>
             <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E293B' }}>📖 场景介绍</Text>
@@ -207,7 +215,7 @@ export default function SceneDetailScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#DCFCE7', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, alignSelf: 'flex-start' }}>
               <CheckCircle2 size={12} color={GREEN} />
               <Text style={{ fontSize: 11, color: '#166534', fontWeight: '700' }}>
-                完成 {scene.requiredRounds} 轮对话解锁场景
+                本轮练习 {scene.requiredRounds} 次回应 · 场景始终开放
               </Text>
             </View>
           </View>
@@ -257,7 +265,7 @@ export default function SceneDetailScreen() {
         borderTopWidth: 1, borderTopColor: '#F1F5F9',
         shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.06, shadowRadius: 12,
       }}>
-        <Pressable onPress={handleStart} disabled={starting} className="active:opacity-85" style={{ overflow: 'hidden', borderRadius: 18 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`开始${scene.nameZh}对话练习`} onPress={handleStart} disabled={starting || loading || Boolean(progressError)} className="active:opacity-85" style={{ overflow: 'hidden', borderRadius: 18 }}>
           <LinearGradient
             colors={isCompleted ? ['#22C55E', '#16A34A'] : gradColors}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}

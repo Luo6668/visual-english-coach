@@ -1,22 +1,28 @@
 import {requestRecordingPermissionsAsync,
-  setAudioModeAsync, 
+  setAudioModeAsync,
   useAudioPlayer, useAudioRecorder,
 } from 'expo-audio';
 import * as FileSystem from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import {CheckCircle2, 
-  ChevronLeft, Mic, MicOff,RotateCcw, Send, Star, Volume2, Zap, 
+import {CheckCircle2,
+  ChevronLeft, Mic, MicOff,RotateCcw, Send, Star, Volume2, Zap,
 } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import {ActivityIndicator,FlatList,
-  KeyboardAvoidingView, Pressable, Text, TextInput, 
-  View, 
+  KeyboardAvoidingView, Pressable, Text, TextInput,
+  View,
 } from 'react-native';
-import Animated, {useAnimatedStyle, 
+import Animated, {useAnimatedStyle,
   useSharedValue, withRepeat, withSequence, withTiming,
 } from 'react-native-reanimated';
+import { useLearningCompanion, type LearningTurn } from '@/components/learning-loop/learning-companion';
+import { ConversationHelpCard } from '@/components/learning-loop/conversation-help-card';
+import { InlineExpressionFeedback } from '@/components/learning-loop/inline-expression-feedback';
+import { MessageExpressionSave } from '@/components/learning-loop/message-expression-save';
+import { SceneTaskBoard } from '@/components/learning-loop/scene-task-board';
+import { getSceneTasks } from '@/lib/learning-loop/tasks';
 import { supabase } from '@/client/supabase';
 import { addXp, fetchSceneMapProgress, recordActivity, upsertSceneMapProgress } from '@/lib/api';
 import { requestWebMicrophoneStream } from '@/lib/audioCapture';
@@ -85,6 +91,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   streaming?: boolean;
+  method?: 'typed' | 'voice';
 }
 
 type RewardStatus = 'idle' | 'pending' | 'awarded' | 'duplicate' | 'failed';
@@ -116,8 +123,8 @@ function TypingDots() {
 }
 
 // ── 消息气泡 ─────────────────────────────────────────────
-function Bubble({ msg, sceneEmoji, onSpeak, isSpeaking }: {
-  msg: Message; sceneEmoji: string;
+function Bubble({ msg, sceneEmoji, onSpeak, isSpeaking, learningContent, sceneName, onInteract }: {
+  msg: Message; sceneEmoji: string; sceneName: string; learningContent?: ReactNode; onInteract: () => void;
   onSpeak?: () => void; isSpeaking?: boolean;
 }) {
   const isUser = msg.role === 'user';
@@ -163,6 +170,8 @@ function Bubble({ msg, sceneEmoji, onSpeak, isSpeaking }: {
             )}
           </View>
         )}
+        {isUser ? learningContent : null}
+        {!isUser && !msg.streaming && msg.id !== 'opener' ? <MessageExpressionSave text={msg.content} scene={sceneName} onInteract={onInteract} /> : null}
         {/* AI 消息朗读按钮 */}
         {!isUser && !msg.streaming && msg.content !== '' && onSpeak && (
           <Pressable
@@ -284,9 +293,19 @@ export default function SceneDialogueScreen() {
 
   const [messages, setMessages]   = useState<Message[]>([]);
   const [input, setInput]         = useState('');
+  const [practiceBusy, setPracticeBusy] = useState(false);
+  const [practiceOpen, setPracticeOpen] = useState(false);
+  const [expandedFeedbackId, setExpandedFeedbackId] = useState<string | null>(null);
+  const [learningTurn, setLearningTurn] = useState<LearningTurn>();
+  const inputSourceRef = useRef<'typed' | 'voice'>('typed');
+  const aliveRef = useRef(true);
+  useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; abortRef.current?.abort(); if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop(); stopLocalSpeech(); }; }, []);
   const [streaming, setStreaming] = useState(false);
   const [userRounds, setUserRounds] = useState(0);
   const [bestRounds, setBestRounds] = useState(0);
+  const [progressError, setProgressError] = useState('');
+  const [progressLoading, setProgressLoading] = useState(true);
+  const initialization = useRef(0);
   const [hasCompletedScene, setHasCompletedScene] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [rewardStatus, setRewardStatus] = useState<RewardStatus>('idle');
@@ -304,6 +323,7 @@ export default function SceneDialogueScreen() {
     web: { mimeType: 'audio/webm', bitsPerSecond: 64000 },
   });
   const flatListRef = useRef<FlatList>(null);
+  const autoFollow = useRef(true);
   const abortRef    = useRef<AbortController | null>(null);
   const sendLockRef = useRef(false);
   const userRoundsRef = useRef(0);
@@ -311,6 +331,11 @@ export default function SceneDialogueScreen() {
   const practiceSessionRef = useRef(Date.now().toString());
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+
+  const learning = useLearningCompanion({ scene: scene?.nameZh || '场景练习', tasks: scene ? getSceneTasks(scene) : [], draft: input,
+    partner: [...messages].reverse().find(message => message.role === 'assistant' && !message.streaming)?.content || scene?.aiOpener || '',
+    turn: learningTurn, sessionKey: `${scene?.id}-${practiceSessionRef.current}`, submissionKey: [...messages].reverse().find(message => message.role === 'user')?.id,
+    disabled: streaming || recording || recognizing || requestingMic || practiceBusy || progressLoading || Boolean(progressError) });
 
   const handleSpeak = (msg: Message) => {
     if (speakingId === msg.id) {
@@ -344,6 +369,7 @@ export default function SceneDialogueScreen() {
 
   // ── 语音输入：按下开始录音 ──
   const handleMicPress = async () => {
+    if (practiceBusy) return;
     setMicError('');
     if (process.env.EXPO_OS === 'web') {
       if (recording) {
@@ -364,6 +390,7 @@ export default function SceneDialogueScreen() {
         };
         mediaRecorder.onstop = async () => {
           stream.getTracks().forEach((track) => track.stop());
+          if (!aliveRef.current) return;
           setRecording(false);
           const blob = new Blob(audioChunksRef.current, { type: mimeType });
           console.log('[MIC] scene recording stopped, bytes=', blob.size);
@@ -384,6 +411,7 @@ export default function SceneDialogueScreen() {
             });
             const text = String(response?.result?.[0] || '').trim();
             if (text) {
+              inputSourceRef.current = 'voice';
               setInput((previous) => (previous ? `${previous} ${text}` : text));
             } else {
               setMicError('未识别到语音内容，请靠近麦克风后重试。');
@@ -431,6 +459,7 @@ export default function SceneDialogueScreen() {
         console.log('[STT] result:', res);
         const text = String(res?.result?.[0] || '').trim();
         if (text) {
+          inputSourceRef.current = 'voice';
           setInput(prev => prev ? prev + ' ' + text : text);
         } else {
           setMicError('未识别到语音内容，请靠近麦克风后重试。');
@@ -462,35 +491,32 @@ export default function SceneDialogueScreen() {
     }
   };
 
-  // 初始化：加载已有进度，加入 AI 开场白
-  useEffect(() => {
+  // Do not write partial progress until the previous account/scene history is known.
+  const initialize = useCallback(async () => {
     if (!scene) return;
-    (async () => {
-      const data = (await fetchSceneMapProgress(scene.id))[0];
+    const request = ++initialization.current;
+    const sceneAtStart = scene.id;
+    setProgressLoading(true); setProgressError('');
+    try {
+      const data = (await fetchSceneMapProgress(sceneAtStart))[0];
+      if (!aliveRef.current || initialization.current !== request) return;
       const existingRounds = Math.min(Number(data?.dialogue_rounds ?? 0), scene.requiredRounds);
       const sceneIsCompleted = data?.status === 'completed' || existingRounds >= scene.requiredRounds;
-      setUserRounds(existingRounds);
-      userRoundsRef.current = existingRounds;
-      setBestRounds(existingRounds);
-      setHasCompletedScene(sceneIsCompleted);
-      setCompleted(sceneIsCompleted);
-      completedRef.current = sceneIsCompleted;
-      sendLockRef.current = false;
-      setRewardStatus('idle');
-      setRewardAmount(0);
+      setUserRounds(existingRounds); userRoundsRef.current = existingRounds;
+      setBestRounds(existingRounds); setHasCompletedScene(sceneIsCompleted);
+      setCompleted(sceneIsCompleted); completedRef.current = sceneIsCompleted;
+      sendLockRef.current = false; setRewardStatus('idle'); setRewardAmount(0);
       practiceSessionRef.current = Date.now().toString();
-
-      // AI 开场白
-      setMessages([{
-        id: 'opener',
-        role: 'assistant',
-        content: scene.aiOpener,
-      }]);
-    })();
+      setLearningTurn(undefined);
+    setExpandedFeedbackId(null);
+      setMessages([{ id: 'opener', role: 'assistant', content: scene.aiOpener }]);
+    } catch { if (aliveRef.current && initialization.current === request) setProgressError('历史进度没有同步成功，请重试后开始，避免覆盖原记录。'); }
+    finally { if (aliveRef.current && initialization.current === request) setProgressLoading(false); }
   }, [sceneId]);
+  useEffect(() => { void initialize(); return () => { initialization.current++; }; }, [initialize]);
 
   const scrollToBottom = () => {
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
+    if (autoFollow.current) setTimeout(() => { if (autoFollow.current) flatListRef.current?.scrollToEnd({ animated: true }); }, 80);
   };
 
   const awardCompletionXp = async () => {
@@ -550,7 +576,7 @@ export default function SceneDialogueScreen() {
 
   const sendMessage = async (text: string) => {
     const trimmed = text.trim();
-    if (!scene || !trimmed || streaming || sendLockRef.current) return;
+    if (!scene || !trimmed || streaming || sendLockRef.current || practiceBusy || progressLoading || progressError) return;
 
     const currentRounds = Math.min(userRoundsRef.current, scene.requiredRounds);
     if (completedRef.current || currentRounds >= scene.requiredRounds) {
@@ -562,9 +588,13 @@ export default function SceneDialogueScreen() {
     }
 
     sendLockRef.current = true;
+    const inputMethod = inputSourceRef.current;
+    inputSourceRef.current = 'typed';
+    const previousPartner = [...messages].reverse().find(message => message.role === 'assistant' && !message.streaming)?.content || scene.aiOpener;
     setInput('');
 
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: trimmed };
+    autoFollow.current = true; setExpandedFeedbackId(null);
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: trimmed, method: inputMethod };
     const aiId = (Date.now() + 1).toString();
     const aiMsg: Message = { id: aiId, role: 'assistant', content: '', streaming: true };
 
@@ -574,13 +604,14 @@ export default function SceneDialogueScreen() {
 
     const newRounds = Math.min(scene.requiredRounds, currentRounds + 1);
     const isFinalRound = newRounds >= scene.requiredRounds;
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       const history = [...messages.filter(m => m.id !== 'opener'), userMsg].map(m => ({
         role: m.role, content: m.content,
       }));
 
-      abortRef.current = new AbortController();
       let authHeader = `Bearer ${publicServiceKey}`;
       if (!isLocalServiceMode) {
         const { data: { session } } = await supabase.auth.getSession();
@@ -601,12 +632,12 @@ export default function SceneDialogueScreen() {
             sceneId: scene?.id,
             sceneNameZh: scene?.nameZh,
             sceneNameEn: scene?.nameEn,
-            dialogueGoal: scene?.dialogueGoal,
+            dialogueGoal: `${scene.dialogueGoal}。沟通目标：${getSceneTasks(scene).map(task => task.label).join('；')}`,
             currentRound: newRounds,
             requiredRounds: scene?.requiredRounds,
             isFinalRound,
           }),
-          signal: abortRef.current.signal,
+          signal: controller.signal,
         }
       );
 
@@ -621,6 +652,7 @@ export default function SceneDialogueScreen() {
       // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await reader.read();
+        if (!aliveRef.current || abortRef.current !== controller) return;
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -641,8 +673,10 @@ export default function SceneDialogueScreen() {
         }
       }
 
+      if (!aliveRef.current || abortRef.current !== controller) return;
       if (!accumulated.trim()) throw new Error('AI 未返回有效内容');
       setMessages(prev => prev.map(m => m.id === aiId ? { ...m, streaming: false } : m));
+      setLearningTurn({ id: userMsg.id, text: trimmed, partner: previousPartner, method: inputMethod });
       userRoundsRef.current = newRounds;
       setUserRounds(newRounds);
       if (isFinalRound) {
@@ -656,6 +690,7 @@ export default function SceneDialogueScreen() {
         console.warn('[Scene dialogue] progress save failed:', progressError);
       }
     } catch (e: any) {
+      if (!aliveRef.current || abortRef.current !== controller) return;
       if (e?.name === 'AbortError') {
         setMessages(prev => prev.filter(m => m.id !== aiId));
         return;
@@ -665,15 +700,19 @@ export default function SceneDialogueScreen() {
         m.id === aiId ? { ...m, content: '对话连接失败，请重新发送。', streaming: false } : m
       ));
     } finally {
-      abortRef.current = null;
-      sendLockRef.current = false;
-      setStreaming(false);
-      scrollToBottom();
+      if (abortRef.current === controller) {
+        abortRef.current = null; sendLockRef.current = false;
+        if (aliveRef.current) { setStreaming(false); scrollToBottom(); }
+      }
     }
   };
 
   const handleRestart = () => {
+    if (progressLoading || progressError) return;
     abortRef.current?.abort();
+    abortRef.current = null;
+    setLearningTurn(undefined);
+    setExpandedFeedbackId(null);
     stopLocalSpeech();
     setStreaming(false);
     sendLockRef.current = false;
@@ -766,6 +805,7 @@ export default function SceneDialogueScreen() {
         behavior={process.env.EXPO_OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
+        <View style={{ marginHorizontal: 14, marginTop: 8 }}><SceneTaskBoard tasks={getSceneTasks(scene)} evidence={learning.evidence} /></View>
         {/* ── 消息列表 ── */}
         <FlatList
           ref={flatListRef}
@@ -775,6 +815,10 @@ export default function SceneDialogueScreen() {
             <Bubble
               msg={item}
               sceneEmoji={scene.emoji}
+              sceneName={scene.nameZh} onInteract={() => { autoFollow.current = false; }}
+              learningContent={item.role === 'user' ? <InlineExpressionFeedback expanded={expandedFeedbackId === item.id} onToggle={() => setExpandedFeedbackId(value => value === item.id ? null : item.id)} record={learning.feedbackByTurn[item.id]} scene={scene.nameZh} disabled={streaming || learning.busy || practiceBusy}
+                onRequest={() => { const index = messages.findIndex(message => message.id === item.id); learning.requestFeedback({ id: item.id, text: item.content, method: item.method || 'typed', partner: messages.slice(0, index).reverse().find(message => message.role === 'assistant')?.content || scene.aiOpener }); }}
+                onSpeak={text => handleSpeak({ id: 'learning-help', role: 'assistant', content: text })} onPracticeActiveChange={setPracticeOpen} onPracticeBusyChange={setPracticeBusy} onInteract={() => { autoFollow.current = false; }} /> : undefined}
               onSpeak={item.role === 'assistant' ? () => handleSpeak(item) : undefined}
               isSpeaking={speakingId === item.id}
             />
@@ -782,8 +826,12 @@ export default function SceneDialogueScreen() {
           contentContainerStyle={{ paddingTop: 14, paddingBottom: 12 }}
           showsVerticalScrollIndicator={false}
           onContentSizeChange={scrollToBottom}
-          ListFooterComponent={
-            completed ? (
+          scrollEventThrottle={16}
+          onScroll={({ nativeEvent }) => { autoFollow.current = nativeEvent.contentOffset.y + nativeEvent.layoutMeasurement.height >= nativeEvent.contentSize.height - 80; }}
+          ListFooterComponent={<>
+            {progressLoading ? <ActivityIndicator color={BLUE} /> : null}
+            {progressError ? <View style={{ padding: 16, gap: 8 }}><Text accessibilityRole="alert" style={{ color: '#AD5C26' }}>{progressError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重新同步对话进度" onPress={() => void initialize()}><Text style={{ padding: 10, color: BLUE }}>重新同步进度</Text></Pressable></View> : null}
+            {completed ? (
               <CompletionBanner
                 sceneName={scene.nameZh}
                 requiredRounds={scene.requiredRounds}
@@ -793,12 +841,12 @@ export default function SceneDialogueScreen() {
                 onContinue={handleRestart}
                 onBack={handleReturnToMap}
               />
-            ) : null
-          }
+            ) : null}</>}
         />
 
+        <ConversationHelpCard {...learning.helpProps} hidden={practiceOpen || completed || recording || recognizing || requestingMic} onSpeak={text => handleSpeak({ id: 'learning-help', role: 'assistant', content: text })} />
         {/* ── 输入区 ── */}
-        {!completed && (
+        {!completed && !practiceOpen && (
           <View style={{
             backgroundColor: WHITE, paddingHorizontal: 14, paddingVertical: 12,
             borderTopWidth: 1, borderTopColor: '#F1F5F9',
@@ -840,7 +888,7 @@ export default function SceneDialogueScreen() {
                 ) : (
                   <TextInput
                     value={input}
-                    onChangeText={setInput}
+                    onChangeText={text => { inputSourceRef.current = 'typed'; setInput(text); }}
                     placeholder="用英语回复…"
                     placeholderTextColor="#94A3B8"
                     multiline
@@ -854,7 +902,7 @@ export default function SceneDialogueScreen() {
               {!streaming && (
                 <Pressable
                   onPress={handleMicPress}
-                  disabled={requestingMic || recognizing}
+                  disabled={requestingMic || recognizing || practiceBusy}
                   accessibilityRole="button"
                   accessibilityLabel={recording
                     ? '停止录音'

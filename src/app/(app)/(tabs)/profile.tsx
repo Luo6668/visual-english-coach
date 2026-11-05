@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -24,7 +24,7 @@ import {
   Sparkles,
   Target,
 } from 'lucide-react-native';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -44,9 +44,11 @@ import Svg, {
   LinearGradient as SvgLinearGradient,
 } from 'react-native-svg';
 import { MotionPressable } from '@/components/motion-pressable';
+import { ProfileWorkspaceSheet, type ProfileWorkspaceData, type ProfileWorkspaceMode } from '@/components/profile-workspace-sheet';
 import { useSession } from '@/ctx';
-import { fetchLearningRecords, fetchUserStats, fetchXpData } from '@/lib/api';
-import { invalidateQueries, QUERY_KEYS } from '@/lib/query-cache';
+import { fetchDiaries, fetchLearningRecords, fetchProfileActivityLogs, fetchSentences, fetchUserStats, fetchWords, fetchXpData } from '@/lib/api';
+import { useProfilePreferences } from '@/lib/profile-preferences';
+import { invalidateQueries, QUERY_KEYS, subscribeToQueryInvalidation } from '@/lib/query-cache';
 import defaultAvatar from '../../../../assets/coach-avatar.png';
 
 const COLORS = {
@@ -158,8 +160,18 @@ function logDateKey(log: any) {
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ panel?: string }>();
   const insets = useSafeAreaInsets();
   const { session, signOut } = useSession();
+  const preferences = useProfilePreferences(session?.user.id);
+  const [workspaceMode, setWorkspaceMode] = useState<ProfileWorkspaceMode | null>(null);
+  const [workspaceData, setWorkspaceData] = useState<ProfileWorkspaceData>({ records: [], words: [], sentences: [], diaries: [], logs: [] });
+  useEffect(() => {
+    if (params.panel === 'preferences') {
+      setWorkspaceMode('preferences');
+      router.setParams({ panel: undefined });
+    }
+  }, [params.panel, router]);
   const [stats, setStats] = useState<any>(null);
   const [xpData, setXpData] = useState<{ stats: any; logs: any[] }>({ stats: null, logs: [] });
   const [recordCount, setRecordCount] = useState(0);
@@ -171,39 +183,56 @@ export default function ProfileScreen() {
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarNotice, setAvatarNotice] = useState('');
+  const loadGeneration = useRef(0);
 
   const loadProfile = useCallback(async (refresh = false) => {
+    const generation = ++loadGeneration.current;
     if (refresh) {
       setRefreshing(true);
-      invalidateQueries([QUERY_KEYS.userStats, QUERY_KEYS.xpData, QUERY_KEYS.learningRecords]);
+      invalidateQueries([QUERY_KEYS.userStats, QUERY_KEYS.xpData, QUERY_KEYS.learningRecords, QUERY_KEYS.words, QUERY_KEYS.sentences, QUERY_KEYS.diaries]);
     }
     else setLoading(true);
     setLoadError('');
     try {
-      const [userStats, xp, learningRecords] = await Promise.all([
+      const [userStats, xp, learningRecords, words, sentences, diaries, logs] = await Promise.all([
         fetchUserStats(),
         fetchXpData(),
         fetchLearningRecords(),
+        fetchWords(), fetchSentences(), fetchDiaries(), fetchProfileActivityLogs(),
       ]);
+      if (generation !== loadGeneration.current) return;
       setStats(userStats);
-      setXpData(xp);
+      setXpData({ ...xp, logs });
       setRecordCount(learningRecords.length);
+      setWorkspaceData({ records: learningRecords, words, sentences, diaries, logs });
     } catch {
-      setLoadError('成长资料暂时没有同步成功，请稍后重试。');
+      if (generation === loadGeneration.current) setLoadError('个人资料暂时没有同步成功，请稍后重试。');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (generation === loadGeneration.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       void loadProfile(false);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const unsubscribe = subscribeToQueryInvalidation(() => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => void loadProfile(false), 150);
+      });
+      return () => {
+        unsubscribe();
+        if (timer) clearTimeout(timer);
+        loadGeneration.current += 1;
+      };
     }, [loadProfile]),
   );
 
-  const streak = stats?.streak_days ?? xpData.stats?.streak_days ?? 0;
-  const totalWords = stats?.total_words ?? 0;
+  const streak = xpData.stats?.streak_days ?? stats?.streak_days ?? 0;
+  const totalWords = workspaceData.words.length;
   const totalXp = xpData.stats?.total_xp ?? 0;
   const curLevel = calcLevel(totalXp);
   const nextLevel = LEVELS.find((level) => level.level === curLevel.level + 1);
@@ -213,12 +242,13 @@ export default function ProfileScreen() {
   const progressPercent = Math.min(Math.max(progress, 0) * 100, 100);
   const xpToNext = nextLevel ? Math.max(nextLevel.minXp - totalXp, 0) : 0;
   const email = session?.user?.email ?? '用户';
-  const displayName = email.includes('@') ? email.split('@')[0] : email;
+  const accountName = email.includes('@') ? email.split('@')[0] : email;
+  const displayName = preferences.nickname || accountName;
   const avatarOwner = (session?.user?.id === 'local-demo-user' ? email : session?.user?.id ?? email)
     .replace(/[^a-z0-9._-]/gi, '_');
   const avatarStorageKey = `vec.profile.avatar.${avatarOwner}`;
   const unlockedBadges = BADGES.filter((badge) => curLevel.level >= badge.level);
-  const activeBadge = [...unlockedBadges].reverse()[0];
+  const wornBadge = unlockedBadges.find(badge => badge.english === preferences.title);
   const selectedBadge = BADGES[selectedBadgeIndex];
   const selectedUnlocked = curLevel.level >= selectedBadge.level;
   const selectedRequiredXp = LEVELS.find((level) => level.level === selectedBadge.level)?.minXp ?? 0;
@@ -226,14 +256,11 @@ export default function ProfileScreen() {
   const ringRadius = 29;
   const ringCircumference = 2 * Math.PI * ringRadius;
   const abilityMetrics = [
-    { label: '场景', value: recordCount, unit: '次', progress: Math.min(recordCount / 24, 1), color: '#167CF3' },
-    { label: '表达', value: totalWords, unit: '词', progress: Math.min(totalWords / 30, 1), color: '#22B7C7' },
-    { label: '坚持', value: streak, unit: '天', progress: Math.min(streak / 14, 1), color: '#16A873' },
-    { label: '等级', value: curLevel.level, unit: '级', progress: curLevel.level / 10, color: '#F17768' },
+    { label: '场景记录', value: recordCount, unit: '条', mode: 'scenes' as const, color: '#167CF3' },
+    { label: '收藏词汇', value: totalWords, unit: '词', mode: 'expressions' as const, color: '#22B7C7' },
+    { label: '连续学习', value: streak, unit: '天', mode: 'calendar' as const, color: '#16A873' },
+    { label: '当前等级', value: curLevel.level, unit: '级', mode: 'level' as const, color: '#F17768' },
   ];
-  const abilityScore = Math.round(
-    abilityMetrics.reduce((sum, metric) => sum + metric.progress, 0) / abilityMetrics.length * 100,
-  );
 
   useEffect(() => {
     let active = true;
@@ -327,10 +354,11 @@ export default function ProfileScreen() {
         key,
         label: '日一二三四五六'[date.getDay()],
         value,
+        active: value > 0 || workspaceData.records.some(record => toDateKey(new Date(String(record.created_at).replace(' ', 'T'))) === key),
         today: index === 6,
       };
     });
-  }, [xpData.logs]);
+  }, [workspaceData.records, xpData.logs]);
   const selectedDay = weekData.find((day) => day.key === selectedDayKey) ?? weekData[6];
   const weekTotal = weekData.reduce((sum, day) => sum + day.value, 0);
   const weekMax = Math.max(...weekData.map((day) => day.value), 20);
@@ -353,17 +381,17 @@ export default function ProfileScreen() {
         icon: Target,
         value: recordCount,
         unit: '条',
-        label: '真实场景',
+        label: '场景记录',
         color: COLORS.blue,
-        route: '/(app)/(tabs)/learning' as any,
+        mode: 'scenes' as const,
       },
       {
         icon: BookOpen,
         value: totalWords,
         unit: '词',
-        label: '表达积累',
+        label: '收藏词汇',
         color: COLORS.purple,
-        route: '/(app)/(tabs)/learning' as any,
+        mode: 'expressions' as const,
       },
       {
         icon: Flame,
@@ -371,7 +399,7 @@ export default function ProfileScreen() {
         unit: '天',
         label: '连续学习',
         color: COLORS.green,
-        route: '/(app)/(tabs)/growth' as any,
+        mode: 'calendar' as const,
       },
     ],
     [recordCount, streak, totalWords],
@@ -410,9 +438,9 @@ export default function ProfileScreen() {
         <View style={styles.pageContent}>
           <View style={styles.header}>
             <View style={styles.headerCopy}>
-              <Text style={styles.headerEyebrow}>MY GROWTH SPACE</Text>
-              <Text style={styles.pageTitle}>我的成长空间</Text>
-              <Text style={styles.pageSubtitle}>看见每一次开口，如何变成你的能力</Text>
+              <Text style={styles.headerEyebrow}>MY PERSONAL SPACE</Text>
+              <Text style={styles.pageTitle}>我的学习空间</Text>
+              <Text style={styles.pageSubtitle}>管理你的名片、收藏和每一次学习记录</Text>
             </View>
             <MotionPressable
               accessibilityRole="button"
@@ -497,22 +525,22 @@ export default function ProfileScreen() {
                   </View>
                 </MotionPressable>
 
-                <View style={styles.passIdentityCopy}>
+                <MotionPressable accessibilityRole="button" accessibilityLabel="编辑个人名片" onPress={() => setWorkspaceMode('identity')} style={styles.passIdentityCopy}>
                   <Text style={styles.passEyebrow}>成长身份卡 · ACTIVE</Text>
                   <Text numberOfLines={1} style={styles.displayName}>{displayName}</Text>
-                  <Text style={styles.passRole}>{curLevel.name} · LV.{curLevel.level}</Text>
+                  <Text style={styles.passRole}>{wornBadge?.name || curLevel.name} · LV.{curLevel.level}</Text>
                   <View style={styles.onlinePill}>
                     <View style={styles.onlineDot} />
-                    <Text style={styles.onlineText}>在线学习中</Text>
+                    <Text style={styles.onlineText}>编辑昵称与称号</Text>
                     <ChevronRight size={11} color={COLORS.muted} />
                   </View>
                   {avatarNotice ? (
                     <Text numberOfLines={1} style={styles.avatarNotice}>{avatarNotice}</Text>
                   ) : null}
-                </View>
+                </MotionPressable>
 
                 <MotionPressable
-                  onPress={() => router.push('/(app)/(tabs)/growth' as any)}
+                  onPress={() => setWorkspaceMode('level')}
                   accessibilityRole="button"
                   accessibilityLabel={`查看等级 ${curLevel.level} 的成长详情`}
                   pressedScale={0.94}
@@ -558,14 +586,14 @@ export default function ProfileScreen() {
               <View style={styles.abilitySpectrum}>
                 <View style={styles.spectrumHeading}>
                   <View>
-                    <Text style={styles.spectrumEyebrow}>ABILITY SPECTRUM</Text>
-                    <Text style={styles.spectrumTitle}>成长光谱</Text>
-                    <Text style={styles.spectrumSubtitle}>四个维度来自你的真实学习记录</Text>
+                    <Text style={styles.spectrumEyebrow}>LEARNING FOOTPRINT</Text>
+                    <Text style={styles.spectrumTitle}>学习足迹</Text>
+                    <Text style={styles.spectrumSubtitle}>点选指标，展开属于你的真实内容</Text>
                   </View>
                   <MotionPressable
-                    onPress={() => router.push('/(app)/(tabs)/growth' as any)}
+                    onPress={() => setWorkspaceMode('calendar')}
                     accessibilityRole="button"
-                    accessibilityLabel="查看完整成长光谱"
+                    accessibilityLabel="查看学习日历"
                     pressedScale={0.9}
                     style={styles.spectrumMore}
                   >
@@ -574,47 +602,21 @@ export default function ProfileScreen() {
                 </View>
                 <View style={styles.spectrumBody}>
                   <MotionPressable
-                    onPress={() => router.push('/(app)/(tabs)/growth' as any)}
+                    onPress={() => setWorkspaceMode('calendar')}
                     accessibilityRole="button"
-                    accessibilityLabel={`成长综合值 ${abilityScore}`}
+                    accessibilityLabel={`近7天学习 ${weekData.filter(day => day.active).length} 天，查看日历`}
                     pressedScale={0.95}
                     hoverLift={3}
                     hoverTilt={2}
                     style={styles.spectrumDial}
                   >
                     <Svg pointerEvents="none" width="120" height="120" viewBox="0 0 120 120">
-                      {abilityMetrics.map((metric, index) => {
-                        const radius = 49 - index * 9;
-                        const circumference = 2 * Math.PI * radius;
-                        return (
-                          <Fragment key={metric.label}>
-                            <Circle
-                              cx="60"
-                              cy="60"
-                              r={radius}
-                              fill="none"
-                              stroke="rgba(90,113,143,0.1)"
-                              strokeWidth="6"
-                            />
-                            <Circle
-                              cx="60"
-                              cy="60"
-                              r={radius}
-                              fill="none"
-                              stroke={metric.color}
-                              strokeWidth="6"
-                              strokeLinecap="round"
-                              strokeDasharray={`${circumference} ${circumference}`}
-                              strokeDashoffset={circumference * (1 - Math.max(metric.progress, 0.03))}
-                              transform="rotate(-90 60 60)"
-                            />
-                          </Fragment>
-                        );
-                      })}
+                      <Circle cx="60" cy="60" r="48" fill="rgba(243,249,255,0.8)" stroke="#E5EDF8" strokeWidth="11" />
+                      {weekData.map((day, index) => <Circle key={day.key} cx="60" cy="60" r="48" fill="none" stroke={day.active ? ['#13BEEA','#2485F1','#645AE3'][index % 3] : '#DCE6F0'} strokeWidth="10" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 48 / 7 - 10} ${2 * Math.PI * 48}`} transform={`rotate(${-90 + index * 360 / 7} 60 60)`} />)}
                     </Svg>
                     <View style={styles.spectrumDialCore}>
-                      <Text style={styles.spectrumScore}>{abilityScore}</Text>
-                      <Text style={styles.spectrumScoreLabel}>综合值</Text>
+                      <Text style={styles.spectrumScore}>{weekData.filter(day => day.active).length}<Text style={{fontSize:14}}> / 7</Text></Text>
+                      <Text style={styles.spectrumScoreLabel}>近7天学习</Text>
                     </View>
                   </MotionPressable>
 
@@ -622,7 +624,7 @@ export default function ProfileScreen() {
                     {abilityMetrics.map((metric) => (
                       <MotionPressable
                         key={metric.label}
-                        onPress={() => router.push('/(app)/(tabs)/growth' as any)}
+                        onPress={() => setWorkspaceMode(metric.mode)}
                         accessibilityRole="button"
                         accessibilityLabel={`${metric.label} ${metric.value} ${metric.unit}`}
                         pressedScale={0.95}
@@ -665,7 +667,7 @@ export default function ProfileScreen() {
 
               <View style={styles.passActionDock}>
                 <MotionPressable
-                  onPress={() => router.push('/(app)/(tabs)/learning' as any)}
+                  onPress={() => router.push({pathname:'/(app)/scene-detail',params:{sceneId:preferences.preferredScene,returnTo:'profile'}} as any)}
                   accessibilityRole="button"
                   accessibilityLabel="继续今天的学习"
                   pressedScale={0.96}
@@ -693,7 +695,7 @@ export default function ProfileScreen() {
                   <ChevronRight size={17} color="#FFFFFF" />
                 </MotionPressable>
                 <MotionPressable
-                  onPress={() => router.push('/(app)/(tabs)/growth' as any)}
+                  onPress={() => setWorkspaceMode('calendar')}
                   accessibilityRole="button"
                   accessibilityLabel={`查看连续学习 ${streak} 天`}
                   pressedScale={0.92}
@@ -737,7 +739,7 @@ export default function ProfileScreen() {
               <View style={styles.signalConsoleHeader}>
                 <View>
                   <Text style={styles.signalConsoleEyebrow}>7 DAY LEARNING PULSE</Text>
-                  <Text style={styles.signalConsoleTitle}>本周学习脉冲</Text>
+                  <Text style={styles.signalConsoleTitle}>最近 7 天学习脉冲</Text>
                 </View>
                 <View style={styles.signalReading}>
                   <Text style={styles.signalReadingValue}>{selectedDay.value}</Text>
@@ -782,7 +784,7 @@ export default function ProfileScreen() {
                     return (
                       <MotionPressable
                         key={day.key}
-                        onPress={() => setSelectedDayKey(day.key)}
+                        onPress={() => { setSelectedDayKey(day.key); setWorkspaceMode('calendar'); }}
                         haptic={false}
                         pressedScale={0.88}
                         style={[styles.chartDay, selected && styles.chartDaySelected]}
@@ -800,7 +802,7 @@ export default function ProfileScreen() {
 
               <View style={styles.weekSummary}>
                 <View style={styles.weekSummaryPrimary}>
-                  <Text style={styles.weekSummaryLabel}>本周累计</Text>
+                  <Text style={styles.weekSummaryLabel}>近7天累计</Text>
                   <Text style={styles.weekSummaryValue}>{weekTotal}<Text style={styles.weekSummaryUnit}> XP</Text></Text>
                 </View>
                 <View style={styles.weekSummaryDivider} />
@@ -815,7 +817,7 @@ export default function ProfileScreen() {
                   return (
                     <MotionPressable
                       key={item.label}
-                      onPress={() => router.push(item.route)}
+                      onPress={() => setWorkspaceMode(item.mode)}
                       accessibilityRole="button"
                       accessibilityLabel={`${item.label} ${item.value} ${item.unit}`}
                       pressedScale={0.94}
@@ -868,7 +870,7 @@ export default function ProfileScreen() {
                 <Text style={styles.sectionSubtitle}>每一次开口，都留下一个成长印记</Text>
               </View>
               <MotionPressable
-                onPress={() => router.push('/(app)/achievements?tab=titles' as any)}
+                onPress={() => setWorkspaceMode('badges')}
                 pressedScale={0.92}
                 style={styles.sectionAction}
               >
@@ -925,7 +927,7 @@ export default function ProfileScreen() {
                       {badge.name}
                     </Text>
                     <Text style={styles.badgeState}>
-                      {activeBadge?.english === badge.english ? '当前称号' : unlocked ? '已获得' : `LV.${badge.level}`}
+                      {wornBadge?.english === badge.english ? '当前称号' : unlocked ? '已获得' : `LV.${badge.level}`}
                     </Text>
                     <View style={[styles.badgeSelectionLine, selected && { backgroundColor: badge.color, opacity: 1 }]} />
                   </MotionPressable>
@@ -972,12 +974,12 @@ export default function ProfileScreen() {
                 </Text>
               </View>
               <MotionPressable
-                onPress={() => router.push('/(app)/achievements?tab=titles' as any)}
+                onPress={() => setWorkspaceMode('badges')}
                 pressedScale={0.96}
                 hoverLift={2}
                 style={styles.badgeDetailAction}
               >
-                <Text style={[styles.badgeDetailActionText, { color: selectedBadge.color }]}>查看成长档案</Text>
+                <Text style={[styles.badgeDetailActionText, { color: selectedBadge.color }]}>查看条件与佩戴称号</Text>
                 <ChevronRight size={15} color={selectedBadge.color} />
               </MotionPressable>
             </Animated.View>
@@ -996,7 +998,7 @@ export default function ProfileScreen() {
             </View>
 
             <MotionPressable
-              onPress={() => router.push('/(app)/diary' as any)}
+              onPress={() => setWorkspaceMode('diary')}
               accessibilityRole="button"
               accessibilityLabel="打开英语日记"
               pressedScale={0.975}
@@ -1021,19 +1023,19 @@ export default function ProfileScreen() {
               <View style={styles.diaryCopy}>
                 <Text style={styles.diaryEyebrow}>DAILY STORY</Text>
                 <Text style={styles.diaryTitle}>英语日记</Text>
-                <Text style={styles.diarySubtitle}>把今天写成一段可以开口讲的英语故事</Text>
+                <Text numberOfLines={2} style={styles.diarySubtitle}>{workspaceData.diaries[0]?.content || '还没有日记，从第一次场景学习写起'}</Text>
               </View>
               <View style={styles.diaryAction}>
-                <Text style={styles.diaryActionText}>开始记录</Text>
+                <Text style={styles.diaryActionText}>{workspaceData.diaries.length ? '阅读与编辑' : '创建故事'}</Text>
                 <ChevronRight size={17} color="#FFFFFF" />
               </View>
             </MotionPressable>
 
             <View style={styles.toolPair}>
               <MotionPressable
-                onPress={() => router.push('/(app)/(tabs)/learning' as any)}
+                onPress={() => setWorkspaceMode('collections')}
                 accessibilityRole="button"
-                accessibilityLabel="打开表达本"
+                accessibilityLabel="打开我的收藏精选"
                 pressedScale={0.96}
                 hoverLift={6}
                 hoverTilt={2.2}
@@ -1052,16 +1054,16 @@ export default function ProfileScreen() {
                   <ChevronRight size={17} color={COLORS.coral} />
                 </View>
                 <Text style={styles.toolEyebrowOrange}>PHRASE BOOK</Text>
-                <Text style={styles.toolTitle}>表达本</Text>
-                <Text style={styles.toolDescription}>{recordCount} 条真实场景表达持续沉淀</Text>
+                <Text style={styles.toolTitle}>收藏精选</Text>
+                <Text style={styles.toolDescription}>{workspaceData.records.filter(record => Boolean(record.is_favorited)).length} 条场景收藏 · {workspaceData.sentences.length} 条句子</Text>
                 <View style={styles.phrasePreview}>
-                  <Text numberOfLines={1} style={styles.phrasePreviewText}>Could I have…</Text>
+                  <Text numberOfLines={1} style={styles.phrasePreviewText}>{workspaceData.records.find(record => Boolean(record.is_favorited))?.i_say || workspaceData.sentences[0]?.sentence || '保存喜欢的内容，随时再练'}</Text>
                   <View style={styles.phraseDot} />
                 </View>
               </MotionPressable>
 
               <MotionPressable
-                onPress={() => router.push('/(app)/map' as any)}
+                onPress={() => router.push('/(app)/scene-map?returnTo=profile' as any)}
                 accessibilityRole="button"
                 accessibilityLabel="打开场景地图"
                 pressedScale={0.96}
@@ -1095,9 +1097,9 @@ export default function ProfileScreen() {
             </View>
 
             <MotionPressable
-              onPress={() => router.push('/(app)/settings' as any)}
+              onPress={() => setWorkspaceMode('preferences')}
               accessibilityRole="button"
-              accessibilityLabel="打开设置"
+              accessibilityLabel="打开学习偏好"
               pressedScale={0.975}
               hoverLift={3}
               style={styles.settingsStrip}
@@ -1107,7 +1109,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.settingsCopy}>
                 <Text style={styles.settingsTitle}>学习设置</Text>
-                <Text style={styles.settingsSubtitle}>语音、通知与个人偏好</Text>
+                <Text style={styles.settingsSubtitle}>{preferences.speechRate}× 默认语速 · 每日 {preferences.dailyScenes} 个场景</Text>
               </View>
               <ChevronRight size={18} color={COLORS.muted} />
             </MotionPressable>
@@ -1125,6 +1127,7 @@ export default function ProfileScreen() {
           </MotionPressable>
         </View>
       </ScrollView>
+      <ProfileWorkspaceSheet mode={workspaceMode} owner={session?.user.id || ''} accountName={accountName} avatarUri={avatarUri} avatarBusy={avatarBusy} avatarNotice={avatarNotice} defaultAvatar={defaultAvatar} level={curLevel.level} totalXp={totalXp} levels={LEVELS} badges={BADGES} data={workspaceData} initialDate={selectedDayKey || toDateKey(new Date())} loading={loading || refreshing} dataError={loadError} onClose={() => setWorkspaceMode(null)} onReload={() => void loadProfile(true)} onAvatarPick={() => void handleAvatarPick()} />
     </View>
   );
 }

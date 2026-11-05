@@ -9,10 +9,10 @@ import {
   clearDemoIdentity,
   isQuickDemoOwner,
   quickDemoOwner,
-  readDemoIdentity,
   saveDemoIdentity,
 } from '@/lib/demoSession';
 import { invalidateQueries } from '@/lib/query-cache';
+import { activateProfilePreferences } from '@/lib/profile-preferences';
 
 function createDemoSession(email: string, ownerId: string): Session {
   return {
@@ -61,28 +61,37 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const appState = useRef(AppState.currentState);
+  const authenticatedThisRun = useRef(false);
 
   useEffect(() => {
+    activateProfilePreferences(session?.user.id ?? null);
     invalidateQueries();
   }, [session?.user.id]);
 
   useEffect(() => {
     if (supabaseConfigError) {
-      const identity = readDemoIdentity();
-      setSession(identity ? createDemoSession(identity.email, identity.ownerId) : null);
+      // Keep account-scoped demo data in storage, but require an explicit login
+      // whenever the app starts instead of silently restoring the last account.
+      setSession(null);
       setIsLoading(false);
       return;
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setIsLoading(false);
-    });
+    // Supabase persists its refresh token for account continuity. The product
+    // intentionally starts at sign-in, so a stored session remains locked until
+    // the user authenticates during this runtime.
+    setSession(null);
+    setIsLoading(false);
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_, session) => {
-      setSession(session);
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'SIGNED_OUT') {
+        authenticatedThisRun.current = false;
+        setSession(null);
+        return;
+      }
+      if (authenticatedThisRun.current) setSession(nextSession);
     });
 
     // iOS/Android 后台时 JS 线程挂起，autoRefreshToken 定时器停止，回前台需手动续期
@@ -111,19 +120,26 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     if (supabaseConfigError) {
+      authenticatedThisRun.current = true;
       setDemoSession(email);
       return { error: null };
     }
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    authenticatedThisRun.current = true;
+    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) authenticatedThisRun.current = false;
+    else setSession(data.session);
     return { error: error?.message ?? null };
   };
 
   const signUp = async (email: string, password: string) => {
     if (supabaseConfigError) {
+      authenticatedThisRun.current = true;
       setDemoSession(email);
       return { error: null };
     }
     const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
+    authenticatedThisRun.current = Boolean(!error && data.session);
+    if (data.session) setSession(data.session);
     return {
       error: error?.message ?? null,
       needsEmailConfirmation: !error && !data.session,
@@ -132,6 +148,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const startQuickExperience = async () => {
     if (!supabaseConfigError) return { error: '快速体验仅在本地演示模式可用' };
+    authenticatedThisRun.current = true;
     setDemoSession('guest@visualcoach.local', quickDemoOwner());
     return { error: null };
   };
@@ -166,6 +183,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    authenticatedThisRun.current = false;
     if (supabaseConfigError) {
       clearDemoIdentity();
       setSession(null);

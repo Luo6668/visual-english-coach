@@ -1,0 +1,36 @@
+node:internal/modules/run_main:104
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Concurrent activity / XP requests must never lose writes
++ actual - expected
+
++ [
++   'ER_LOCK_DEADLOCK',
++   'ER_LOCK_DEADLOCK',
++   'ER_LOCK_DEADLOCK',
++   'ER_LOCK_DEADLOCK',
++   'ER_LOCK_DEADLOCK',
++   'ER_LOCK_DEADLOCK',
++   'ER_LOCK_DEADLOCK'
++ ]
+- []
+
+    at file:///Users/lawerance/Documents/Codex/2026-09-20/new-chat/work/source-code/app-cf15398uqfpd/scripts/local-concurrency-smoke.mjs:21:10
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [
+    'ER_LOCK_DEADLOCK',
+    'ER_LOCK_DEADLOCK',
+    'ER_LOCK_DEADLOCK',
+    'ER_LOCK_DEADLOCK',
+    'ER_LOCK_DEADLOCK',
+    'ER_LOCK_DEADLOCK',
+    'ER_LOCK_DEADLOCK'
+  ],
+  expected: [],
+  operator: 'deepStrictEqual'
+}
+
+Node.js v23.11.0

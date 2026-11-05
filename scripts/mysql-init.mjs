@@ -19,3 +19,6 @@ const connection = await mysql.createConnection({
 await connection.query(readFileSync(resolve('mysql/schema.sql'), 'utf8'));
 await connection.end();
 console.log('MySQL database initialized: visual_english_coach');
+
+// Existing databases also receive the additive diary metadata fields.
+await import('./migrate-diary-writing.mjs');

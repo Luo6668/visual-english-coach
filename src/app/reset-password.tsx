@@ -12,13 +12,14 @@ import { APP_COLORS, APP_RADIUS, APP_SHADOW } from '@/lib/design-system';
 
 export default function ResetPassword() {
   const router = useRouter();
-  const { updatePassword } = useSession();
+  const { updatePassword, isDemoMode } = useSession();
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [complete, setComplete] = useState(false);
+  const [completeMessage, setCompleteMessage] = useState('');
 
   const handleUpdate = async () => {
     if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
@@ -35,7 +36,7 @@ export default function ResetPassword() {
     try {
       const result = await updatePassword(password);
       if (result.error) setError(getAuthErrorMessage(result.error));
-      else setComplete(true);
+      else { setCompleteMessage(result.message || '新密码已经生效，现在可以继续学习。'); setComplete(true); }
     } catch (updateError) {
       setError(getAuthErrorMessage(updateError));
     } finally {
@@ -49,8 +50,8 @@ export default function ResetPassword() {
         <View style={styles.iconShell}>
           {complete ? <CheckCircle2 size={34} color="#16A36A" /> : <KeyRound size={32} color="#1478F5" />}
         </View>
-        <Text style={styles.title}>{complete ? '密码已更新' : '设置新密码'}</Text>
-        <Text style={styles.subtitle}>{complete ? '新密码已经生效，现在可以继续学习。' : '使用至少 8 位、同时包含字母与数字的新密码。'}</Text>
+        <Text style={styles.title}>{complete ? (isDemoMode ? '本地演示说明' : '密码已更新') : '设置新密码'}</Text>
+        <Text style={styles.subtitle}>{complete ? completeMessage : '使用至少 8 位、同时包含字母与数字的新密码。'}</Text>
 
         {!complete ? <>
           <PasswordField label="新密码" value={password} onChange={(value) => { setPassword(value); setError(''); }} visible={showPassword} toggle={() => setShowPassword((current) => !current)} />
@@ -62,9 +63,9 @@ export default function ResetPassword() {
             </LinearGradient>
           </MotionPressable>
         </> : (
-          <MotionPressable onPress={() => router.replace('/')} accessibilityRole="button" accessibilityLabel="继续学习" style={styles.primaryButton} pressedScale={0.97}>
+          <MotionPressable onPress={() => router.replace(isDemoMode ? '/(auth)/sign-in' : '/')} accessibilityRole="button" accessibilityLabel={isDemoMode ? '返回登录' : '继续学习'} style={styles.primaryButton} pressedScale={0.97}>
             <LinearGradient colors={['#2997FF', '#0968F1']} style={styles.primaryGradient}>
-              <Text style={styles.primaryText}>继续学习</Text>
+              <Text style={styles.primaryText}>{isDemoMode ? '返回登录' : '继续学习'}</Text>
             </LinearGradient>
           </MotionPressable>
         )}

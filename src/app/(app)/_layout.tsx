@@ -6,6 +6,7 @@ export default function AppLayout() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="thinking-mode" />
       <Stack.Screen name="word-detail" />
+      <Stack.Screen name="sentence-detail" />
       <Stack.Screen name="dialogue" />
       <Stack.Screen name="shadowing" />
       <Stack.Screen name="diary" />
@@ -15,6 +16,7 @@ export default function AppLayout() {
       <Stack.Screen name="scene-map" />
       <Stack.Screen name="scene-detail" />
       <Stack.Screen name="scene-dialogue" />
+      <Stack.Screen name="review" />
     </Stack>
   );
 }

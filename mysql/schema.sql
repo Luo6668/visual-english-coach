@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS daily_stats (
 CREATE TABLE IF NOT EXISTS diaries (
   id CHAR(36) PRIMARY KEY, user_id VARCHAR(128) NOT NULL, diary_type VARCHAR(20) NOT NULL,
   content LONGTEXT NOT NULL, study_date DATE, week_start DATE,
+  source_text MEDIUMTEXT, writing_mode VARCHAR(16), source_kind VARCHAR(20), learning_expressions JSON,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_diaries_user_created (user_id, created_at)
 );

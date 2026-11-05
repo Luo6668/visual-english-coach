@@ -5,7 +5,7 @@ const TABLES = new Set([
   'learning_records', 'words', 'sentences', 'scenes', 'user_stats', 'daily_stats',
   'diaries', 'high_freq_words', 'xp_logs', 'scene_progress', 'scene_map_progress',
 ]);
-const JSON_FIELDS = new Set(['words', 'collocations', 'example_sentences']);
+const JSON_FIELDS = new Set(['words', 'collocations', 'example_sentences', 'learning_expressions']);
 const USER_ID = process.env.LOCAL_USER_ID || 'local-demo-user';
 const ACTIVITY_FIELDS = {
   scene: ['total_scenes', 'scene_count'],
@@ -122,7 +122,9 @@ export async function recordActivity(kind, userId = USER_ID) {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
-    await connection.query('INSERT IGNORE INTO user_stats (user_id) VALUES (?)', [userId]);
+    // Acquire the same exclusive account-row lock before either transaction proceeds.
+    // INSERT IGNORE takes shared duplicate locks that can deadlock on later updates.
+    await connection.query('INSERT INTO user_stats (user_id) VALUES (?) ON DUPLICATE KEY UPDATE user_id = user_stats.user_id', [userId]);
     await connection.query(
       `UPDATE user_stats SET
         \`${totalField}\` = \`${totalField}\` + 1,
@@ -189,7 +191,9 @@ export async function awardXp(source, userId = USER_ID) {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
-    await connection.query('INSERT IGNORE INTO user_stats (user_id) VALUES (?)', [userId]);
+    // Acquire the same exclusive account-row lock before either transaction proceeds.
+    // INSERT IGNORE takes shared duplicate locks that can deadlock on later updates.
+    await connection.query('INSERT INTO user_stats (user_id) VALUES (?) ON DUPLICATE KEY UPDATE user_id = user_stats.user_id', [userId]);
     const [[dates]] = await connection.query(
       'SELECT CURDATE() AS today, DATE_SUB(CURDATE(), INTERVAL 1 DAY) AS yesterday',
     );

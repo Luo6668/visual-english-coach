@@ -1,0 +1,6 @@
+$ node scripts/local-speech-smoke.mjs
+OK  TTS provider: Kokoro-82M (af_heart)
+OK  Mandarin TTS: Kokoro-82M (zf_xiaoxiao, zh-CN)
+OK  Bilingual TTS: Kokoro-82M (zf_xiaoxiao+af_heart, mixed)
+OK  ASR provider: whisper.cpp/base.en
+OK  Transcript: The local English voice is clear and ready for practice.

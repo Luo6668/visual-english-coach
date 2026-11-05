@@ -1,0 +1,6 @@
+$ node scripts/diary-writing-smoke.mjs
+OK live simple: Yesterday at 3 p.m., my sister and I made tomato noodles at home. It rained, so we could not go to the park. But I felt very happy.
+OK live polished: At three yesterday afternoon, my sister and I made tomato noodles at home. Although it was raining and we couldn't go to the park, I felt quite happy.
+OK live natural: Yesterday at 3 p.m., my sister and I made tomato noodles at home. Although it rained and we couldn't go to the park, I felt happy.
+OK live weekly preview based on saved diary
+OK bilingual persistence, selected date, update without duplicate, JSON expression round-trip

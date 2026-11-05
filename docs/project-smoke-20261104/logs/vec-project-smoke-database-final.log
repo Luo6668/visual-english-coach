@@ -1,0 +1,2 @@
+$ node scripts/local-smoke.mjs
+Local MySQL smoke test passed.

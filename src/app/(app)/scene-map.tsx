@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   ArrowRight,
@@ -243,6 +243,7 @@ function SceneDeckCard({
 
 export default function SceneMapScreen() {
   const router = useRouter();
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const insets = useSafeAreaInsets();
   const initialized = useRef(false);
   const deckRef = useRef<any>(null);
@@ -362,7 +363,7 @@ export default function SceneMapScreen() {
       >
         <View style={styles.pageContent}>
           <View style={styles.header}>
-            <MotionPressable accessibilityRole="button" accessibilityLabel="返回" onPress={() => router.back()} pressedScale={0.9} style={styles.headerButton}>
+            <MotionPressable accessibilityRole="button" accessibilityLabel="返回" onPress={() => returnTo === 'profile' ? router.replace('/(app)/(tabs)/profile' as any) : router.back()} pressedScale={0.9} style={styles.headerButton}>
               <ChevronLeft size={22} color={COLORS.text} />
             </MotionPressable>
             <View style={styles.headerCopy}>

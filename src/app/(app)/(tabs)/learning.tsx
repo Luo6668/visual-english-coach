@@ -1,11 +1,17 @@
+// Metro resolves static image assets at build time.
+declare const require: (assetPath: string) => number;
+/* global require */
 import { useAudioPlayer } from 'expo-audio';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { AlertCircle, AlignLeft, ArrowRight, BookMarked, Bookmark, CalendarDays, ChevronRight, MapPin, Mic2, RefreshCw, Search, Sparkles, Star, Volume2, X } from 'lucide-react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { AlertCircle, AlignLeft, ArrowRight, BookMarked, Bookmark, CalendarDays, ChevronRight, MapPin, BookOpen, RefreshCw, Search, Sparkles, Star, Volume2, X } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Platform, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSession } from '@/ctx';
+import { useReviewQueue } from '@/lib/learning-loop/store';
+import { dueReviews } from '@/lib/learning-loop/model';
 import { MotionPressable } from '@/components/motion-pressable';
 import { fetchDiaries, fetchLearningRecords, fetchScenes, fetchSentences, fetchWords, invokeEdgeFunction, updateLearningRecord } from '@/lib/api';
 import { invalidateQueries, QUERY_KEYS } from '@/lib/query-cache';
@@ -33,7 +39,7 @@ type ContentRow = Record<string, any> & { id: string };
 const TAB_META: Record<TabKey, { title: string; subtitle: string; empty: string; emptyHint: string }> = {
   favorites: { title: '稍后再练', subtitle: '你亲手保存的高价值表达', empty: '还没有收藏内容', emptyHint: '在场景学习页点亮书签，重要表达就会出现在这里。' },
   scenes: { title: '真实场景', subtitle: '按练习频率持续更新', empty: '还没有练习场景', emptyHint: '完成第一次拍照或文字识别后，场景会自动沉淀在这里。' },
-  sentences: { title: '表达句库', subtitle: '点击朗读，进入跟读练习', empty: '还没有收藏句子', emptyHint: '在学习过程中收藏句子，之后可以集中跟读。' },
+  sentences: { title: '表达句库', subtitle: '看懂中文、句型和词汇，再开口练习', empty: '还没有收藏句子', emptyHint: '在学习过程中收藏句子，之后可以集中跟读。' },
   words: { title: '词汇卡组', subtitle: '带着真实语境复习单词', empty: '还没有收藏单词', emptyHint: '学习场景中的生词后，它会自动进入你的词汇卡组。' },
   diary: { title: '学习日记', subtitle: '把零散练习串成完整故事', empty: '还没有学习日记', emptyHint: '完成场景学习后，可以让 AI 生成你的专属英语日记。' },
 };
@@ -60,6 +66,11 @@ function getSearchText(tab: TabKey, item: ContentRow) {
 
 export default function LearningScreen() {
   const router = useRouter();
+  const { session } = useSession();
+  const reviewQueue = useReviewQueue(session?.user.id);
+  const dueCount = dueReviews(reviewQueue.items).length;
+  const params = useLocalSearchParams<{ tab?: string | string[] }>();
+  const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
   const player = useAudioPlayer();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -78,6 +89,13 @@ export default function LearningScreen() {
   const [speakingKey, setSpeakingKey] = useState<string | null>(null);
   const [favoriteActionError, setFavoriteActionError] = useState('');
   const [updatingFavoriteId, setUpdatingFavoriteId] = useState<string | null>(null);
+
+  useFocusEffect(useCallback(() => {
+    if (TABS.some(tab => tab.key === requestedTab)) {
+      setActiveTab(requestedTab as TabKey);
+      setQuery('');
+    }
+  }, [requestedTab]));
 
   const loadData = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
     if (mode === 'initial') setLoading(true);
@@ -200,7 +218,7 @@ export default function LearningScreen() {
     if (activeTab === 'sentences') {
       const speechKey = `sentence-${item.id}`;
       return (
-        <MotionPressable accessibilityRole="button" accessibilityLabel={`练习句子 ${item.sentence}`} onPress={() => router.push({ pathname: '/(app)/shadowing', params: { sentence: item.sentence } } as any)} hoverTilt={1.2} hoverLift={2.5} style={styles.sentenceCard}>
+        <MotionPressable accessibilityRole="button" accessibilityLabel={`查看句子详解 ${item.sentence}`} onPress={() => router.push({ pathname: '/(app)/sentence-detail', params: { sentenceId: item.id } } as any)} hoverTilt={1.2} hoverLift={2.5} style={styles.sentenceCard}>
           <View pointerEvents="none" style={styles.cardTopShine} />
           <View style={styles.sentenceIndex}><Text style={styles.sentenceIndexText}>{String(index + 1).padStart(2, '0')}</Text></View>
           <Text style={styles.sentenceText}>{item.sentence}</Text>
@@ -209,8 +227,8 @@ export default function LearningScreen() {
             <MotionPressable accessibilityRole="button" accessibilityLabel={speakingKey === speechKey ? '停止朗读' : '朗读句子'} onPress={(event) => { event.stopPropagation(); speak(speechKey, item.sentence); }} pressedScale={0.92} style={[styles.iconAction, speakingKey === speechKey && styles.iconActionActive]}>
               <Volume2 size={18} color={speakingKey === speechKey ? WHITE : BLUE} fill={speakingKey === speechKey ? WHITE : 'transparent'} />
             </MotionPressable>
-            <MotionPressable accessibilityRole="button" accessibilityLabel="进入跟读练习" onPress={() => router.push({ pathname: '/(app)/shadowing', params: { sentence: item.sentence } } as any)} style={styles.primaryAction}>
-              <Mic2 size={16} color={WHITE} /><Text style={styles.primaryActionText}>跟读这一句</Text>
+            <MotionPressable accessibilityRole="button" accessibilityLabel="查看中文与句子解析" onPress={(event) => { event.stopPropagation(); router.push({ pathname: '/(app)/sentence-detail', params: { sentenceId: item.id } } as any); }} style={styles.primaryAction}>
+              <BookOpen size={16} color={WHITE} /><Text style={styles.primaryActionText}>看懂这句话</Text>
             </MotionPressable>
           </View>
         </MotionPressable>
@@ -281,6 +299,9 @@ export default function LearningScreen() {
         ) : null}
       </View>
 
+      <MotionPressable accessibilityRole="button" accessibilityLabel="打开今日表达复习" onPress={() => router.push('/(app)/review' as any)} style={{ marginHorizontal: 18, marginVertical: 14, padding: 18, borderRadius: 22, borderWidth: 1, borderColor: '#CCE3FF', backgroundColor: '#ECF5FF', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <RefreshCw size={23} color={BLUE} /><View style={{ flex: 1 }}><Text style={{ color: INK, fontSize: 17, fontWeight: '800' }}>今天再说一次</Text><Text style={{ color: MUTED, fontSize: 12, lineHeight: 20, marginTop: 4 }}>{reviewQueue.error ? '复习夹暂未读取，点击重试' : reviewQueue.loading ? '正在读取你的复习计划…' : reviewQueue.items.length ? `${dueCount} 条到期 · 从你真实保存的表达继续练` : '先选一句表达，练到下次能自己说出'}</Text></View><ChevronRight size={18} color={BLUE} />
+      </MotionPressable>
       <View style={styles.tabShell}><View style={styles.tabsRow}>
         {TABS.map(tab => {
           const active = activeTab === tab.key;

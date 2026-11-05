@@ -1,5 +1,5 @@
 import {requestRecordingPermissionsAsync,
-  setAudioModeAsync, 
+  setAudioModeAsync,
   useAudioPlayer, useAudioRecorder,
 } from 'expo-audio';
 import * as FileSystem from 'expo-file-system';
@@ -7,13 +7,14 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CheckCircle, ChevronLeft, Mic, MicOff, RotateCcw, Volume2 } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
-import Animated, {cancelAnimation, Easing,useAnimatedStyle, 
+import Animated, {cancelAnimation, Easing,useAnimatedStyle,
   useSharedValue, withRepeat, withSequence,
-  withTiming, 
+  withTiming,
 } from 'react-native-reanimated';
 import { addXp, invokeEdgeFunction, recordActivity, updateLearningRecord } from '@/lib/api';
 import { arrayBufferToBase64, audioBlobTo16kWav, startWebAudioRecording } from '@/lib/audioCapture';
 import { speakWithTTS } from '@/lib/speech';
+import { isLocalServiceMode } from '@/lib/serviceConfig';
 
 const BLUE      = '#4A90E2';
 const BLUE_DARK = '#2E5C8A';
@@ -240,11 +241,11 @@ export default function ShadowingScreen() {
           </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={{ color: '#1E293B', fontSize: 18, fontWeight: '800' }}>🎙️ Shadowing</Text>
-            <Text style={{ color: '#64748B', fontSize: 12 }}>跟读 · 发音纠错 · AI评分</Text>
+            <Text style={{ color: '#64748B', fontSize: 12 }}>{isLocalServiceMode ? '跟读 · 识别文字核对' : '跟读 · 发音纠错 · AI评分'}</Text>
           </View>
           {result && (
             <View style={{ backgroundColor: scoreColor, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 }}>
-              <Text style={{ color: result.score >= 80 ? '#1E293B' : WHITE, fontWeight: '800', fontSize: 14 }}>{result.score}分</Text>
+              <Text style={{ color: result.score >= 80 ? '#1E293B' : WHITE, fontWeight: '800', fontSize: 14 }}>{result.score}{isLocalServiceMode ? ' · 匹配参考值' : '分'}</Text>
             </View>
           )}
         </View>
@@ -288,8 +289,8 @@ export default function ShadowingScreen() {
               <>
                 <ActivityIndicator size="large" color={BLUE} />
                 <View style={{ alignItems: 'center', gap: 4 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#1E293B' }}>AI 正在评估发音...</Text>
-                  <Text style={{ fontSize: 12, color: '#94A3B8' }}>分析语音节奏与准确度</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#1E293B' }}>{isLocalServiceMode ? '正在核对识别文字…' : 'AI 正在评估发音...'}</Text>
+                  <Text style={{ fontSize: 12, color: '#94A3B8' }}>{isLocalServiceMode ? '按识别内容与目标句对照，不评估发音、节奏或流利度' : '分析语音节奏与准确度'}</Text>
                 </View>
               </>
             ) : (
@@ -299,7 +300,7 @@ export default function ShadowingScreen() {
                   {phase === 'ready'     ? '👆 点击麦克风开始录音' :
                    phase === 'requesting' ? '正在等待麦克风授权...' :
                    phase === 'recording' ? '🎙️ 录音中，再按停止...' :
-                   '✅ 录音完成！查看评分'}
+                   (isLocalServiceMode ? '✅ 录音完成，查看文字核对' : '✅ 录音完成！查看评分')}
                 </Text>
 
                 {/* 权限错误提示 */}
@@ -346,9 +347,9 @@ export default function ShadowingScreen() {
                     ? <CheckCircle size={36} color={scoreColor} />
                     : <Text style={{ fontSize: 32, fontWeight: '900', color: scoreColor }}>{result.score}</Text>}
                 </View>
-                <Text style={{ fontSize: 26, fontWeight: '900', color: '#1E293B' }}>{result.score} 分</Text>
+                <Text style={{ fontSize: 26, fontWeight: '900', color: '#1E293B' }}>{result.score}{isLocalServiceMode ? ' · 匹配参考值' : ' 分'}</Text>
                 <Text style={{ fontSize: 13, color: '#64748B' }}>
-                  {result.score >= 90 ? '🎉 发音超棒！' : result.score >= 75 ? '👍 不错，继续加油！' : '💪 多练几次会更好'}
+                  {isLocalServiceMode ? '只反映识别文字的对应情况，不代表发音得分' : result.score >= 90 ? '🎉 发音超棒！' : result.score >= 75 ? '👍 不错，继续加油！' : '💪 多练几次会更好'}
                 </Text>
 
                 {/* 图例 */}
@@ -367,8 +368,8 @@ export default function ShadowingScreen() {
                 <View style={{ backgroundColor: WHITE, borderRadius: 22, padding: 20, gap: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 16 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <View style={{ width: 4, height: 20, borderRadius: 2, backgroundColor: BLUE }} />
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#1E293B' }}>逐词发音评分</Text>
-                    <Text style={{ fontSize: 11, color: '#94A3B8', marginLeft: 4 }}>Word-by-Word Score</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#1E293B' }}>{isLocalServiceMode ? '逐词文字核对' : '逐词发音评分'}</Text>
+                    <Text style={{ fontSize: 11, color: '#94A3B8', marginLeft: 4 }}>{isLocalServiceMode ? 'Word-by-Word Match' : 'Word-by-Word Score'}</Text>
                   </View>
 
                   {/* 词汇芯片网格 */}
@@ -431,12 +432,12 @@ export default function ShadowingScreen() {
                     <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
                       <Text style={{ fontSize: 20 }}>🔤</Text>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#94A3B8', marginBottom: 2 }}>发音准确度</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#94A3B8', marginBottom: 2 }}>{isLocalServiceMode ? '识别文字对应情况' : '发音准确度'}</Text>
                         <Text style={{ fontSize: 13, color: '#374151', lineHeight: 18 }}>{result.pronunciation}</Text>
                       </View>
                     </View>
                   )}
-                  {result.rhythm && (
+                  {result.rhythm && !isLocalServiceMode && (
                     <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
                       <Text style={{ fontSize: 20 }}>🎵</Text>
                       <View style={{ flex: 1 }}>
@@ -459,8 +460,8 @@ export default function ShadowingScreen() {
 
               {/* AI 综合点评 */}
               <View style={{ backgroundColor: BLUE_DARK, borderRadius: 20, padding: 18, gap: 8 }}>
-                <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '700' }}>🤖 AI 综合点评</Text>
-                <Text style={{ color: WHITE, fontSize: 14, lineHeight: 22 }}>{result.feedback}</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '700' }}>{isLocalServiceMode ? '本地文字核对说明' : '🤖 AI 综合点评'}</Text>
+                <Text style={{ color: WHITE, fontSize: 14, lineHeight: 22 }}>{isLocalServiceMode ? '本次参考值来自识别文字与目标句的比对，语音识别也可能出错。它不测量音素、重音、节奏或真实发音质量。' : result.feedback}</Text>
                 {result.suggestion && (
                   <View style={{ marginTop: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, padding: 10 }}>
                     <Text style={{ color: '#93C5FD', fontSize: 12, fontWeight: '700', marginBottom: 3 }}>💡 改进建议</Text>

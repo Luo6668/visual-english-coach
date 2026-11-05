@@ -99,6 +99,11 @@ export async function createSentence(sentence: any) {
   return result;
 }
 
+export async function removeSavedSentence(id: string) {
+  await mysqlData('sentences', { action: 'delete', filters: { id } });
+  invalidateQueries([QUERY_KEYS.sentences]);
+}
+
 export async function upsertScene(scene: any) {
   const existing = await mysqlData<any>('scenes', { filters: { scene_name: scene.scene_name }, single: true });
   if (existing) {
@@ -182,13 +187,15 @@ export async function fetchDiaries(type?: 'daily' | 'weekly') {
   return cachedQuery(queryKey(QUERY_KEYS.diaries, type ?? 'all'), () => mysqlData<any[]>('diaries', { filters: type ? { diary_type: type } : {}, orderBy: 'created_at' }));
 }
 
-export async function saveDiary(payload: { diary_type: 'daily' | 'weekly'; content: string; study_date?: string; week_start?: string }) {
+export type DiaryWritingFields = { source_text?: string; writing_mode?: string; source_kind?: string; learning_expressions?: { english: string; chinese: string; note: string }[] };
+
+export async function saveDiary(payload: { diary_type: 'daily' | 'weekly'; content: string; study_date?: string; week_start?: string } & DiaryWritingFields) {
   const result = await mysqlData('diaries', { action: 'insert', values: payload });
   invalidateQueries([QUERY_KEYS.diaries]);
   return result;
 }
 
-export async function updateDiary(id: string, payload: { content: string }) {
+export async function updateDiary(id: string, payload: { content: string } & DiaryWritingFields) {
   const result = await mysqlData('diaries', { action: 'update', filters: { id }, values: payload });
   invalidateQueries([QUERY_KEYS.diaries]);
   return result;
@@ -210,6 +217,10 @@ export async function fetchXpData() {
     ]);
     return { stats: stats ?? { total_xp: 0, current_level: 1, streak_days: 0, last_checkin_date: null }, logs };
   });
+}
+
+export async function fetchProfileActivityLogs() {
+  return cachedQuery(queryKey(QUERY_KEYS.xpData, 'profile-history'), () => mysqlData<any[]>('xp_logs', { orderBy: 'created_at', limit: 500 }));
 }
 
 export async function addXp(source: string) {
@@ -255,5 +266,11 @@ export async function fetchSceneMapProgress(sceneId?: string) {
 export async function upsertSceneMapProgress(values: Record<string, unknown>) {
   const result = await mysqlData('scene_map_progress', { action: 'upsert', values });
   invalidateQueries([QUERY_KEYS.sceneMapProgress, QUERY_KEYS.xpData]);
+  return result;
+}
+
+export async function updateSavedSentenceTranslation(id: string, translation: string) {
+  const result = await mysqlData('sentences', { action: 'update', filters: { id }, values: { translation } });
+  invalidateQueries([QUERY_KEYS.sentences]);
   return result;
 }

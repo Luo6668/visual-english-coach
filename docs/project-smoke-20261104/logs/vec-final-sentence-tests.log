@@ -1,0 +1,18 @@
+$ node --test scripts/sentence-detail.test.mjs
+✔ E1 accepts a real source sentence and keeps original punctuation (0.610583ms)
+✔ E1 rejects missing, non-English and oversized source (0.447166ms)
+✔ E1 model output cannot switch the selected sentence (0.0475ms)
+✔ E1 incomplete explanation is not silently replaced by fake content (0.1515ms)
+✔ E2 words and structure must come from the actual source (0.062791ms)
+✔ E2 word boundaries reject substrings but find later valid occurrences (0.116375ms)
+✔ E2 bilingual examples and Chinese part of speech are required (0.05225ms)
+✔ E2 optional phonetics and forms do not invent dictionary facts (0.228875ms)
+✔ E3 prompt separates untrusted source data and does not assess speech (0.244292ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 33.834875

@@ -1,7 +1,10 @@
+// Metro resolves static image assets at build time.
+declare const require: (assetPath: string) => number;
 /* global require */
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
+  AlertCircle,
   Check,
   ChevronDown,
   ChevronRight,
@@ -41,8 +44,10 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, Path, RadialGradient, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
-import { AsyncStatusBanner } from '@/components/async-status-banner';
 import { MotionPressable } from '@/components/motion-pressable';
+import { AiCoachConversation, type CoachOrigin } from '@/components/ai-coach-conversation';
+import { useSession } from '@/ctx';
+import { useProfilePreferences } from '@/lib/profile-preferences';
 import { IOS_MOTION, resistedOffset } from '@/lib/ios-motion';
 import { ALL_SCENES, type SceneNode } from '@/lib/sceneMapData';
 
@@ -108,6 +113,13 @@ type DailyStats = {
   study_minutes?: number;
 };
 
+export type VoiceRecordingError = {
+  kind: 'permission' | 'too-short' | 'no-speech' | 'device' | 'service' | 'unknown';
+  title: string;
+  message: string;
+  actionLabel: string;
+};
+
 type Props = {
   topInset: number;
   streakDays: number;
@@ -123,12 +135,14 @@ type Props = {
   sceneText: string;
   recState: 'idle' | 'requesting' | 'recording' | 'transcribing';
   recSeconds: number;
-  recError: string;
+  recError: VoiceRecordingError | null;
   onSceneTextChange: (value: string) => void;
   onCamera: () => void;
   onGallery: () => void;
   onSubmitText: () => void;
   onRecord: () => void;
+  onRetryRecording: () => void;
+  onDismissRecordingError: () => void;
   onOpenCoach: (prompt?: string) => void;
   onOpenLearning: () => void;
   onOpenRecord: (record: RecordItem) => void;
@@ -378,8 +392,8 @@ function MicGlassControl({ u, active }: { u: number; active: boolean }) {
   const circumference = Math.PI * 2 * ringRadius;
 
   return (
-    <View style={[styles.micGlassControl, { width: size, height: size, borderRadius: center }]}> 
-      <View style={[styles.micGlassSurface, { borderRadius: center }]}> 
+    <View style={[styles.micGlassControl, { width: size, height: size, borderRadius: center }]}>
+      <View style={[styles.micGlassSurface, { borderRadius: center }]}>
         <LinearGradient
           colors={['rgba(255,255,255,0.82)', 'rgba(203,240,255,0.38)', 'rgba(255,255,255,0.62)']}
           start={{ x: 0.12, y: 0 }}
@@ -422,9 +436,11 @@ function MicGlassControl({ u, active }: { u: number; active: boolean }) {
 
 function GoalRing({ u, stats }: { u: number; stats: DailyStats }) {
   const reduceMotion = useReducedMotion();
+  const { session } = useSession();
+  const preferences = useProfilePreferences(session?.user.id);
   const goals = [
-    { label: '场景练习', done: Number(stats.scene_count ?? 0) > 0 },
-    { label: '语音对话', done: Number(stats.dialogue_count ?? 0) + Number(stats.shadowing_count ?? 0) > 0 },
+    { label: `场景练习 ${Math.min(Number(stats.scene_count ?? 0), preferences.dailyScenes)}/${preferences.dailyScenes}`, done: Number(stats.scene_count ?? 0) >= preferences.dailyScenes },
+    { label: '对话与跟读', done: Number(stats.dialogue_count ?? 0) + Number(stats.shadowing_count ?? 0) > 0 },
     { label: '学习词汇', done: Number(stats.word_count ?? 0) > 0 },
   ];
   const displayCount = goals.filter(goal => goal.done).length;
@@ -505,7 +521,7 @@ function CardHeading({ title, subtitle, u }: { title: string; subtitle: string; 
         </View>
         <Text numberOfLines={1} style={[styles.cardSubtitle, { fontSize: 17 * textScale, lineHeight: 23 * textScale }]}>{subtitle}</Text>
       </View>
-      <View style={[styles.headingArrow, { width: 33 * u, height: 33 * u, borderRadius: 17 * u }]}> 
+      <View style={[styles.headingArrow, { width: 33 * u, height: 33 * u, borderRadius: 17 * u }]}>
         <ChevronRight size={20 * u} color={INK} strokeWidth={2.2} />
       </View>
     </View>
@@ -870,7 +886,7 @@ function PhotoDeck({ u, items, onPreview }: { u: number; items: SceneCard[]; onP
   return (
     <>
       <GestureDetector gesture={pan}>
-        <Animated.View style={[styles.albumPhotos, Platform.OS === 'web' ? ({ touchAction: 'pan-y', transformStyle: 'preserve-3d' } as any) : null, { left: 20 * u, right: 18 * u, top: 83 * u, height: 119 * u }, deckStyle]}> 
+        <Animated.View style={[styles.albumPhotos, Platform.OS === 'web' ? ({ touchAction: 'pan-y', transformStyle: 'preserve-3d' } as any) : null, { left: 20 * u, right: 18 * u, top: 83 * u, height: 119 * u }, deckStyle]}>
           {displayItems.map((item, index) => {
             const distance = (index - selected + displayItems.length) % displayItems.length;
             const left = [0, 126, 250][distance];
@@ -891,13 +907,52 @@ function PhotoDeck({ u, items, onPreview }: { u: number; items: SceneCard[]; onP
   );
 }
 
-function SpatialOverlay({ overlay, u, recState, recSeconds, sceneText, onRecord, onSpeak, onStart, onCloseComplete }: {
+function VoiceErrorCard({ error, onRetry, onDismiss, u, compact = false }: {
+  error: VoiceRecordingError;
+  onRetry: () => void;
+  onDismiss: () => void;
+  u: number;
+  compact?: boolean;
+}) {
+  return (
+    <View
+      accessibilityLiveRegion="polite"
+      style={[
+        styles.voiceErrorCard,
+        {
+          minHeight: (compact ? 55 : 72) * u,
+          borderRadius: (compact ? 17 : 21) * u,
+          paddingHorizontal: (compact ? 9 : 13) * u,
+          paddingVertical: (compact ? 7 : 10) * u,
+          gap: (compact ? 6 : 9) * u,
+        },
+      ]}
+    >
+      <AlertCircle size={(compact ? 16 : 20) * u} color="#B5473F" />
+      <View style={styles.voiceErrorCopy}>
+        <Text style={[styles.voiceErrorTitle, { fontSize: scaledText(u, compact ? 11 : 14) }]} numberOfLines={1}>{error.title}</Text>
+        <Text style={[styles.voiceErrorMessage, { fontSize: scaledText(u, compact ? 9 : 12), lineHeight: scaledText(u, compact ? 12 : 16) }]} numberOfLines={compact ? 1 : 2}>{error.message}</Text>
+      </View>
+      <MotionPressable onPress={onRetry} pressedScale={0.93} style={[styles.voiceErrorAction, { minHeight: (compact ? 29 : 34) * u, borderRadius: 18 * u, paddingHorizontal: (compact ? 7 : 10) * u }]} accessibilityRole="button" accessibilityLabel={error.actionLabel}>
+        <Text style={[styles.voiceErrorActionText, { fontSize: scaledText(u, compact ? 9 : 11) }]} numberOfLines={1}>{error.actionLabel}</Text>
+      </MotionPressable>
+      <Pressable onPress={onDismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="关闭语音提示" style={styles.voiceErrorDismiss}>
+        <CircleX size={(compact ? 15 : 18) * u} color="#8A5A56" />
+      </Pressable>
+    </View>
+  );
+}
+
+function SpatialOverlay({ overlay, u, recState, recSeconds, sceneText, recError, onRecord, onRetryRecording, onDismissRecordingError, onSpeak, onStart, onCloseComplete }: {
   overlay: SpatialOverlayState;
   u: number;
   recState: Props['recState'];
   recSeconds: number;
   sceneText: string;
+  recError: VoiceRecordingError | null;
   onRecord: () => void;
+  onRetryRecording: () => void;
+  onDismissRecordingError: () => void;
   onSpeak: (word?: string) => void;
   onStart: () => void;
   onCloseComplete: () => void;
@@ -977,7 +1032,11 @@ function SpatialOverlay({ overlay, u, recState, recSeconds, sceneText, onRecord,
           {isCoach ? (
             <View style={[styles.coachOverlayActions, { marginTop: 24 * u, gap: 15 * u }]}>
               <MotionPressable onPress={onRecord} style={[styles.overlayPrimary, { height: 66 * u, borderRadius: 34 * u }]}><LinearGradient colors={['#31D8FF', BLUE, '#0752DF']} style={StyleSheet.absoluteFillObject} /><Mic size={26 * u} color="#fff" /><Text style={[styles.overlayPrimaryText, { fontSize: scaledText(u, 20) }]}>{recState === 'recording' ? '停止并识别' : recState === 'idle' ? '开始录音' : '正在处理'}</Text></MotionPressable>
-              <View style={[styles.coachStateCard, { minHeight: 86 * u, borderRadius: 22 * u, padding: 17 * u }]}><Headphones size={24 * u} color={BLUE} /><View style={{ flex: 1 }}><Text style={[styles.coachStateTitle, { fontSize: scaledText(u, 17) }]}>状态反馈</Text><Text style={[styles.coachStateText, { fontSize: scaledText(u, 15) }]}>{recState === 'recording' ? '正在收音，动画仅表示录音状态' : recState === 'transcribing' ? '语音已发送，正在识别' : '准备好后开始对话'}</Text></View></View>
+              {recError ? (
+                <VoiceErrorCard error={recError} onRetry={onRetryRecording} onDismiss={onDismissRecordingError} u={u} />
+              ) : (
+                <View style={[styles.coachStateCard, { minHeight: 86 * u, borderRadius: 22 * u, padding: 17 * u }]}><Headphones size={24 * u} color={BLUE} /><View style={{ flex: 1 }}><Text style={[styles.coachStateTitle, { fontSize: scaledText(u, 17) }]}>状态反馈</Text><Text style={[styles.coachStateText, { fontSize: scaledText(u, 15) }]}>{recState === 'recording' ? '正在收音，动画仅表示录音状态' : recState === 'transcribing' ? '语音已发送，正在识别' : '准备好后开始对话'}</Text></View></View>
+              )}
             </View>
           ) : (
             <View style={{ gap: 12 * u, marginTop: 22 * u }}>
@@ -1010,6 +1069,18 @@ export function PremiumHomeBoard(props: Props) {
   const u = boardWidth / 850;
   const [overlay, setOverlay] = useState<SpatialOverlayState | null>(null);
   const [trackInfo, setTrackInfo] = useState<string | null>(null);
+  const [coachVisible, setCoachVisible] = useState(false);
+  const [coachMounted, setCoachMounted] = useState(false);
+  const [coachSummary, setCoachSummary] = useState('');
+  const [coachOrigin, setCoachOrigin] = useState<CoachOrigin>();
+  const coachRef = useRef<View>(null);
+  const coachFocusRef = useRef<{ focus?: () => void } | null>(null);
+  useEffect(() => {
+    if (!coachVisible) return;
+    coachRef.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => {
+      setCoachOrigin({ x, y, width: measuredWidth, height: measuredHeight });
+    });
+  }, [width, coachVisible]);
   const focusReturnRef = useRef<{ focus?: () => void } | null>(null);
   const latest = props.records[0];
   const sceneCards = useMemo(() => {
@@ -1112,6 +1183,22 @@ export function PremiumHomeBoard(props: Props) {
     }
   }, [props]);
 
+  const openCoachDialog = () => {
+    if (coachVisible) return;
+    if (Platform.OS === 'web') coachFocusRef.current = document.activeElement as { focus?: () => void } | null;
+    coachRef.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => {
+      setCoachOrigin({ x, y, width: measuredWidth, height: measuredHeight });
+    });
+    setCoachMounted(true);
+    setCoachVisible(true);
+    props.onInteractionLockChange?.(true);
+  };
+  const closeCoachDialog = () => {
+    setCoachVisible(false);
+    props.onInteractionLockChange?.(false);
+    if (Platform.OS === 'web') requestAnimationFrame(() => coachFocusRef.current?.focus?.());
+  };
+
   return (
     <View style={[styles.board, { width: boardWidth, height: boardHeight, marginTop: Math.max(props.topInset, 8) }]}>
       <Animated.View entering={reduceMotion ? undefined : FadeInDown.duration(380)} style={[styles.header, { left: 42 * u, right: 30 * u, top: 18 * u, height: 72 * u }]}>
@@ -1173,29 +1260,36 @@ export function PremiumHomeBoard(props: Props) {
         </MotionPressable>
       </Animated.View>
 
-      <Animated.View entering={reduceMotion ? undefined : FadeInDown.delay(90).duration(460)} style={[styles.coach, { left: 580 * u, top: 101 * u, width: 244 * u, height: 630 * u, borderRadius: 31 * u }]}>
-        <Glass style={StyleSheet.absoluteFillObject} tint={['rgba(250,254,255,0.88)', 'rgba(214,241,255,0.62)', 'rgba(247,244,255,0.78)']}> 
-          <Pressable onPress={() => props.onOpenCoach()} style={[styles.coachTitleHit, { padding: 22 * u }]}>
+      <Animated.View ref={coachRef} collapsable={false} entering={reduceMotion ? undefined : FadeInDown.delay(90).duration(460)} style={[styles.coach, { left: 580 * u, top: 101 * u, width: 244 * u, height: 630 * u, borderRadius: 31 * u }]}>
+        <Glass style={StyleSheet.absoluteFillObject} tint={['rgba(250,254,255,0.88)', 'rgba(214,241,255,0.62)', 'rgba(247,244,255,0.78)']}>
+          <Pressable accessibilityRole="button" accessibilityLabel="打开 AI 对话面板" onPress={openCoachDialog} style={[styles.coachTitleHit, { padding: 22 * u }]}>
             <Text style={[styles.coachTitle, { fontSize: fs(34), lineHeight: fs(42) }]}>AI 教练</Text>
             <ChevronRight size={24 * u} color={INK} />
           </Pressable>
           <Text style={[styles.coachSubtitle, { left: 23 * u, top: 70 * u, fontSize: fs(18) }]}>语音对话 · 即时反馈</Text>
-          <CoachOrb u={u} state={props.recState} onPress={() => openOverlay({ kind: 'coach', scene: heroScene, origin: { x: 580, y: 101, width: 244, height: 630 } })} />
+          <CoachOrb u={u} state="idle" onPress={openCoachDialog} />
           <View style={{ position: 'absolute', left: 29 * u, top: 286 * u, width: 187 * u }}><Waveform u={u} active={isRecording} /></View>
-          <Text style={[styles.listening, { top: 357 * u, fontSize: fs(18) }]}> 
-            {busy ? '正在识别...' : isRecording ? `正在倾听 ${String(Math.floor(props.recSeconds / 60)).padStart(2, '0')}:${String(props.recSeconds % 60).padStart(2, '0')}` : '点击开始对话'}
-          </Text>
+          {props.recError ? (
+            <View style={{ position: 'absolute', left: 10 * u, right: 10 * u, top: 337 * u }}>
+              <VoiceErrorCard error={props.recError} onRetry={props.onRetryRecording} onDismiss={props.onDismissRecordingError} u={u} compact />
+            </View>
+          ) : (
+            <Text style={[styles.listening, { top: 357 * u, fontSize: fs(18) }]}>
+              {coachSummary ? '对话已保留 · 点击继续' : '点击开始对话'}
+            </Text>
+          )}
+          {coachSummary ? <Text numberOfLines={1} style={{ position: 'absolute', left: 18 * u, right: 18 * u, top: 384 * u, fontSize: fs(13), color: MUTED, textAlign: 'center' }}>{coachSummary}</Text> : null}
           <MotionPressable
-            onPress={props.onRecord}
-            disabled={busy}
-            accessibilityLabel={isRecording ? '停止录音' : '开始录音'}
+            onPress={openCoachDialog}
+            accessibilityRole="button"
+            accessibilityLabel={coachSummary ? '继续 AI 对话' : '打开语音对话'}
             style={[styles.micButton, { left: 25 * u, bottom: 20 * u, width: 194 * u, height: 202 * u }]}
             pressedScale={0.96}
             hoverTilt={2.2}
           >
             <MicGlassControl u={u} active={isRecording} />
             {busy ? <ActivityIndicator color={BLUE} style={styles.micBusy} /> : null}
-            <Text style={[styles.sendLabel, { fontSize: fs(18), bottom: 0 }]}>{isRecording ? '点击结束发送' : '点击开始说话'}</Text>
+            <Text style={[styles.sendLabel, { fontSize: fs(18), bottom: 0 }]}>{coachSummary ? '继续上次对话' : '点击开始说话'}</Text>
           </MotionPressable>
         </Glass>
       </Animated.View>
@@ -1244,6 +1338,7 @@ export function PremiumHomeBoard(props: Props) {
           <CardHeading u={u} title="文字练习" subtitle="用文字创建你想练习的场景" />
           <View style={[styles.writingBox, { left: 19 * u, right: 17 * u, bottom: 17 * u, height: 106 * u, borderRadius: 25 * u, paddingLeft: 18 * u, paddingRight: 74 * u }]}>
             <TextInput
+              accessibilityLabel="场景文字输入"
               value={props.sceneText}
               onChangeText={props.onSceneTextChange}
               placeholder={`我想练习${heroScene.title}，\n可以怎么说？`}
@@ -1251,7 +1346,7 @@ export function PremiumHomeBoard(props: Props) {
               multiline
               style={[styles.writingInput, { fontSize: fs(19), lineHeight: fs(29) }]}
             />
-            <MotionPressable onPress={props.onSubmitText} style={[styles.sendButton, { right: 8 * u, top: 19 * u, width: 67 * u, height: 67 * u, borderRadius: 34 * u }]}>
+            <MotionPressable accessibilityRole="button" accessibilityLabel="提交文字场景" disabled={!props.sceneText.trim()} onPress={props.onSubmitText} style={[styles.sendButton, { right: 8 * u, top: 19 * u, width: 67 * u, height: 67 * u, borderRadius: 34 * u }]}>
               <LinearGradient colors={['#2BD0FF', '#087CFF', '#075EE8']} style={[StyleSheet.absoluteFillObject, { borderRadius: 34 * u }]} />
               <Image source={ASSETS.send} style={{ width: 34 * u, height: 34 * u, transform: [{ rotate: '-10deg' }] }} contentFit="contain" />
             </MotionPressable>
@@ -1315,17 +1410,16 @@ export function PremiumHomeBoard(props: Props) {
           recState={props.recState}
           recSeconds={props.recSeconds}
           sceneText={props.sceneText}
+          recError={props.recError}
           onRecord={props.onRecord}
+          onRetryRecording={props.onRetryRecording}
+          onDismissRecordingError={props.onDismissRecordingError}
           onSpeak={props.onSpeakWord}
           onStart={() => props.onOpenCoach(overlay.scene.prompt)}
           onCloseComplete={closeOverlay}
         />
       ) : null}
-      {props.recError ? (
-        <View style={{ position: 'absolute', left: 575 * u, top: 704 * u, width: 245 * u, zIndex: 12 }}>
-          <AsyncStatusBanner tone="error" title="语音没有完成" message={props.recError} onRetry={props.onRecord} compact />
-        </View>
-      ) : null}
+      {coachMounted ? <AiCoachConversation presentation="dialog" visible={coachVisible} origin={coachOrigin} onClose={closeCoachDialog} onSummaryChange={setCoachSummary} /> : null}
     </View>
   );
 }
@@ -1362,6 +1456,13 @@ const styles = StyleSheet.create({
   coachSubtitle: { position: 'absolute', color: MUTED, fontWeight: '500' },
   wave: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   listening: { position: 'absolute', left: 0, right: 0, textAlign: 'center', color: '#4D6281', fontWeight: '500' },
+  voiceErrorCard: { position: 'relative', flexDirection: 'row', alignItems: 'center', overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(204,91,78,0.22)', backgroundColor: 'rgba(255,246,244,0.9)', shadowColor: '#A64035', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.09, shadowRadius: 12, elevation: 3, ...webGlass('blur(14px) saturate(1.12)') },
+  voiceErrorCopy: { flex: 1, minWidth: 0, paddingRight: 3 },
+  voiceErrorTitle: { color: '#9D342E', fontWeight: '900' },
+  voiceErrorMessage: { marginTop: 1, color: '#765B58', fontWeight: '600' },
+  voiceErrorAction: { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.82)', borderWidth: 1, borderColor: 'rgba(181,71,63,0.16)' },
+  voiceErrorActionText: { color: '#A23C35', fontWeight: '900' },
+  voiceErrorDismiss: { alignItems: 'center', justifyContent: 'center' },
   micButton: { position: 'absolute', alignItems: 'center', justifyContent: 'flex-start' },
   micGlassControl: { alignItems: 'center', justifyContent: 'center' },
   micGlassSurface: { ...StyleSheet.absoluteFillObject, overflow: 'hidden', borderWidth: 1.5, borderColor: 'rgba(239,253,255,0.96)', ...(Platform.OS === 'web' ? ({ boxShadow: '0 11px 25px rgba(6,126,239,0.25), inset 0 2px 5px rgba(255,255,255,0.75)' } as any) : null) },

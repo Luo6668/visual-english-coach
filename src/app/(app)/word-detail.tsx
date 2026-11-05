@@ -1,8 +1,9 @@
 import { useAudioPlayer } from 'expo-audio';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Bookmark, ChevronLeft, Mic, Volume2 } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { useSession } from '@/ctx';
 import { createWord, invokeEdgeFunction } from '@/lib/api';
 import { speakWithTTS, stopLocalSpeech } from '@/lib/speech';
 
@@ -51,24 +52,32 @@ export default function WordDetailScreen() {
   const [detail, setDetail]   = useState<WordDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved]     = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [reload, setReload] = useState(0);
+  const { session } = useSession();
+  const owner = session?.user.id;
+  const currentOwner = useRef(owner); currentOwner.current = owner;
   const [speakingKey, setSpeakingKey] = useState<string | null>(null);
   const player = useAudioPlayer();
 
   useFocusEffect(useCallback(() => {
+    let active = true;
     (async () => {
-      setLoading(true);
+      setLoading(true); setLoadError(''); setSaved(false); setDetail(null);
       try {
         const data = normalizeWordDetail(await invokeEdgeFunction('word-detail', { word: targetWord }), targetWord);
+        if (!active || currentOwner.current !== owner) return;
         setDetail(data);
         await createWord({
           word: data.word, phonetic: data.phonetic, meaning: data.meaning,
           part_of_speech: data.partOfSpeech, collocations: data.collocations, example_sentences: data.examples,
         });
-      } catch (e) { console.error(e); }
-      finally { setLoading(false); }
+        if (active && currentOwner.current === owner) setSaved(true);
+      } catch (e) { if (active && currentOwner.current === owner) setLoadError(e instanceof Error ? e.message : '词汇暂未加载或收录，请重试'); }
+      finally { if (active) setLoading(false); }
     })();
-    return () => stopLocalSpeech();
-  }, [targetWord]));
+    return () => { active = false; stopLocalSpeech(); };
+  }, [targetWord, owner, reload]));
 
   const handlePlay = (text: string, key: string) => {
     if (speakingKey === key) {
@@ -86,14 +95,14 @@ export default function WordDetailScreen() {
       {/* ── 顶部 Hero ── */}
       <View style={{ backgroundColor: BLUE_LIGHT, paddingTop: 56, paddingBottom: 24, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#D6E8FF' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <Pressable onPress={() => router.back()} className="active:opacity-70"
+          <Pressable accessibilityRole="button" accessibilityLabel="返回场景英语" onPress={() => router.back()} className="active:opacity-70"
             style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: BLUE + '18', alignItems: 'center', justifyContent: 'center' }}>
             <ChevronLeft size={20} color={BLUE} />
           </Pressable>
           <Text style={{ color: '#64748B', fontSize: 13, flex: 1 }}>
             {scene ? `来自场景：${scene}` : '单词详情'}
           </Text>
-          <Pressable onPress={() => setSaved(!saved)} className="active:opacity-70"
+          <Pressable accessibilityRole="button" accessibilityLabel={saved ? '已加入词汇卡组' : '重试收录词汇'} disabled={loading || saved} onPress={() => setReload(value => value + 1)} className="active:opacity-70"
             style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: BLUE + '18', alignItems: 'center', justifyContent: 'center' }}>
             <Bookmark size={18} color={saved ? YELLOW : BLUE} fill={saved ? YELLOW : 'transparent'} />
           </Pressable>
@@ -122,6 +131,7 @@ export default function WordDetailScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic">
+        {loadError ? <View style={{ padding: 16, gap: 10 }}><Text accessibilityRole="alert" style={{ color: '#AF642D', lineHeight: 21 }}>{loadError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试词汇加载与收录" onPress={() => setReload(value => value + 1)} style={{ padding: 13, borderRadius: 12, backgroundColor: BLUE_LIGHT }}><Text style={{ color: BLUE, fontWeight: '700' }}>重试加载与收录</Text></Pressable></View> : null}
         {loading ? (
           <View style={{ alignItems: 'center', paddingVertical: 60, gap: 12 }}>
             <ActivityIndicator size="large" color={BLUE} />
